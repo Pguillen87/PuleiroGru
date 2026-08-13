@@ -14,6 +14,14 @@ import { useMascotGenerationFlow, type FlowConfig } from "@/lib/mascot-generatio
 import { AccountGate } from "@/components/auth/AccountGate";
 
 export function PuleiroExperience({ config }: { config: FlowConfig }) {
+  return (
+    <AccountGate required={config.authenticationRequired}>
+      <AuthenticatedPuleiroExperience config={config} />
+    </AccountGate>
+  );
+}
+
+function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
   const flow = useMascotGenerationFlow(config);
   const [announcement, setAnnouncement] = useState("");
 
@@ -24,7 +32,14 @@ export function PuleiroExperience({ config }: { config: FlowConfig }) {
     uploading: <PreparingStage title="Enviando sua foto…" message="Atravessando o portão do Puleiro…" />,
     "creating-job": <PreparingStage title="Abrindo o ovo" message="Criando o pedido de nascimento…" />,
     preparing: <PreparingStage message={flow.statusMessage} />,
-    "registered-safe": <PreparingStage title="Nascimento registrado com segurança" message={flow.statusMessage} />,
+    "registered-safe": (
+      <PreparingStage
+        title="Nascimento guardado"
+        message={flow.statusMessage}
+        detail="O pedido está seguro e não avançará sozinho neste ambiente de validação."
+        guidance="Você pode fechar esta página e voltar com a mesma conta."
+      />
+    ),
     "master-ready": flow.revealComplete
       ? <MasterDecisionStage mode="ready" position={flow.masterPosition} onAccept={flow.acceptMaster} onNext={flow.nextMaster} />
       : <PreparingStage title="O nascimento começou" message="O palco está revelando seu mascote." />,
@@ -39,11 +54,11 @@ export function PuleiroExperience({ config }: { config: FlowConfig }) {
       ? { src: flow.masterUrl, alt: "Mascote mestre criado a partir da fotografia enviada." }
       : undefined;
 
-  return <AccountGate required={config.authenticationRequired}>{(
+  return (
     <div className="site-shell">
       <Header onUnavailableNavigation={(destination) => setAnnouncement(`${destination} estará disponível em uma próxima etapa.`)} />
       <main>
-        <h1 className="sr-only">Puleiro do GRU</h1>
+        <h1 id="puleiro-main-title" className="sr-only" tabIndex={-1}>Puleiro do GRU</h1>
         <div className="experience-layout">
           <ProgressFolio state={flow.state} />
           <PuleiroStage
@@ -70,5 +85,5 @@ export function PuleiroExperience({ config }: { config: FlowConfig }) {
         <span>Fonte visual oficial · Stitch</span>
       </footer>
     </div>
-  )}</AccountGate>;
+  );
 }

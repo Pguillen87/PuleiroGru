@@ -1,9 +1,9 @@
 import type { GenerationJob } from "./types";
 
-type JobResponse = { job?: GenerationJob | null; message?: string };
+type JobResponse = { job?: GenerationJob | null; message?: string; code?: string };
 
 export class GenerationRequestError extends Error {
-  constructor(message: string, readonly retryable = true) {
+  constructor(message: string, readonly retryable = true, readonly code = "REQUEST_FAILED") {
     super(message);
   }
 }
@@ -19,7 +19,14 @@ export async function establishBrowserSession(idToken: string, appCheckToken: st
 async function readResponse(response: Response, allowEmpty = false) {
   const body = await response.json().catch(() => ({})) as JobResponse;
   if (!response.ok || (!allowEmpty && !body.job)) {
-    throw new GenerationRequestError(body.message ?? "O Puleiro não respondeu como esperado.", response.status >= 500);
+    if (response.status === 401 || response.status === 403) {
+      globalThis.window?.dispatchEvent(new Event("puleiro:auth-required"));
+    }
+    throw new GenerationRequestError(
+      body.message ?? "O Puleiro não respondeu como esperado.",
+      response.status >= 500,
+      body.code,
+    );
   }
   return body.job ?? null;
 }

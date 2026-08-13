@@ -33,11 +33,11 @@ export function EditorialNote({ state }: { state: PuleiroState }) {
     uploading: "A fotografia está atravessando o portão protegido da API do Puleiro.",
     "creating-job": "O pedido recebeu uma identidade própria para poder ser acompanhado com segurança.",
     preparing: "O trabalho acontece nos bastidores. O texto informa o estágio sem inventar porcentagens.",
-    "registered-safe": "O registro foi preservado sem iniciar GPU. A geração dependerá de autorização explícita em outra fase.",
+    "registered-safe": "Este nascimento ficou guardado. Nada novo começa sozinho enquanto o Puleiro aguarda a próxima etapa.",
     "master-ready": "O palco desacelera. Agora existe uma única escolha: ficar com este mascote ou ver outro.",
-    "master-approved": "A aprovação fica nesta sessão. As próximas poses pertencem a uma fase futura.",
+    "master-approved": "A escolha ficou registrada para esta conta. As próximas poses pertencem a uma fase futura.",
     "master-rejected": "Outra geração só começa quando você confirmar; nenhuma tentativa é disparada sozinha.",
-    "recoverable-error": "A falha não apaga sua fotografia nem expõe detalhes técnicos. O próximo passo continua claro.",
+    "recoverable-error": "O Puleiro preserva o que já foi registrado e explica quando a fotografia precisa ser escolhida novamente.",
   }[state];
 
   return (

@@ -48,6 +48,14 @@ FORM: sistema responsivo canônico do Tablet aprovado no Stitch, sem nova direç
   box-shadow: 10px 10px 0 var(--color-editorial-red);
 }
 
+.account-gate__scene {
+  display: block;
+  min-height: clamp(8rem, 26vw, 12rem);
+  margin: calc(clamp(1.5rem, 4vw, 3rem) * -1) calc(clamp(1.5rem, 4vw, 3rem) * -1) 1.5rem;
+  border-bottom: 2px solid var(--color-ink);
+  background: url("/assets/puleiro-entry.jpg") center 42% / cover no-repeat;
+}
+
 .account-gate form {
   display: grid;
   gap: 0.75rem;
@@ -61,6 +69,16 @@ FORM: sistema responsivo canônico do Tablet aprovado no Stitch, sem nova direç
   background: var(--color-paper-raised);
   color: var(--color-text-primary);
   font: inherit;
+}
+
+.account-gate input:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+.account-gate__availability {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
 }
 
 * {

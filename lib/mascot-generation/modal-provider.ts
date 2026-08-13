@@ -131,7 +131,7 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
 
 function statusMessage(status: GenerationJob["status"]) {
   const messages: Record<GenerationJob["status"], string> = {
-    registered: "Job registrado com segurança. A geração real ainda não foi autorizada.",
+    registered: "Seu pedido de nascimento ficou guardado com segurança.",
     awaiting_generation_authorization: "Aguardando autorização para iniciar o nascimento.",
     queued: "Conferindo sua foto…",
     generating_masters: "Criando três opções de mascote…",

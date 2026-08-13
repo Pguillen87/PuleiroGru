@@ -13,6 +13,7 @@ ID token e App Check terminam no BFF. O navegador não recebe URL, token ou secr
 
 | Método | Rota | Função |
 |---|---|---|
+| POST | `/api/auth/session` | encerra ID token + App Check e cria sessão HttpOnly |
 | POST | `/api/mascot/jobs` | sanitiza foto e registra job idempotente |
 | GET | `/api/mascot/jobs/current` | retoma pelo `attemptId` em cookie HttpOnly |
 | GET | `/api/mascot/jobs/:jobId` | consulta owner-scoped |

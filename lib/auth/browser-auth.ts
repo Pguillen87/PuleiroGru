@@ -11,6 +11,7 @@ export class RequestAuthError extends Error {
 }
 
 let warned = false;
+export const FIREBASE_SESSION_COOKIE = "puleiro_session";
 
 export function ensureDevTestIdentityAllowed(nodeEnv: string | undefined, masterEnabled: boolean, poseEnabled: boolean) {
   if (nodeEnv === "production") {
@@ -68,8 +69,35 @@ function adminApp() {
   }
 }
 
+function cookieValue(request: Request, name: string) {
+  const cookies = request.headers.get("cookie")?.split(";") ?? [];
+  return cookies.map((part) => part.trim()).find((part) => part.startsWith(`${name}=`))?.slice(name.length + 1);
+}
+
+export async function createBrowserSession(authorization: string | null, appCheckToken: string | null) {
+  const app = adminApp();
+  const verifier = {
+    verifyIdToken: (token: string) => getAuth(app).verifyIdToken(token, true),
+    verifyAppCheck: (token: string) => getAppCheck(app).verifyToken(token),
+  };
+  const uid = await verifyBrowserTokens(authorization, appCheckToken, verifier);
+  const idToken = authorization!.slice(7);
+  const sessionCookie = await getAuth(app).createSessionCookie(idToken, { expiresIn: 60 * 60 * 24 * 5 * 1000 });
+  return { uid, sessionCookie };
+}
+
 export async function requireBrowserIdentity(request: Request) {
   if (generationConfig.allowDevTestIdentity) return { uid: devIdentity(request), mode: "development" as const };
+
+  const sessionCookie = cookieValue(request, FIREBASE_SESSION_COOKIE);
+  if (sessionCookie) {
+    try {
+      const identity = await getAuth(adminApp()).verifySessionCookie(decodeURIComponent(sessionCookie), true);
+      return { uid: identity.uid, mode: "firebase-session" as const };
+    } catch {
+      throw new RequestAuthError(401, "SESSION_EXPIRED", "Sua sessão expirou. Entre novamente para continuar.");
+    }
+  }
 
   const app = adminApp();
   const uid = await verifyBrowserTokens(

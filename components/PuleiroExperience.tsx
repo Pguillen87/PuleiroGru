@@ -11,6 +11,7 @@ import { PhotoSelectionStage } from "@/components/stage/PhotoSelectionStage";
 import { PreparingStage } from "@/components/stage/PreparingStage";
 import { PuleiroStage } from "@/components/stage/PuleiroStage";
 import { useMascotGenerationFlow, type FlowConfig } from "@/lib/mascot-generation/useMascotGenerationFlow";
+import { AccountGate } from "@/components/auth/AccountGate";
 
 export function PuleiroExperience({ config }: { config: FlowConfig }) {
   const flow = useMascotGenerationFlow(config);
@@ -38,7 +39,7 @@ export function PuleiroExperience({ config }: { config: FlowConfig }) {
       ? { src: flow.masterUrl, alt: "Mascote mestre criado a partir da fotografia enviada." }
       : undefined;
 
-  return (
+  return <AccountGate required={config.authenticationRequired}>{(
     <div className="site-shell">
       <Header onUnavailableNavigation={(destination) => setAnnouncement(`${destination} estará disponível em uma próxima etapa.`)} />
       <main>
@@ -69,5 +70,5 @@ export function PuleiroExperience({ config }: { config: FlowConfig }) {
         <span>Fonte visual oficial · Stitch</span>
       </footer>
     </div>
-  );
+  )}</AccountGate>;
 }

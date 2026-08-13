@@ -11,6 +11,7 @@ export type FlowConfig = {
   pollIntervalMs: number;
   timeoutMs: number;
   technicalRegistrationOnly: boolean;
+  authenticationRequired: boolean;
 };
 
 export function useMascotGenerationFlow(config: FlowConfig) {

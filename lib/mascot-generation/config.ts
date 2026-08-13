@@ -34,5 +34,6 @@ export function publicGenerationConfig() {
     pollIntervalMs: positiveNumber(process.env.JOB_POLL_INTERVAL_MS, 900),
     timeoutMs: positiveNumber(process.env.JOB_TIMEOUT_MS, 90_000),
     technicalRegistrationOnly: generationConfig.provider === "modal" && !generationConfig.masterGenerationEnabled,
+    authenticationRequired: generationConfig.provider === "modal" && !generationConfig.allowDevTestIdentity,
   };
 }

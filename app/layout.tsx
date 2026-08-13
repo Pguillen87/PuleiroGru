@@ -17,6 +17,7 @@ const functional = Inter({
 export const metadata: Metadata = {
   title: "Puleiro do GRU",
   description: "O lugar onde os mascotes do GRU nascem.",
+  icons: { icon: "/favicon.svg" },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

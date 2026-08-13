@@ -4,7 +4,7 @@ export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
   timeout: 45_000,
-  workers: 4,
+  workers: 2,
   reporter: [["list"]],
   use: {
     baseURL: "http://127.0.0.1:3000",
@@ -15,6 +15,12 @@ export default defineConfig({
     url: "http://127.0.0.1:3000",
     reuseExistingServer: true,
     timeout: 120_000,
+    env: {
+      MASCOT_GENERATION_PROVIDER: "mock",
+      MOCK_GENERATION_DELAY_MS: "250",
+      JOB_POLL_INTERVAL_MS: "100",
+      JOB_TIMEOUT_MS: "1200",
+    },
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },

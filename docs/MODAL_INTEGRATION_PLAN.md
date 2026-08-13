@@ -1,9 +1,12 @@
 # Puleiro do GRU — auditoria e plano de integração com o Modal
 
-**Status:** plano para aprovação; nenhuma integração, geração, GPU, secret ou deploy foi alterado.  
-**Data da auditoria:** 2026-08-13.  
-**Repositório Web auditado:** `Pguillen87/PuleiroGru`, `main` em `69b8b13`.  
-**Modal auditado:** `Pguillen87/gru`, `modal_service`, branch mais recente localizada `feature/mascot-guided-pose-flow` em `f52a979`.  
+**Status:** plano para aprovação; nenhuma integração, geração, GPU, secret ou deploy foi alterado.
+
+**Data da auditoria:** 2026-08-13.
+
+**Repositório Web auditado:** `Pguillen87/PuleiroGru`, `main` em `69b8b13`.
+
+**Modal auditado:** `Pguillen87/gru`, `modal_service`, branch mais recente localizada `feature/mascot-guided-pose-flow` em `f52a979`.
 **Deploy consultado de forma somente leitura:** `automacao-guillenia--gru-mascot-api.modal.run`.
 
 ## 1. Resumo executivo
@@ -561,7 +564,8 @@ Mensagens vêm por `messageCode` traduzível, não texto final do Modal.
 - BFF valida sessão/ID token e App Check.
 - BFF obtém/encaminha credencial Firebase aceita pelo Modal.
 
-**Prós:** reutiliza Firebase e ownership atual.  
+**Prós:** reutiliza Firebase e ownership atual.
+
 **Contras:** encaminhar prova de app Web através do BFF confunde attestation do cliente com identidade do servidor; ID token de usuário não autentica o BFF; renovação e múltiplos mercados ficam acoplados; não deve usar token estático.
 
 ### 13.2 Opção B — sessão do usuário no BFF + autenticação dedicada BFF → Modal
@@ -573,7 +577,8 @@ Mensagens vêm por `messageCode` traduzível, não texto final do Modal.
 - Modal valida apenas o emissor interno nas rotas v2.
 - Rotas v1 preservam Firebase + App Check para o Android durante migração.
 
-**Prós:** boundary correta, rotação, auditoria, menor acoplamento ao browser/Android, compatível com China e auth futura.  
+**Prós:** boundary correta, rotação, auditoria, menor acoplamento ao browser/Android, compatível com China e auth futura.
+
 **Contras:** exige verificador novo, gestão de chaves e dual auth temporária.
 
 ### 13.3 Recomendação

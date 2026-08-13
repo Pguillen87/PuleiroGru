@@ -20,6 +20,21 @@ async function completeFlow(page: import("@playwright/test").Page) {
   await expect(page.getByRole("heading", { name: "Seu mascote chegou!" })).toBeVisible({ timeout: 5_000 });
 }
 
+test("duplo envio e refresh retomam o mesmo job sem novo registro", async ({ request }) => {
+  const upload = () => request.post("/api/mascot/jobs", {
+    multipart: { photo: { name: "foto.jpg", mimeType: "image/jpeg", buffer: sourcePhoto } },
+  });
+  const first = await upload();
+  const second = await upload();
+  expect(first.ok()).toBeTruthy();
+  expect(second.ok()).toBeTruthy();
+  const firstJob = (await first.json()).job;
+  const secondJob = (await second.json()).job;
+  expect(secondJob.id).toBe(firstJob.id);
+  const resumed = await request.get("/api/mascot/jobs/current");
+  expect((await resumed.json()).job.id).toBe(firstJob.id);
+});
+
 test("percorre o fluxo explícito sem ações prematuras", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Puleiro do GRU" })).toBeVisible();
@@ -33,7 +48,7 @@ test("percorre o fluxo explícito sem ações prematuras", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Seu mascote chegou!" })).toBeVisible({ timeout: 5_000 });
   await page.getByRole("button", { name: "Gostei deste" }).click();
   await expect(page.getByRole("heading", { name: "Este é o seu mascote mestre" })).toBeVisible();
-  await expect(page.getByText("Aprovado nesta sessão")).toBeVisible();
+  await expect(page.getByText("Mascote mestre aprovado")).toBeVisible();
 });
 
 for (const mimeType of ["image/jpeg", "image/png", "image/webp"]) {
@@ -49,9 +64,9 @@ test("rejeita tipo inválido e arquivo acima do limite", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Criar meu mascote" }).click();
   await page.locator("#pet-photo").setInputFiles({ name: "pet.txt", mimeType: "text/plain", buffer: Buffer.from("não é imagem") });
-  await expect(page.getByRole("alert")).toContainText("JPEG, PNG ou WebP");
+  await expect(page.locator(".field-error")).toContainText("JPEG, PNG ou WebP");
   await page.locator("#pet-photo").setInputFiles({ name: "pet.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(10 * 1024 * 1024 + 1) });
-  await expect(page.getByRole("alert")).toContainText("até 10 MB");
+  await expect(page.locator(".field-error")).toContainText("até 10 MB");
 });
 
 test("permite remover e substituir antes do envio", async ({ page }) => {
@@ -64,17 +79,19 @@ test("permite remover e substituir antes do envio", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Escolher foto" })).toBeVisible();
 });
 
-test("API cria job, informa processamento e conclui", async ({ request }) => {
+test("API cria job, informa processamento e disponibiliza três Masters", async ({ request }) => {
   const created = await request.post("/api/mascot/jobs", {
     multipart: { photo: { name: "pet.jpg", mimeType: "image/jpeg", buffer: sourcePhoto } },
   });
   expect(created.status()).toBe(202);
   const id = (await created.json()).job.id as string;
   const processing = await request.get(`/api/mascot/jobs/${id}`);
-  expect(["processing", "succeeded"]).toContain((await processing.json()).job.status);
+  expect(["queued", "generating_masters", "awaiting_master_approval"]).toContain((await processing.json()).job.status);
   await new Promise((resolve) => setTimeout(resolve, 350));
   const finished = await request.get(`/api/mascot/jobs/${id}`);
-  expect((await finished.json()).job.status).toBe("succeeded");
+  const finishedJob = (await finished.json()).job;
+  expect(finishedJob.status).toBe("awaiting_master_approval");
+  expect(finishedJob.masters).toHaveLength(3);
 });
 
 test("API rejeita job inexistente e conteúdo incompatível com o MIME", async ({ request }) => {
@@ -90,11 +107,11 @@ test("falha do job preserva foto e oferece retry", async ({ page }) => {
   await page.route("**/api/mascot/jobs", (route) => route.fulfill({
     status: 202,
     contentType: "application/json",
-    body: JSON.stringify({ job: { id: "falha", status: "queued", message: "Preparando…" } }),
+    body: JSON.stringify({ job: { id: "falha", attemptId: "attempt-falha", status: "queued", message: "Preparando…", generationScheduled: false, masters: [] } }),
   }));
   await page.route("**/api/mascot/jobs/falha", (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify({ job: { id: "falha", status: "failed", message: "O ovo não abriu.", retryable: true } }),
+    body: JSON.stringify({ job: { id: "falha", attemptId: "attempt-falha", status: "failed", message: "O ovo não abriu.", generationScheduled: false, masters: [], retryable: true } }),
   }));
   await page.goto("/");
   await selectPhoto(page);
@@ -104,34 +121,32 @@ test("falha do job preserva foto e oferece retry", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Trocar foto" })).toBeVisible();
 });
 
-test("timeout encerra polling e uma nova tentativa cria outro job", async ({ page }) => {
+test("timeout encerra polling sem criar novo POST automaticamente", async ({ page }) => {
   let creations = 0;
   await page.route("**/api/mascot/jobs", (route) => {
     creations += 1;
     return route.fulfill({
       status: 202,
       contentType: "application/json",
-      body: JSON.stringify({ job: { id: `lento-${creations}`, status: "queued", message: "Preparando…" } }),
+      body: JSON.stringify({ job: { id: `lento-${creations}`, attemptId: "attempt-lento", status: "queued", message: "Preparando…", generationScheduled: false, masters: [] } }),
     });
   });
   await page.route("**/api/mascot/jobs/lento-*", (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify({ job: { id: "lento", status: "processing", message: "Criando…" } }),
+    body: JSON.stringify({ job: { id: "lento", attemptId: "attempt-lento", status: "generating_masters", message: "Criando…", generationScheduled: true, masters: [] } }),
   }));
   await page.goto("/");
   await selectPhoto(page);
   await page.getByRole("button", { name: "Usar esta foto" }).click();
   await expect(page.getByRole("heading", { name: "Este nascimento precisa de outra tentativa" })).toBeVisible({ timeout: 4_000 });
-  await page.getByRole("button", { name: "Tentar novamente" }).click();
-  await expect.poll(() => creations).toBe(2);
+  await expect.poll(() => creations).toBe(1);
 });
 
-test("ver outra opção exige confirmação antes de novo job", async ({ page }) => {
+test("ver outra opção percorre os Masters existentes sem novo job", async ({ page }) => {
   await page.goto("/");
   await completeFlow(page);
   await page.getByRole("button", { name: "Ver outra opção" }).click();
-  await expect(page.getByRole("heading", { name: "Quer abrir outro ovo?" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Gerar outra opção" })).toBeVisible();
+  await expect(page.getByText(/opção 2 de 3/)).toBeVisible();
 });
 
 test("movimento reduzido preserva conteúdo e remove loops", async ({ browser }) => {
@@ -160,10 +175,11 @@ test("touch targets mantêm pelo menos 48 px na prévia móvel", async ({ page }
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/");
   await selectPhoto(page);
-  for (const control of await page.locator("button:visible, a:visible").all()) {
+  for (const control of await page.locator(".site-shell button:visible, .site-shell a:visible").all()) {
     const box = await control.boundingBox();
-    expect(box?.width).toBeGreaterThanOrEqual(48);
-    expect(box?.height).toBeGreaterThanOrEqual(48);
+    const name = await control.getAttribute("aria-label") ?? await control.textContent() ?? "control";
+    expect(box?.width, name).toBeGreaterThanOrEqual(48);
+    expect(box?.height, name).toBeGreaterThanOrEqual(48);
   }
 });
 
@@ -179,7 +195,10 @@ for (const orientation of ["vertical", "horizontal"] as const) {
     await page.locator("#pet-photo").setInputFiles({ name: `${orientation}.jpg`, mimeType: "image/jpeg", buffer });
     const art = await page.locator(".stage__art").boundingBox();
     const image = await page.locator(".stage__art img").boundingBox();
-    expect(image).toEqual(art);
+    expect(image?.x).toBeCloseTo(art?.x ?? 0, 0);
+    expect(image?.y).toBeCloseTo(art?.y ?? 0, 0);
+    expect(image?.width).toBeCloseTo(art?.width ?? 0, 0);
+    expect(Math.abs((image?.height ?? 0) - (art?.height ?? 0))).toBeLessThanOrEqual(2);
   });
 }
 

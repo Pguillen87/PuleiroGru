@@ -1022,3 +1022,6 @@ Seguro iniciar teste sem GPU: NÃO, enquanto o deploy ativo reportar generation_
 Seguro iniciar teste com GPU: NÃO
 Pronto para implementar integração real: NÃO, antes da aprovação deste plano e fechamento dos bloqueios da Fase 1
 ```
+# Status de implementação segura — 2026-08-13
+
+O contrato v2 sem GPU foi implementado em branch isolada do Modal e no BFF Web. Registro, consulta, retomada e aprovação são operações separadas; App Check e Firebase ID token terminam no BFF; a comunicação BFF → Modal usa JWT curto; EXIF é removido antes do armazenamento; aprovação não inicia poses. Os kill switches de Master e poses permanecem desligados. Nenhum deploy ou chamada GPU foi realizado.

@@ -2,53 +2,43 @@
 
 Experiência Web em Next.js onde os mascotes do aplicativo GRU nascem.
 
-Esta entrega prepara o fluxo real de geração:
+O navegador fala somente com o BFF Next.js. Firebase ID token e Firebase App Check são verificados no BFF e nunca são encaminhados ao Modal. O BFF autentica-se no Modal v2 com JWT HS256 de curta duração (90 segundos por padrão).
+
+## Estado seguro desta fase
 
 ```text
-Entrada → Foto → Confirmação → Upload → Job → Preparação → Mascote mestre → Escolha
+foto → validação e remoção de EXIF → registro owner-scoped → retomada por attemptId
 ```
 
-O navegador nunca chama o Modal diretamente. A API do Next.js valida a fotografia, protege credenciais e usa um provider isolado. O provider `mock` permanece como padrão de desenvolvimento; o adapter `modal` implementa o contrato localizado, mas depende das pendências de autenticação e deploy descritas em [docs/MODAL_CONTRACT.md](docs/MODAL_CONTRACT.md).
+O registro não agenda GPU. `MASTER_GENERATION_ENABLED` e `POSE_GENERATION_ENABLED` falham fechados e permanecem `false`. Aprovar um Master não inicia poses. Modal v1 continua disponível temporariamente para os consumidores existentes.
 
-Esta fase gera somente o mascote mestre. As poses, pacote e código ainda não foram implementados.
-
-## Desenvolvimento
+## Desenvolvimento sem GPU
 
 ```powershell
 npm install
+Copy-Item .env.example .env.local
 npm run dev
 ```
 
-No PowerShell, copie a configuração com:
+Use `MASCOT_GENERATION_PROVIDER=mock`. O modo de identidade local exige simultaneamente `NODE_ENV != production`, `ALLOW_DEV_TEST_IDENTITY=true` e geração/poses desabilitadas. Ele nunca é uma solução de autenticação de produção.
 
-```powershell
-Copy-Item .env.example .env.local
-```
+## Segurança e privacidade
 
-## Providers
-
-Use `MASCOT_GENERATION_PROVIDER=mock` para desenvolver sem custo e sem serviços externos. O mock mantém jobs apenas na memória do processo e usa o asset de reveal aprovado como resultado.
-
-Para selecionar o adapter real, use `MASCOT_GENERATION_PROVIDER=modal` e configure as três variáveis `MODAL_*` somente no servidor. Não publique `.env.local` nem adicione prefixo `NEXT_PUBLIC` às credenciais.
-
-Os intervalos `JOB_POLL_INTERVAL_MS` e `JOB_TIMEOUT_MS` controlam um polling cancelável, com backoff, encerrado em sucesso, falha, timeout, troca de estado ou desmontagem do componente.
-
-## Upload e privacidade
-
-São aceitas imagens JPEG, PNG e WebP decodificáveis, entre 256 e 4096 pixels, dentro do limite configurado. Tipo, tamanho e conteúdo são conferidos novamente no servidor. O nome original e os bytes da foto não são registrados nos logs.
-
-A política de retenção e exclusão das fotografias ainda é uma pendência de produto. A interface não promete exclusão automática.
+- JPEG, PNG e WebP são decodificados, orientados e reencodados com `sharp`;
+- EXIF, GPS, XMP, IPTC e metadata desnecessária não são preservados;
+- owner vem do token Firebase verificado, nunca do body;
+- `attemptId` fica em cookie `HttpOnly`, `SameSite=Lax` e `Secure` em produção;
+- tokens, bytes, Base64, nomes originais e metadata não são registrados;
+- nenhuma variável sensível usa `NEXT_PUBLIC`.
 
 ## Validação
 
 ```powershell
+npm test
 npm run lint
+npx tsc --noEmit
 npm run build
 npm run test:e2e
 ```
 
-Os testes Playwright cobrem Chromium, Firefox, WebKit e Edge, incluindo upload, API, polling, reveal, movimento reduzido, teclado, acessibilidade básica e reflow responsivo.
-
-## Persistência atual
-
-A aprovação do mascote é mantida somente no estado da sessão aberta. Não existe biblioteca ou salvamento permanente nesta fase.
+Detalhes: [contrato Modal v2](docs/MODAL_CONTRACT.md) e [plano de integração](docs/MODAL_INTEGRATION_PLAN.md).

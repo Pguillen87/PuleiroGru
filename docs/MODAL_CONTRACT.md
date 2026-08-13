@@ -1,62 +1,50 @@
-# Contrato de geração do mascote mestre
+# Contrato Modal v2 — Puleiro do GRU
 
-## Limite desta fase
+## Fronteiras de confiança
 
-Esta fase gera e apresenta somente o **mascote mestre**. As três poses, pacote, código do mascote, instalação Android, pagamento, publicação e biblioteca não foram implementados.
-
-## Fronteira Web → Next.js
-
-O navegador usa apenas endpoints do próprio Puleiro:
-
-- `POST /api/mascot/jobs`: recebe `multipart/form-data` com o campo `photo`, valida a imagem e cria o job;
-- `GET /api/mascot/jobs/:jobId`: consulta o estado normalizado;
-- `GET /api/mascot/jobs/:jobId/master/:masterId`: entrega a imagem privada por proxy quando o provider é Modal.
-
-Resposta normalizada:
-
-```ts
-type GenerationJobStatus = "queued" | "uploading" | "processing" | "succeeded" | "failed";
-
-interface GenerationJob {
-  id: string;
-  status: GenerationJobStatus;
-  message: string;
-  masterImageUrl?: string;
-  errorCode?: string;
-  retryable?: boolean;
-}
+```text
+Browser -- Firebase ID token + Web App Check --> Next.js BFF
+Next.js BFF -- JWT curto e owner-scoped --> Modal v2
 ```
 
-Tokens, URL privada, imagem em base64 e detalhes internos de erro não atravessam essa fronteira para o navegador.
+ID token e App Check terminam no BFF. O navegador não recebe URL, token ou secret do Modal. O `sub` do JWT curto é o UID verificado; o Modal ignora qualquer owner enviado no corpo.
 
-## Contrato Modal localizado
+## Browser → BFF
 
-O serviço existente em `modal_service` expõe:
+| Método | Rota | Função |
+|---|---|---|
+| POST | `/api/mascot/jobs` | sanitiza foto e registra job idempotente |
+| GET | `/api/mascot/jobs/current` | retoma pelo `attemptId` em cookie HttpOnly |
+| GET | `/api/mascot/jobs/:jobId` | consulta owner-scoped |
+| GET | `/api/mascot/jobs/:jobId/master/:masterId` | proxy privado owner-scoped |
+| POST | `/api/mascot/jobs/:jobId/masters/:masterId/approve` | aprova sem gerar poses |
 
-- `POST /v1/mascot/jobs`, JSON `{ image_base64, content_type }`;
-- `GET /v1/mascot/jobs/{job_id}`;
-- `GET /v1/mascot/jobs/{job_id}/masters/{master_id}`.
+Respostas de autenticação: `401 AUTH_REQUIRED/AUTH_INVALID`; App Check ausente: `403 APP_CHECK_REQUIRED`. O BFF não expõe endpoint de autorização de GPU nesta rodada.
 
-Cabeçalhos atualmente exigidos:
+## BFF → Modal v2
 
-- `Authorization: Bearer <Firebase ID token>`;
-- `X-Firebase-AppCheck: <token>`;
-- `X-Idempotency-Key: <uuid>` nas operações com custo.
+JWT HS256: `iss=puleiro-bff`, `aud=gru-modal`, `sub=<uid>`, `jti=<uuid>`, `iat`, `exp<=120s`, `attempt_id`. Secret mínimo de 32 caracteres, somente no servidor.
 
-Estados mapeados:
+| Método | Rota | GPU nesta fase |
+|---|---|---|
+| POST | `/v2/mascot/jobs` | NÃO; retorna `generationScheduled:false` |
+| GET | `/v2/mascot/jobs?attempt_id=...` | NÃO |
+| GET | `/v2/mascot/jobs/:jobId` | NÃO |
+| GET | `/v2/mascot/jobs/:jobId/masters/:masterId` | NÃO |
+| POST | `/v2/mascot/jobs/:jobId/master-generations` | bloqueada por kill switch |
+| POST | `/v2/mascot/jobs/:jobId/masters/:masterId/approve` | NÃO; apenas aprovação |
+| POST | `/v2/mascot/jobs/:jobId/pose-generations` | bloqueada por kill switch próprio |
 
-- `AWAITING_MASTER_APPROVAL` ou `MASTER_APPROVED` → `succeeded`;
-- `FAILED` ou `CANCELED` → `failed`;
-- demais estados de fila, validação e geração → `processing`.
+## Estados públicos
 
-O adapter seleciona apenas o primeiro mestre retornado, pois esta interface apresenta uma opção por vez.
+`registered`, `awaiting_generation_authorization`, `queued`, `generating_masters`, `awaiting_master_approval`, `master_approved`, `generating_poses`, `awaiting_set_approval`, `packaging`, `ready`, `failed`, `canceled`.
 
-## Pendências para ativação real
+`ready` é reservado ao pacote publicado e utilizável pelo Android. Concluir uma etapa interna nunca produz `ready`.
 
-- definir como o site obtém e renova Firebase ID token e App Check sem credencial estática;
-- confirmar deploy e URL do serviço Modal;
-- habilitar conscientemente o kill switch/GPU de geração;
-- validar o contrato em ambiente integrado com uma fotografia de teste autorizada;
-- definir política de retenção e exclusão de fotografias.
+## Idempotência e retomada
 
-Enquanto essas pendências estiverem abertas, `MASCOT_GENERATION_PROVIDER=mock` é o modo seguro e verificável.
+O servidor cria `attemptId`; o cookie contém somente esse identificador. A chave de registro deriva de owner + attempt. Duplo clique, timeout de leitura e refresh não criam outro POST de geração. Descoberta e leitura são sempre owner-scoped.
+
+## Compatibilidade
+
+Rotas v1 permanecem temporariamente inalteradas. A separação segura vale para v2; nenhum deploy foi realizado nesta fase.

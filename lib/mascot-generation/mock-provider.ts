@@ -1,37 +1,61 @@
 import "server-only";
 import { generationConfig } from "./config";
-import type { CreateMasterJobInput, GenerationJob, MascotGenerationProvider } from "./types";
+import type { CreateMasterJobInput, GenerationJob, JobIdentity, MascotGenerationProvider } from "./types";
 
-type MockRecord = { createdAt: number; job: GenerationJob };
-
+type MockRecord = { createdAt: number; ownerId: string; job: GenerationJob };
 const globalStore = globalThis as typeof globalThis & { __puleiroMockJobs?: Map<string, MockRecord> };
 const jobs = globalStore.__puleiroMockJobs ?? new Map<string, MockRecord>();
 globalStore.__puleiroMockJobs = jobs;
 
 export class MockMascotGenerationProvider implements MascotGenerationProvider {
-  async createMasterJob(input: CreateMasterJobInput): Promise<GenerationJob> {
+  async createMasterJob(input: CreateMasterJobInput) {
+    const existing = [...jobs.values()].find(
+      ({ ownerId, job }) => ownerId === input.ownerId && job.attemptId === input.attemptId,
+    );
+    if (existing) return existing.job;
     const id = crypto.randomUUID();
     const job: GenerationJob = {
       id,
+      attemptId: input.attemptId,
       status: "queued",
       message: "Foto recebida. Preparando o nascimento…",
+      generationScheduled: false,
+      masters: [],
     };
-    jobs.set(id, { createdAt: Date.now(), job });
-    void input.bytes.byteLength;
+    jobs.set(id, { createdAt: Date.now(), ownerId: input.ownerId, job });
     return job;
   }
 
-  async getJob(jobId: string): Promise<GenerationJob | null> {
+  async getJob(jobId: string, identity: JobIdentity) {
     const record = jobs.get(jobId);
-    if (!record) return null;
+    if (!record || record.ownerId !== identity.ownerId) return null;
     if (Date.now() - record.createdAt < generationConfig.mockDelayMs) {
-      return { ...record.job, status: "processing", message: "Criando o mascote mestre…" };
+      return { ...record.job, status: "generating_masters" as const, message: "Criando o mascote mestre…" };
     }
     return {
       ...record.job,
-      status: "succeeded",
-      message: "Seu mascote está pronto.",
-      masterImageUrl: "/assets/puleiro-reveal.jpg",
+      status: "awaiting_master_approval" as const,
+      message: "Escolha o mascote mestre que mais combina com você.",
+      masters: ["1", "2", "3"].map((suffix) => ({
+        id: `mock-master-${suffix}`,
+        imageUrl: "/assets/puleiro-reveal.jpg",
+      })),
     };
+  }
+
+  async getJobByAttempt(identity: JobIdentity) {
+    const record = [...jobs.values()].find(
+      ({ ownerId, job }) => ownerId === identity.ownerId && job.attemptId === identity.attemptId,
+    );
+    return record ? this.getJob(record.job.id, identity) : null;
+  }
+
+  async approveMaster(jobId: string, masterId: string, identity: JobIdentity) {
+    const job = await this.getJob(jobId, identity);
+    if (!job || !job.masters.some(({ id }) => id === masterId)) throw new Error("Master não encontrado.");
+    const approved = { ...job, status: "master_approved" as const, approvedMasterId: masterId };
+    const record = jobs.get(jobId);
+    if (record) record.job = approved;
+    return approved;
   }
 }

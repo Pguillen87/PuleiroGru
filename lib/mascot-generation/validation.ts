@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { ACCEPTED_IMAGE_TYPES, type AcceptedImageType } from "./types";
 
@@ -17,10 +18,11 @@ export class ImageValidationError extends Error {
   }
 }
 
-export async function validateImage(
+export async function validateAndSanitizeImage(
   file: File,
   maxUploadBytes: number,
-): Promise<{ bytes: Uint8Array; contentType: AcceptedImageType }> {
+  maxDimension = 4096,
+): Promise<{ bytes: Uint8Array; contentType: AcceptedImageType; sha256: string }> {
   if (!ACCEPTED_IMAGE_TYPES.includes(file.type as AcceptedImageType)) {
     throw new ImageValidationError("Envie uma imagem JPEG, PNG ou WebP.", "INVALID_TYPE");
   }
@@ -31,22 +33,36 @@ export async function validateImage(
     );
   }
 
-  const bytes = new Uint8Array(await file.arrayBuffer());
   try {
-    const decoder = sharp(bytes, { failOn: "error" });
-    const metadata = await decoder.metadata();
+    const input = new Uint8Array(await file.arrayBuffer());
+    const metadata = await sharp(input, { failOn: "error" }).metadata();
     const decodedType = metadata.format ? MIME_BY_FORMAT[metadata.format] : undefined;
     if (!decodedType || decodedType !== file.type || !metadata.width || !metadata.height) {
       throw new Error("Formato declarado não corresponde ao conteúdo.");
     }
-    if (metadata.width < 256 || metadata.height < 256 || metadata.width > 4096 || metadata.height > 4096) {
-      throw new Error("Dimensões fora do intervalo aceito.");
+    if (metadata.width < 256 || metadata.height < 256) throw new Error("Imagem pequena demais.");
+
+    let pipeline = sharp(input, { failOn: "error" })
+      .rotate()
+      .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true });
+    if (decodedType === "image/jpeg") pipeline = pipeline.jpeg({ quality: 90, mozjpeg: true });
+    if (decodedType === "image/png") pipeline = pipeline.png({ compressionLevel: 9 });
+    if (decodedType === "image/webp") pipeline = pipeline.webp({ quality: 90 });
+
+    const output = await pipeline.toBuffer();
+    const cleanMetadata = await sharp(output).metadata();
+    if (cleanMetadata.exif || cleanMetadata.xmp || cleanMetadata.iptc) {
+      throw new Error("Metadados privados permaneceram após sanitização.");
     }
-    await decoder.stats();
-    return { bytes, contentType: decodedType };
-  } catch {
+    return {
+      bytes: new Uint8Array(output),
+      contentType: decodedType,
+      sha256: createHash("sha256").update(output).digest("hex"),
+    };
+  } catch (error) {
+    if (error instanceof ImageValidationError) throw error;
     throw new ImageValidationError(
-      "Não foi possível ler esta imagem. Use uma foto válida entre 256 e 4096 pixels.",
+      "Não foi possível ler esta imagem. Use uma foto válida com pelo menos 256 pixels.",
       "INVALID_IMAGE",
     );
   }

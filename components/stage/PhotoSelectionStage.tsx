@@ -48,6 +48,7 @@ export function PhotoSelectionStage({ maxUploadBytes, onSelect }: PhotoSelection
         <input
           ref={inputRef}
           id="pet-photo"
+          aria-label="Fotografia do pet"
           className="sr-only"
           type="file"
           accept={ACCEPTED_IMAGE_TYPES.join(",")}

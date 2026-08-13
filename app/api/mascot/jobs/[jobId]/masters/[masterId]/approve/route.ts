@@ -7,17 +7,15 @@ import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 export const runtime = "nodejs";
 const validId = (value: string) => /^[A-Za-z0-9_-]{1,128}$/.test(value);
 
-export async function GET(request: Request, context: { params: Promise<{ jobId: string }> }) {
-  const { jobId } = await context.params;
-  if (!validId(jobId)) return NextResponse.json({ message: "Identificador inválido.", code: "INVALID_JOB_ID" }, { status: 400 });
+export async function POST(request: Request, context: { params: Promise<{ jobId: string; masterId: string }> }) {
+  const { jobId, masterId } = await context.params;
+  if (!validId(jobId) || !validId(masterId)) return NextResponse.json({ message: "Identificador inválido." }, { status: 400 });
   try {
     const [{ uid }, attemptId] = await Promise.all([requireBrowserIdentity(request), getAttemptId()]);
     if (!attemptId) return NextResponse.json({ message: "Nascimento não encontrado.", code: "JOB_NOT_FOUND" }, { status: 404 });
-    const job = await getMascotGenerationProvider().getJob(jobId, jobIdentity(uid, attemptId));
-    if (!job) return NextResponse.json({ message: "Nascimento não encontrado.", code: "JOB_NOT_FOUND" }, { status: 404 });
+    const job = await getMascotGenerationProvider().approveMaster(jobId, masterId, jobIdentity(uid, attemptId));
     return NextResponse.json({ job }, { status: 200 });
   } catch (error) {
-    console.error("mascot_job_read_failed", { jobId, error: error instanceof Error ? error.name : "unknown" });
-    return integrationErrorResponse(error, "JOB_READ_FAILED", "Não foi possível consultar o nascimento agora.");
+    return integrationErrorResponse(error, "APPROVAL_FAILED", "Não foi possível aprovar este mascote agora.");
   }
 }

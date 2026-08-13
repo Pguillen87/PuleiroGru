@@ -23,11 +23,12 @@ export function PuleiroExperience({ config }: { config: FlowConfig }) {
     uploading: <PreparingStage title="Enviando sua foto…" message="Atravessando o portão do Puleiro…" />,
     "creating-job": <PreparingStage title="Abrindo o ovo" message="Criando o pedido de nascimento…" />,
     preparing: <PreparingStage message={flow.statusMessage} />,
+    "registered-safe": <PreparingStage title="Nascimento registrado com segurança" message={flow.statusMessage} />,
     "master-ready": flow.revealComplete
-      ? <MasterDecisionStage mode="ready" onAccept={flow.acceptMaster} onReject={flow.rejectMaster} onRetry={flow.startGeneration} onChange={flow.changePhoto} />
+      ? <MasterDecisionStage mode="ready" position={flow.masterPosition} onAccept={flow.acceptMaster} onNext={flow.nextMaster} />
       : <PreparingStage title="O nascimento começou" message="O palco está revelando seu mascote." />,
-    "master-approved": <MasterDecisionStage mode="approved" onAccept={flow.acceptMaster} onReject={flow.rejectMaster} onRetry={flow.startGeneration} onChange={flow.changePhoto} />,
-    "master-rejected": <MasterDecisionStage mode="rejected" onAccept={flow.acceptMaster} onReject={flow.rejectMaster} onRetry={flow.startGeneration} onChange={flow.changePhoto} />,
+    "master-approved": <MasterDecisionStage mode="approved" onAccept={flow.acceptMaster} onNext={flow.nextMaster} />,
+    "master-rejected": <MasterDecisionStage mode="ready" position={flow.masterPosition} onAccept={flow.acceptMaster} onNext={flow.nextMaster} />,
     "recoverable-error": <ErrorStage message={flow.errorMessage} onRetry={flow.startGeneration} onChange={flow.changePhoto} />,
   }[flow.state];
 

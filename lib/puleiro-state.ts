@@ -5,6 +5,7 @@ export type PuleiroState =
   | "uploading"
   | "creating-job"
   | "preparing"
+  | "registered-safe"
   | "master-ready"
   | "master-approved"
   | "master-rejected"
@@ -20,6 +21,7 @@ export const stageNumber: Record<PuleiroState, string> = {
   uploading: "02",
   "creating-job": "02",
   preparing: "02",
+  "registered-safe": "02",
   "master-ready": "03",
   "master-approved": "03",
   "master-rejected": "03",

@@ -46,6 +46,10 @@ JWT HS256: `iss=puleiro-bff`, `aud=gru-modal`, `sub=<uid>`, `jti=<uuid>`, `iat`,
 
 O servidor cria `attemptId`; o cookie contém somente esse identificador. A chave de registro deriva de owner + attempt. Duplo clique, timeout de leitura e refresh não criam outro POST de geração. Descoberta e leitura são sempre owner-scoped.
 
+## Staging isolado
+
+O app `gru-mascot-v2-staging` usa recursos, secrets e kill switches próprios. O registro v2 foi validado no deploy com `generationScheduled=false`; Master e poses retornam bloqueio normalizado. Firebase Admin é inicializado sob demanda somente para rotas legadas v1, portanto o staging v2 não copia credenciais Firebase de produção.
+
 ## Compatibilidade
 
-Rotas v1 permanecem temporariamente inalteradas. A separação segura vale para v2; nenhum deploy foi realizado nesta fase.
+Rotas v1 permanecem temporariamente inalteradas. A separação segura vale para v2; o único deploy desta fase foi o app isolado de staging, sem alteração no deploy ativo de produção.

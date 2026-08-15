@@ -8,12 +8,13 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.mts",
     "test:e2e": "playwright test",
     "test:e2e:chromium": "playwright test --project=chromium"
   },
   "dependencies": {
-    "firebase": "^12.3.0",
-    "firebase-admin": "^14.2.0",
+    "@supabase/ssr": "^0.12.4",
+    "@supabase/supabase-js": "^2.112.3",
     "jose": "^6.2.8",
     "next": "16.3.0",
     "react": "19.2.8",

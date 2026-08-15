@@ -1,24 +1,29 @@
-import { describe, expect, it, vi } from "vitest";
-import { ensureDevTestIdentityAllowed, RequestAuthError, verifyBrowserTokens } from "@/lib/auth/browser-auth";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const verifier = {
-  verifyIdToken: vi.fn(async () => ({ uid: "firebase-owner" })),
-  verifyAppCheck: vi.fn(async () => ({ appId: "web-app" })),
-};
+const getUser = vi.fn();
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: vi.fn(async () => ({ auth: { getUser } })),
+}));
 
-describe("Firebase ID token e App Check terminam no BFF", () => {
-  it("aceita ambos válidos e retorna somente UID", async () => {
-    await expect(verifyBrowserTokens("Bearer valid-id", "valid-app-check", verifier)).resolves.toBe("firebase-owner");
-    expect(verifier.verifyIdToken).toHaveBeenCalledWith("valid-id");
-    expect(verifier.verifyAppCheck).toHaveBeenCalledWith("valid-app-check");
+import { ensureDevTestIdentityAllowed, RequestAuthError, requireBrowserIdentity } from "@/lib/auth/browser-auth";
+
+describe("Supabase Auth termina no BFF", () => {
+  beforeEach(() => getUser.mockReset());
+
+  it("usa somente o user.id validado pelo Supabase", async () => {
+    getUser.mockResolvedValue({ data: { user: { id: "a9155fc2-e907-4e41-9cd6-a1762be3581c" } }, error: null });
+    await expect(requireBrowserIdentity(new Request("https://puleiro.test"))).resolves.toEqual({
+      uid: "a9155fc2-e907-4e41-9cd6-a1762be3581c",
+      mode: "supabase-session",
+    });
   });
 
-  it("responde 401 sem ID token", async () => {
-    await expect(verifyBrowserTokens(null, "app-check", verifier)).rejects.toMatchObject({ status: 401, code: "AUTH_REQUIRED" });
-  });
-
-  it("responde 403 sem App Check", async () => {
-    await expect(verifyBrowserTokens("Bearer id-token", null, verifier)).rejects.toMatchObject({ status: 403, code: "APP_CHECK_REQUIRED" });
+  it("responde sessão expirada sem usuário validado", async () => {
+    getUser.mockResolvedValue({ data: { user: null }, error: new Error("expired") });
+    await expect(requireBrowserIdentity(new Request("https://puleiro.test"))).rejects.toMatchObject({
+      status: 401,
+      code: "SESSION_EXPIRED",
+    });
   });
 
   it("proíbe identidade local em produção ou com geração habilitada", () => {

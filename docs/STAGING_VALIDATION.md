@@ -14,25 +14,24 @@ Data: 2026-08-13
 - Master generation: `409 GENERATION_DISABLED`;
 - pose generation: `409 POSE_GENERATION_DISABLED`;
 - JWT expirado e audience incorreta: `401`;
-- BFF local → staging: `201`, cookie HttpOnly de attempt, replay e retomada do mesmo job;
-- estatística após o ensaio: `QwenMasterWorker.generate` e `generate_poses` com zero runners e zero inputs;
+- probe com JWT curto e owner UUID: registro, replay, leitura e retomada passaram novamente em 2026-08-13;
+- os endpoints de autorização de Master e poses foram chamados apenas para confirmar o bloqueio `409`; nenhum worker foi agendado;
+- estatística do ambiente seguro: `QwenMasterWorker.generate` e `generate_poses` com zero runners e zero inputs;
 - app de produção permaneceu com zero tasks.
 
-## Limite da validação
+## Correção Supabase Web
 
-Firebase Web real não foi validado. A conta ativa do Firebase CLI recebeu `403 PERMISSION_DENIED` ao tentar criar o Web App no projeto `gru-mascote`. Nenhuma credencial Android ou de produção foi reutilizada como atalho. O staging Modal inicializa Firebase somente quando uma rota legada v1 é chamada; v2 usa exclusivamente o JWT curto do BFF.
+O Puleiro Web passou a usar Supabase Auth SSR. Firebase Web SDK, Firebase Admin e App Check Web foram removidos do repositório Web; Firebase permanece somente no Android e nas rotas Modal v1. O Modal v2 continua usando exclusivamente JWT curto do BFF.
 
-## Dependências moderadas do npm audit
+Validação real inicial em 2026-08-13; configuração de cadastro atualizada em 2026-08-15:
 
-Os seis avisos formam uma única cadeia transitiva instalada por `firebase-admin@14.2.0`:
+- Project ID das chaves locais corresponde a `obpwtouliuwauscrtmlq`;
+- e-mail/senha e cadastro estão habilitados; confirmação por e-mail está desabilitada, portanto o cadastro recebe sessão imediatamente;
+- login real, renovação e logout passaram com usuários temporários removidos após o teste;
+- o cadastro sem confirmação passou após a alteração de configuração;
+- migration `mascot_attempts` aplicada via Supabase MCP; tabela, constraint, índices, RLS e policies SELECT/INSERT/UPDATE foram verificados no projeto remoto;
+- testes reais de RLS passaram: um usuário não lê nem cria tentativa com o `user_id` de outro;
+- advisor de segurança identificou `public.rls_auto_enable()` exposta a `anon`/`authenticated`; uma migration separada revogou `EXECUTE`, preservou o event trigger `ensure_rls` e zerou os findings de segurança;
+- `npm audit` após remover Firebase retorna zero vulnerabilidades.
 
-| Pacote | Versão | Caminho | Alcançabilidade neste código | Mitigação/decisão |
-|---|---:|---|---|---|
-| `firebase-admin` | 14.2.0 | direta | Auth, App Check e session cookies são usados | manter versão atual; sugestão automática é downgrade major para 10.3.0 |
-| `@google-cloud/storage` | 7.22.0 | firebase-admin | storage não é importado pelo Puleiro | superfície não usada; acompanhar atualização upstream |
-| `gaxios` | 6.7.1 | storage/google-auth | rede do Admin pode carregar a lib, mas não chama UUID com buffer | sem exploit conhecido no fluxo; não forçar override incompatível |
-| `retry-request` | 7.0.2 | storage | storage não é usado | não alcançável no fluxo atual |
-| `teeny-request` | 9.0.0 | storage/retry-request | storage não é usado | não alcançável no fluxo atual |
-| `uuid` | 9.0.1 | gaxios/teeny-request | vulnerabilidade exige v3/v5/v6 com buffer fornecido; o Puleiro não chama essas APIs | risco residual baixo; atualizar quando a cadeia oficial aceitar `uuid>=11.1.1` |
-
-Não foi aplicado downgrade, `npm audit fix --force`, major upgrade nem override transitivo sem validação. Risco de quebra de um override de `uuid`/Google libs é maior que o ganho neste fluxo, cuja operação vulnerável não é chamada.
+A recuperação real requer SMTP configurado e uma caixa postal controlada. O teste só envia a recuperação quando `SUPABASE_RECOVERY_TEST_EMAIL` existir em `.env.local`; sem essa variável ele é explicitamente ignorado, em vez de usar um endereço fictício ou mascarar a validação. As chamadas HTTP de autorização de Master e poses terminaram em `409`; chamadas dos workers de GPU, geração de Master e geração de poses permaneceram em zero.

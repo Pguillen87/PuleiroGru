@@ -7,8 +7,8 @@
 - ambiente Modal exclusivo: `gru-mascot-v2-staging`;
 - branch Modal revisada e publicada: `feature/modal-v2-safe-integration`;
 - produção `gru-mascot` inalterada;
-- conta Firebase Web de teste real, com ownership verificável;
-- App Check Web válido e sessão HttpOnly validada;
+- conta Supabase Auth de teste real, com ownership por `user.id` verificável;
+- sessão SSR Supabase e RLS de `mascot_attempts` validadas;
 - uma fotografia cujo uso foi autorizado pelo proprietário, sem dados pessoais desnecessários;
 - foto sanitizada e teste de remoção de EXIF/GPS aprovado;
 - `POSE_GENERATION_ENABLED=false` durante todo o ensaio;

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { PuleiroWordmark } from "@/components/brand/PuleiroWordmark";
+import { usePuleiroAuth } from "@/components/auth/AccountGate";
 
 type HeaderProps = { onUnavailableNavigation: (destination: string) => void };
 
@@ -9,6 +10,7 @@ const destinations = ["Explorar", "Meus mascotes"] as const;
 
 export function Header({ onUnavailableNavigation }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { signOut } = usePuleiroAuth();
 
   const destinationLinks = destinations.map((destination) => (
     <a
@@ -28,6 +30,7 @@ export function Header({ onUnavailableNavigation }: HeaderProps) {
       <PuleiroWordmark />
       <nav className="desktop-navigation" aria-label="Navegação principal">
         {destinationLinks}
+        {signOut && <button type="button" onClick={signOut}>Sair</button>}
       </nav>
       <button
         className="menu-trigger"
@@ -47,6 +50,7 @@ export function Header({ onUnavailableNavigation }: HeaderProps) {
         hidden={!menuOpen}
       >
         {destinationLinks}
+        {signOut && <button type="button" onClick={signOut}>Sair</button>}
       </nav>
     </header>
   );

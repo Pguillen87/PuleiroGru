@@ -81,6 +81,28 @@ FORM: sistema responsivo canônico do Tablet aprovado no Stitch, sem nova direç
   font-size: 0.875rem;
 }
 
+.account-gate__switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: var(--border-ink);
+}
+
+.account-gate__switches button,
+.account-gate__return {
+  min-height: 3rem;
+  padding: var(--space-2) 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-editorial-red-dark);
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 0.3rem;
+  cursor: pointer;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -172,7 +194,9 @@ button {
 }
 
 .desktop-navigation a,
-.mobile-navigation a {
+.desktop-navigation button,
+.mobile-navigation a,
+.mobile-navigation button {
   min-width: 3rem;
   min-height: 3rem;
   padding: 0 var(--space-4);
@@ -183,6 +207,14 @@ button {
   font-weight: 650;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.4rem;
+}
+
+.desktop-navigation button,
+.mobile-navigation button {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
 }
 
 .desktop-navigation a:first-child,

@@ -52,7 +52,7 @@ Inclui recuperação por `recoverable-error`, sem implementar poses, pacote, có
 
 ## Riscos e pendências
 
-- ativação real depende de emissão e renovação de Firebase ID token e App Check;
+- documento histórico: a arquitetura atual usa Supabase Auth SSR no Puleiro e JWT curto BFF → Modal; Firebase permanece somente no Android/Modal v1;
 - URL/deploy e kill switch de GPU Modal ainda precisam de validação integrada;
 - retenção/exclusão da foto precisa de política de produto comprovada;
 - estado e aprovação são temporários e não sobrevivem a refresh;

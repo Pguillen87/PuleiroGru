@@ -8,14 +8,6 @@ export class GenerationRequestError extends Error {
   }
 }
 
-export async function establishBrowserSession(idToken: string, appCheckToken: string) {
-  const response = await fetch("/api/auth/session", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${idToken}`, "X-Firebase-AppCheck": appCheckToken },
-  });
-  if (!response.ok) await readResponse(response, true);
-}
-
 async function readResponse(response: Response, allowEmpty = false) {
   const body = await response.json().catch(() => ({})) as JobResponse;
   if (!response.ok || (!allowEmpty && !body.job)) {

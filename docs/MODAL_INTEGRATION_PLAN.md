@@ -1,5 +1,7 @@
 # Puleiro do GRU — auditoria e plano de integração com o Modal
 
+> **Correção arquitetural aprovada em 2026-08-13:** o Puleiro Web usa Supabase Auth SSR e RLS. Qualquer seção histórica abaixo que proponha Firebase Web ou App Check Web está obsoleta. Firebase continua somente no GRU Android e nas rotas Modal v1; Modal v2 recebe JWT curto emitido pelo BFF com `sub = Supabase user.id`.
+
 **Status:** plano para aprovação; nenhuma integração, geração, GPU, secret ou deploy foi alterado.
 
 **Data da auditoria:** 2026-08-13.
@@ -555,49 +557,38 @@ Mapeamento inicial:
 
 Mensagens vêm por `messageCode` traduzível, não texto final do Modal.
 
-## 13. Autenticação e App Check
+## 13. Autenticação oficial
 
-### 13.1 Opção A — Firebase Auth + App Check ponta a ponta
+### 13.1 Browser → BFF
 
-- Browser autentica com Firebase Auth.
-- Web App Check usa um provider apropriado ao navegador.
-- BFF valida sessão/ID token e App Check.
-- BFF obtém/encaminha credencial Firebase aceita pelo Modal.
+- O Puleiro Web usa Supabase Auth com o fluxo SSR oficial e cookies renovados pelo Proxy do Next.js.
+- O BFF valida o usuário com `auth.getUser()`; dados de sessão enviados pelo navegador não são tratados como prova suficiente.
+- `Supabase user.id` é o owner oficial de tentativas e jobs Web.
+- A tabela `mascot_attempts` usa RLS e limita leitura, criação e atualização ao `auth.uid()` autenticado.
+- Firebase Web Auth e App Check Web não fazem parte do Puleiro.
 
-**Prós:** reutiliza Firebase e ownership atual.
+### 13.2 BFF → Modal v2
 
-**Contras:** encaminhar prova de app Web através do BFF confunde attestation do cliente com identidade do servidor; ID token de usuário não autentica o BFF; renovação e múltiplos mercados ficam acoplados; não deve usar token estático.
+- O BFF emite JWT HS256 curto com `iss`, `aud`, `sub`, `jti`, `iat`, `exp` e `attempt_id`.
+- O TTL máximo é 120 segundos; a configuração padrão é 90 segundos.
+- O Modal valida assinatura, issuer, audience, expiração, owner e attempt antes de acessar um job.
+- O browser nunca recebe o JWT interno nem o secret de assinatura.
+- Rotas Modal v1 preservam Firebase Auth + App Check exclusivamente para o Android durante a migração.
 
-### 13.2 Opção B — sessão do usuário no BFF + autenticação dedicada BFF → Modal
+### 13.3 Chaves Supabase
 
-- Browser usa Firebase Auth inicialmente, ou outro provider futuro, para conta recuperável.
-- Browser → BFF pode exigir Web App Check/antiabuso.
-- BFF valida user, entitlement e ownership.
-- BFF emite token interno curto, com `iss`, `aud`, `sub`, `jti`, `exp`, operation e trace; assinatura assimétrica/KMS e rotação.
-- Modal valida apenas o emissor interno nas rotas v2.
-- Rotas v1 preservam Firebase + App Check para o Android durante migração.
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` pode integrar o bundle do cliente e opera sob RLS.
+- `SUPABASE_SERVICE_ROLE_KEY` é exclusivamente servidor e não participa do fluxo comum da aplicação.
+- Nesta fase, a service role é usada apenas por testes integrados controlados para criar e remover identidades efêmeras.
+- Nenhuma variável `NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY` é permitida.
+- `.env.local` permanece ignorado; `.env.example` contém somente nomes sem valores secretos.
 
-**Prós:** boundary correta, rotação, auditoria, menor acoplamento ao browser/Android, compatível com China e auth futura.
+### 13.4 App Check e Android
 
-**Contras:** exige verificador novo, gestão de chaves e dual auth temporária.
-
-### 13.3 Recomendação
-
-Adotar **Opção B**. Firebase Auth pode continuar como identidade inicial do usuário, mas App Check Web termina no BFF. Next.js server → Modal usa autenticação dedicada curta. Nenhuma credencial estática em `.env` deve representar usuário final.
-
-### 13.4 App Check
-
-- Android atual: manter App Check Android nas rotas v1 enquanto existirem.
-- Browser: usar configuração própria de Firebase Web App, se Firebase for mantido.
-- BFF → Modal: não exigir App Check de Android ou browser; usar service auth.
-- O Modal pode manter App Check como defesa adicional apenas para clientes Firebase diretos, não como identidade do servidor.
-
-### 13.5 Rotação e expiração
-
-- ID token Firebase: curto e renovado pelo SDK; nunca armazenado como env permanente.
-- App Check: curto e obtido pelo SDK adequado; nunca estático.
-- Token interno: 2–5 minutos, audience fixa, `jti`, relógio tolerado e rotação de chave por `kid`.
-- Secrets apenas no servidor/secret manager; nenhuma variável `NEXT_PUBLIC_*`.
+- Android atual: Firebase Auth e App Check continuam nas rotas v1.
+- Puleiro Web: sem Firebase App Check.
+- BFF → Modal v2: autenticação dedicada por JWT curto, sem encaminhar credencial Android ou browser.
+- Nenhum código Firebase do Android é alterado por esta migração Web.
 
 ## 14. Jobs, retomada e falhas
 
@@ -997,15 +988,13 @@ Polish não foi executado porque o plano ainda aguarda aprovação estrutural.
 Dependem do usuário/produto:
 
 1. autorizar desligamento do kill switch do deploy de desenvolvimento antes do teste integrado;
-2. aprovar autenticação dedicada BFF → Modal (Opção B);
-3. definir conta recuperável Web inicial;
-4. decidir regra/custo de nova geração após os três candidatos;
-5. definir TTL da foto original e Masters rejeitados;
-6. decidir quando a escolha das poses acontece;
-7. definir regra de saída segura durante espera e múltiplas tentativas ativas;
-8. escolher infraestrutura de metadata/library/registry em fase própria;
-9. autorizar teto financeiro do smoke GPU futuro;
-10. definir política de exclusão, revogação e suporte.
+2. decidir regra/custo de nova geração após os três candidatos;
+3. definir TTL da foto original e Masters rejeitados;
+4. decidir quando a escolha das poses acontece;
+5. definir regra de saída segura durante espera e múltiplas tentativas ativas;
+6. escolher infraestrutura de metadata/library/registry além da persistência mínima no Supabase;
+7. autorizar teto financeiro do smoke GPU futuro;
+8. definir política de exclusão, revogação e suporte.
 
 Não dependem de decisão de produto: corrigir docs, completar OpenAPI, remover token estático, separar operações com custo, mapear estados e adicionar correlation ID.
 
@@ -1015,13 +1004,13 @@ Não dependem de decisão de produto: corrigir docs, completar OpenAPI, remover 
 Modal atual compreendido: SIM
 Documentação antiga validada: PARCIAL
 Contrato atual compatível com o Puleiro: PARCIAL
-Autenticação definida: NÃO; Opção B recomendada e pendente de aprovação
-App Check definido: SIM, como recomendação; ainda não implementado
+Autenticação definida: SIM; Supabase Auth SSR no Web e JWT curto BFF → Modal v2
+App Check definido: SIM; preservado somente no Android/Modal v1
 Plano de integração completo: SIM
-Seguro iniciar teste sem GPU: NÃO, enquanto o deploy ativo reportar generation_enabled=true
+Seguro iniciar teste sem GPU: SIM, no staging isolado com generation_enabled=false
 Seguro iniciar teste com GPU: NÃO
 Pronto para implementar integração real: NÃO, antes da aprovação deste plano e fechamento dos bloqueios da Fase 1
 ```
 # Status de implementação segura — 2026-08-13
 
-O contrato v2 sem GPU foi implementado em branch isolada do Modal e no BFF Web. Registro, consulta, retomada e aprovação são operações separadas; App Check e Firebase ID token terminam no BFF; a comunicação BFF → Modal usa JWT curto; EXIF é removido antes do armazenamento; aprovação não inicia poses. Os kill switches de Master e poses permanecem desligados. Nenhum deploy ou chamada GPU foi realizado.
+O contrato v2 sem GPU foi implementado em branch isolada do Modal e no BFF Web. Registro, consulta, retomada e aprovação são operações separadas; Supabase Auth e RLS protegem o Puleiro Web; a comunicação BFF → Modal usa JWT curto; EXIF é removido antes do armazenamento; aprovação não inicia poses. Firebase Auth e App Check permanecem somente no Android/Modal v1. Os kill switches de Master e poses permanecem desligados. Nenhuma chamada GPU foi realizada.

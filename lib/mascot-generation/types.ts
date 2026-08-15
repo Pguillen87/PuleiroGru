@@ -21,6 +21,18 @@ export interface MasterCandidate {
   imageUrl: string;
 }
 
+export type SubjectCategory = "human" | "animal" | "object" | "other";
+
+export interface SubjectIdentity {
+  category: SubjectCategory;
+  label: string;
+  species?: string;
+  confirmed: true;
+}
+
+export type PoseRole = "normal" | "listening" | "transcribing";
+export type PoseChoices = Record<PoseRole, string>;
+
 export interface GenerationJob {
   id: string;
   attemptId: string;
@@ -29,6 +41,8 @@ export interface GenerationJob {
   generationScheduled: boolean;
   masters: MasterCandidate[];
   approvedMasterId?: string;
+  subjectIdentity: SubjectIdentity;
+  poseChoices: PoseChoices;
   errorCode?: string;
   retryable?: boolean;
 }
@@ -43,6 +57,7 @@ export interface CreateMasterJobInput extends JobIdentity {
   bytes: Uint8Array;
   contentType: AcceptedImageType;
   idempotencyKey: string;
+  subjectIdentity: SubjectIdentity;
 }
 
 export interface MasterImage {
@@ -56,5 +71,6 @@ export interface MascotGenerationProvider {
   getJob(jobId: string, identity: JobIdentity): Promise<GenerationJob | null>;
   getJobByAttempt(identity: JobIdentity): Promise<GenerationJob | null>;
   approveMaster(jobId: string, masterId: string, identity: JobIdentity): Promise<GenerationJob>;
+  startPoseGeneration(jobId: string, choices: PoseChoices, identity: JobIdentity): Promise<GenerationJob>;
   getMasterImage?(jobId: string, masterId: string, identity: JobIdentity): Promise<MasterImage | null>;
 }

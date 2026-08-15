@@ -8,6 +8,8 @@ import type {
   JobIdentity,
   MascotGenerationProvider,
   MasterImage,
+  PoseChoices,
+  SubjectIdentity,
 } from "./types";
 import { ACCEPTED_IMAGE_TYPES } from "./types";
 
@@ -18,6 +20,8 @@ type ModalJob = {
   generationScheduled: boolean;
   masters?: Array<{ id: string }>;
   approvedMasterId?: string;
+  subjectIdentity?: SubjectIdentity;
+  poseChoices?: PoseChoices;
   error?: { code?: string; retryable?: boolean };
 };
 
@@ -49,6 +53,7 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
         image_base64: Buffer.from(input.bytes).toString("base64"),
         content_type: input.contentType,
         attempt_id: input.attemptId,
+        subject_identity: input.subjectIdentity,
       }),
     });
     return this.toGenerationJob(await this.readJob(response));
@@ -86,7 +91,24 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
     const path = `/v2/mascot/jobs/${encodeURIComponent(jobId)}/masters/${encodeURIComponent(masterId)}/approve`;
     const response = await this.request(path, identity, {
       method: "POST",
-      headers: { "X-Correlation-Id": identity.correlationId },
+      headers: {
+        "X-Correlation-Id": identity.correlationId,
+        "X-Idempotency-Key": `approve:${identity.ownerId}:${identity.attemptId}:${jobId}:${masterId}`,
+      },
+    });
+    return this.toGenerationJob(await this.readJob(response));
+  }
+
+  async startPoseGeneration(jobId: string, choices: PoseChoices, identity: JobIdentity) {
+    const path = `/v2/mascot/jobs/${encodeURIComponent(jobId)}/pose-generations`;
+    const response = await this.request(path, identity, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Correlation-Id": identity.correlationId,
+        "X-Idempotency-Key": `poses:${identity.ownerId}:${identity.attemptId}:${jobId}`,
+      },
+      body: JSON.stringify({ pose_choices: choices }),
     });
     return this.toGenerationJob(await this.readJob(response));
   }
@@ -118,11 +140,16 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
   }
 
   private async throwResponse(response: Response): Promise<never> {
-    const body = await response.json().catch(() => ({})) as { code?: string; detail?: string; message?: string };
+    const body = await response.json().catch(() => ({})) as {
+      code?: string;
+      detail?: string | { code?: string; message?: string };
+      message?: string;
+    };
+    const detail = typeof body.detail === "object" ? body.detail : undefined;
     throw new ModalProviderError(
       response.status,
-      body.code ?? "MODAL_REQUEST_FAILED",
-      body.message ?? body.detail ?? "O serviço de mascotes não respondeu como esperado.",
+      body.code ?? detail?.code ?? "MODAL_REQUEST_FAILED",
+      body.message ?? detail?.message ?? (typeof body.detail === "string" ? body.detail : undefined) ?? "O serviço de mascotes não respondeu como esperado.",
     );
   }
 
@@ -138,6 +165,12 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
         imageUrl: `/api/mascot/jobs/${encodeURIComponent(job.jobId)}/master/${encodeURIComponent(id)}`,
       })),
       approvedMasterId: job.approvedMasterId,
+      subjectIdentity: job.subjectIdentity ?? { category: "other", label: "sujeito confirmado", confirmed: true },
+      poseChoices: job.poseChoices ?? {
+        normal: "normal_attentive",
+        listening: "listening_focus",
+        transcribing: "transcribing_fast",
+      },
       errorCode: job.error?.code,
       retryable: job.error?.retryable,
     };

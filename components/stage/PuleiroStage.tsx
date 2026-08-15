@@ -26,6 +26,10 @@ const images: Record<PuleiroState, { src: string; alt: string }> = {
     src: "/assets/puleiro-preparing-canonical.jpg",
     alt: "Ovo claro repousando em um ninho de palha e penas no palco de madeira do Puleiro.",
   },
+  "subject-confirmation": {
+    src: "/assets/puleiro-entry.jpg",
+    alt: "Fotografia pronta para a confirmação do sujeito principal do mascote.",
+  },
   "registered-safe": {
     src: "/assets/puleiro-preparing-canonical.jpg",
     alt: "Ovo seguro no ninho; o nascimento foi registrado sem iniciar a geração.",
@@ -41,6 +45,30 @@ const images: Record<PuleiroState, { src: string; alt: string }> = {
   "master-rejected": {
     src: "/assets/puleiro-reveal.jpg",
     alt: "Mascote mestre aguardando uma nova decisão.",
+  },
+  "choosing-normal": {
+    src: "/assets/puleiro-reveal.jpg",
+    alt: "Mascote mestre no palco durante a escolha de sua pose normal.",
+  },
+  "choosing-listening": {
+    src: "/assets/puleiro-reveal.jpg",
+    alt: "Mascote mestre no palco durante a escolha de seu gesto de escuta.",
+  },
+  "choosing-transcribing": {
+    src: "/assets/puleiro-reveal.jpg",
+    alt: "Mascote mestre no palco durante a escolha de seu gesto de transcrição.",
+  },
+  "pose-selection-review": {
+    src: "/assets/puleiro-reveal.jpg",
+    alt: "Mascote mestre aguardando a revisão das três poses escolhidas.",
+  },
+  "generating-poses": {
+    src: "/assets/puleiro-preparing-canonical.jpg",
+    alt: "Palco do Puleiro preparando as três poses do mascote.",
+  },
+  "pose-set-ready": {
+    src: "/assets/puleiro-reveal.jpg",
+    alt: "Mascote com seu conjunto de três poses concluído.",
   },
   "recoverable-error": {
     src: "/assets/puleiro-preparing-canonical.jpg",
@@ -58,8 +86,8 @@ type PuleiroStageProps = {
 
 export function PuleiroStage({ state, children, artwork, revealing = false, onArtworkError }: PuleiroStageProps) {
   const image = artwork ?? images[state];
-  const preparing = ["uploading", "creating-job", "preparing", "registered-safe"].includes(state);
-  const revealed = ["master-ready", "master-approved", "master-rejected"].includes(state);
+  const preparing = ["uploading", "creating-job", "preparing", "registered-safe", "generating-poses"].includes(state);
+  const revealed = ["master-ready", "master-approved", "master-rejected", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "pose-set-ready"].includes(state);
 
   return (
     <section id="puleiro-stage" className={`stage stage--${preparing ? "preparing" : revealed ? "revealed" : state}`} aria-labelledby="state-title">

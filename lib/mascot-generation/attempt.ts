@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
 
 export const ATTEMPT_COOKIE = "puleiro_attempt";
@@ -26,5 +27,6 @@ export function attemptCookie(attemptId: string) {
 }
 
 export function jobIdentity(ownerId: string, attemptId: string) {
-  return { ownerId, attemptId, correlationId: crypto.randomUUID() };
+  const digest = createHash("sha256").update(`${ownerId}:${attemptId}`).digest("hex").slice(0, 24);
+  return { ownerId, attemptId, correlationId: `puleiro_${digest}` };
 }

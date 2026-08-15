@@ -6,6 +6,7 @@ type MasterDecisionStageProps = {
   position?: string;
   onAccept: () => void;
   onNext: () => void;
+  errorMessage?: string;
 };
 
 export function MasterDecisionStage(props: MasterDecisionStageProps) {
@@ -22,6 +23,9 @@ export function MasterDecisionStage(props: MasterDecisionStageProps) {
       <span className="state-kicker">Nascimento concluído {props.position && `· opção ${props.position}`}</span>
       <h2 id="state-title">Seu mascote chegou!</h2>
       <StatusMessage title="Três opções, uma única geração" detail="Veja as opções já criadas e escolha seu mascote mestre sem iniciar outro custo." />
+      {props.errorMessage && (
+        <p className="stage-error" role="alert">{props.errorMessage}</p>
+      )}
       <div className="stage-actions" aria-label="Escolha do mascote">
         <StageButton onClick={props.onAccept}>Gostei deste</StageButton>
         <StageButton tone="secondary" onClick={props.onNext}>Ver outra opção</StageButton>

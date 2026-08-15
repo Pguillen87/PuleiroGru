@@ -5,6 +5,8 @@ import path from "node:path";
 import sharp from "sharp";
 
 const sourcePhoto = readFileSync(path.join(process.cwd(), "public/assets/puleiro-entry.jpg"));
+const humanIdentity = { subjectCategory: "human", subjectLabel: "pessoa" };
+const jobIdentity = { subjectIdentity: { category: "human", label: "pessoa", confirmed: true }, poseChoices: { normal: "normal_attentive", listening: "listening_focus", transcribing: "transcribing_fast" } };
 
 async function selectPhoto(page: import("@playwright/test").Page, mimeType = "image/jpeg") {
   const buffer = mimeType === "image/jpeg"
@@ -17,12 +19,14 @@ async function selectPhoto(page: import("@playwright/test").Page, mimeType = "im
 async function completeFlow(page: import("@playwright/test").Page) {
   await selectPhoto(page);
   await page.getByRole("button", { name: "Usar esta foto" }).click();
+  await page.getByRole("radio", { name: /Pessoa/ }).check();
+  await page.getByRole("button", { name: "Confirmar e começar" }).click();
   await expect(page.getByRole("heading", { name: "Seu mascote chegou!" })).toBeVisible({ timeout: 5_000 });
 }
 
 test("duplo envio e refresh retomam o mesmo job sem novo registro", async ({ request }) => {
   const upload = () => request.post("/api/mascot/jobs", {
-    multipart: { photo: { name: "foto.jpg", mimeType: "image/jpeg", buffer: sourcePhoto } },
+    multipart: { photo: { name: "foto.jpg", mimeType: "image/jpeg", buffer: sourcePhoto }, ...humanIdentity },
   });
   const first = await upload();
   const second = await upload();
@@ -43,12 +47,14 @@ test("percorre o fluxo explícito sem ações prematuras", async ({ page }) => {
   await expect(page.getByText("Nada foi enviado ainda")).toBeVisible();
   await expect(page.getByRole("button", { name: "Gostei deste" })).toHaveCount(0);
   await page.getByRole("button", { name: "Usar esta foto" }).click();
+  await expect(page.getByRole("heading", { name: "O que deve virar mascote?" })).toBeVisible();
+  await page.getByRole("radio", { name: /Pessoa/ }).check();
+  await page.getByRole("button", { name: "Confirmar e começar" }).click();
   await expect(page.getByRole("heading", { name: /Enviando sua foto|Abrindo o ovo|Preparando o nascimento/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Gostei deste" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Seu mascote chegou!" })).toBeVisible({ timeout: 5_000 });
   await page.getByRole("button", { name: "Gostei deste" }).click();
-  await expect(page.getByRole("heading", { name: "Este é o seu mascote mestre" })).toBeVisible();
-  await expect(page.getByText("Mascote mestre aprovado")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Como ele fica quando está pronto?" })).toBeVisible();
 });
 
 for (const mimeType of ["image/jpeg", "image/png", "image/webp"]) {
@@ -81,7 +87,7 @@ test("permite remover e substituir antes do envio", async ({ page }) => {
 
 test("API cria job, informa processamento e disponibiliza três Masters", async ({ request }) => {
   const created = await request.post("/api/mascot/jobs", {
-    multipart: { photo: { name: "pet.jpg", mimeType: "image/jpeg", buffer: sourcePhoto } },
+    multipart: { photo: { name: "pet.jpg", mimeType: "image/jpeg", buffer: sourcePhoto }, ...humanIdentity },
   });
   expect(created.status()).toBe(202);
   const id = (await created.json()).job.id as string;
@@ -97,7 +103,7 @@ test("API cria job, informa processamento e disponibiliza três Masters", async 
 test("API rejeita job inexistente e conteúdo incompatível com o MIME", async ({ request }) => {
   expect((await request.get("/api/mascot/jobs/inexistente")).status()).toBe(404);
   const invalid = await request.post("/api/mascot/jobs", {
-    multipart: { photo: { name: "falso.jpg", mimeType: "image/jpeg", buffer: Buffer.from("falso") } },
+    multipart: { photo: { name: "falso.jpg", mimeType: "image/jpeg", buffer: Buffer.from("falso") }, ...humanIdentity },
   });
   expect(invalid.status()).toBe(400);
   expect((await invalid.json()).code).toBe("INVALID_IMAGE");
@@ -107,15 +113,17 @@ test("falha do job preserva foto e oferece retry", async ({ page }) => {
   await page.route("**/api/mascot/jobs", (route) => route.fulfill({
     status: 202,
     contentType: "application/json",
-    body: JSON.stringify({ job: { id: "falha", attemptId: "attempt-falha", status: "queued", message: "Preparando…", generationScheduled: false, masters: [] } }),
+    body: JSON.stringify({ job: { id: "falha", attemptId: "attempt-falha", status: "queued", message: "Preparando…", generationScheduled: false, masters: [], ...jobIdentity } }),
   }));
   await page.route("**/api/mascot/jobs/falha", (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify({ job: { id: "falha", attemptId: "attempt-falha", status: "failed", message: "O ovo não abriu.", generationScheduled: false, masters: [], retryable: true } }),
+    body: JSON.stringify({ job: { id: "falha", attemptId: "attempt-falha", status: "failed", message: "O ovo não abriu.", generationScheduled: false, masters: [], retryable: true, ...jobIdentity } }),
   }));
   await page.goto("/");
   await selectPhoto(page);
   await page.getByRole("button", { name: "Usar esta foto" }).click();
+  await page.getByRole("radio", { name: /Pessoa/ }).check();
+  await page.getByRole("button", { name: "Confirmar e começar" }).click();
   await expect(page.getByRole("heading", { name: "Este nascimento precisa de outra tentativa" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Tentar novamente" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Trocar foto" })).toBeVisible();
@@ -128,16 +136,18 @@ test("timeout encerra polling sem criar novo POST automaticamente", async ({ pag
     return route.fulfill({
       status: 202,
       contentType: "application/json",
-      body: JSON.stringify({ job: { id: `lento-${creations}`, attemptId: "attempt-lento", status: "queued", message: "Preparando…", generationScheduled: false, masters: [] } }),
+      body: JSON.stringify({ job: { id: `lento-${creations}`, attemptId: "attempt-lento", status: "queued", message: "Preparando…", generationScheduled: false, masters: [], ...jobIdentity } }),
     });
   });
   await page.route("**/api/mascot/jobs/lento-*", (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify({ job: { id: "lento", attemptId: "attempt-lento", status: "generating_masters", message: "Criando…", generationScheduled: true, masters: [] } }),
+    body: JSON.stringify({ job: { id: "lento", attemptId: "attempt-lento", status: "generating_masters", message: "Criando…", generationScheduled: true, masters: [], ...jobIdentity } }),
   }));
   await page.goto("/");
   await selectPhoto(page);
   await page.getByRole("button", { name: "Usar esta foto" }).click();
+  await page.getByRole("radio", { name: /Pessoa/ }).check();
+  await page.getByRole("button", { name: "Confirmar e começar" }).click();
   await expect(page.getByRole("heading", { name: "Este nascimento precisa de outra tentativa" })).toBeVisible({ timeout: 4_000 });
   await expect.poll(() => creations).toBe(1);
 });
@@ -147,6 +157,25 @@ test("ver outra opção percorre os Masters existentes sem novo job", async ({ p
   await completeFlow(page);
   await page.getByRole("button", { name: "Ver outra opção" }).click();
   await expect(page.getByText(/opção 2 de 3/)).toBeVisible();
+});
+
+test("escolhe uma pose por função sem acionar GPU quando a flag está desligada", async ({ page }) => {
+  let posePosts = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes("/pose-generations")) posePosts += 1;
+  });
+  await page.goto("/");
+  await completeFlow(page);
+  await page.getByRole("button", { name: "Gostei deste" }).click();
+  await page.getByRole("radio", { name: /Relaxado/ }).check();
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await page.getByRole("radio", { name: /Reação natural/ }).check();
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await page.getByRole("radio", { name: /Organizando ideias/ }).check();
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await expect(page.getByRole("heading", { name: "Revise os jeitos do seu mascote" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Gerar as três poses" })).toBeDisabled();
+  expect(posePosts).toBe(0);
 });
 
 test("movimento reduzido preserva conteúdo e remove loops", async ({ browser }) => {

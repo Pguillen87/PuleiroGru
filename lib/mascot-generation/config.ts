@@ -35,6 +35,7 @@ export function publicGenerationConfig() {
     timeoutMs: positiveNumber(process.env.JOB_TIMEOUT_MS, 90_000),
     technicalRegistrationOnly: generationConfig.provider === "modal" && !generationConfig.masterGenerationEnabled,
     masterGenerationEnabled: generationConfig.masterGenerationEnabled,
+    poseGenerationEnabled: generationConfig.poseGenerationEnabled,
     authenticationRequired: generationConfig.provider === "modal" && !generationConfig.allowDevTestIdentity,
   };
 }

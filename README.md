@@ -16,6 +16,8 @@ foto → remoção de EXIF → tentativa RLS owner-scoped → registro Modal sem
 
 O registro não agenda GPU. `MASTER_GENERATION_ENABLED` e `POSE_GENERATION_ENABLED` permanecem `false`. Aprovar um Master não inicia poses.
 
+Antes de gerar, o usuário confirma se o sujeito é pessoa, animal, objeto ou outro; animais também informam a espécie. Essa confirmação alimenta prompts específicos que impedem mistura de categorias. Depois de aprovar um dos três Masters, o usuário escolhe uma opção para cada função — Normal, Ouvindo e Transcrevendo — e revisa o conjunto antes da operação separada de poses.
+
 ## Configuração local
 
 ```powershell

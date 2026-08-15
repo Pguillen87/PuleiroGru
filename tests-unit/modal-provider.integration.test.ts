@@ -7,6 +7,8 @@ describe("BFF → Modal v2 local sem GPU", () => {
   let baseUrl = "";
   let registrationCalls = 0;
   let masterGenerationCalls = 0;
+  let approvalCalls = 0;
+  let approvalIdempotencyKey = "";
   const secret = "integration-secret-".padEnd(48, "x");
 
   beforeAll(async () => {
@@ -16,6 +18,10 @@ describe("BFF → Modal v2 local sem GPU", () => {
       const url = new URL(request.url ?? "/", "http://local");
       if (request.method === "POST" && url.pathname === "/v2/mascot/jobs") registrationCalls += 1;
       if (request.method === "POST" && url.pathname === "/v2/mascot/jobs/job-local-1/master-generations") masterGenerationCalls += 1;
+      if (request.method === "POST" && url.pathname === "/v2/mascot/jobs/job-local-1/masters/master_1/approve") {
+        approvalCalls += 1;
+        approvalIdempotencyKey = String(request.headers["x-idempotency-key"] ?? "");
+      }
       response.setHeader("Content-Type", "application/json");
       response.end(JSON.stringify({
         jobId: "job-local-1",
@@ -44,15 +50,19 @@ describe("BFF → Modal v2 local sem GPU", () => {
       bytes: new Uint8Array([1, 2, 3]),
       contentType: "image/jpeg",
       idempotencyKey: "register:owner-local:attempt-local-123456",
+      subjectIdentity: { category: "human", label: "pessoa", confirmed: true },
     });
     const scheduled = await provider.startMasterGeneration(created.id, identity);
     const read = await provider.getJob(created.id, identity);
     const resumed = await provider.getJobByAttempt(identity);
+    await provider.approveMaster(created.id, "master_1", identity);
     expect(created).toMatchObject({ status: "registered", generationScheduled: false });
     expect(scheduled.id).toBe(created.id);
     expect(read?.id).toBe(created.id);
     expect(resumed?.attemptId).toBe(identity.attemptId);
     expect(registrationCalls).toBe(1);
+    expect(approvalCalls).toBe(1);
+    expect(approvalIdempotencyKey).toContain("approve:owner-local:attempt-local-123456:job-local-1:master_1");
     expect({ masterGenerationCalls, poseGenerationCalls: 0 }).toEqual({ masterGenerationCalls: 1, poseGenerationCalls: 0 });
   });
 });

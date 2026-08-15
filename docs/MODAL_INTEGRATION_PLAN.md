@@ -1014,3 +1014,13 @@ Pronto para implementar integração real: NÃO, antes da aprovação deste plan
 # Status de implementação segura — 2026-08-13
 
 O contrato v2 sem GPU foi implementado em branch isolada do Modal e no BFF Web. Registro, consulta, retomada e aprovação são operações separadas; Supabase Auth e RLS protegem o Puleiro Web; a comunicação BFF → Modal usa JWT curto; EXIF é removido antes do armazenamento; aprovação não inicia poses. Firebase Auth e App Check permanecem somente no Android/Modal v1. Os kill switches de Master e poses permanecem desligados. Nenhuma chamada GPU foi realizada.
+
+## Adendo — identidade confirmada e seleção de poses (2026-08-15)
+
+- A classificação implícita do modelo deixou de ser tratada como suficiente. Antes do upload, o usuário confirma `human`, `animal`, `object` ou `other`; animal exige espécie.
+- O Modal v2 persiste `subjectIdentity`, constrói prompt e negative prompt por categoria e bloqueia explicitamente híbridos, mudança de espécie e transferência de estampas para partes sem relação.
+- A aprovação do Master permanece desacoplada de qualquer geração.
+- Depois da aprovação, a interface escolhe uma opção por vez para `normal`, `listening` e `transcribing`, seguida de revisão.
+- `pose-generations` recebe exatamente três escolhas e o worker produz exatamente três imagens derivadas somente do Master aprovado. O catálogo de doze itens continua como quatro conceitos por função, não como doze outputs.
+- `POSE_GENERATION_ENABLED` continua `false`; esta alteração não autoriza deploy nem chamada GPU.
+- O `correlationId` da tentativa é estável no BFF e armazenado no job para os eventos de registro, fila e worker.

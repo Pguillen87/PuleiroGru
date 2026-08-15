@@ -1,6 +1,7 @@
 import "server-only";
 import { generationConfig } from "./config";
-import type { CreateMasterJobInput, GenerationJob, JobIdentity, MascotGenerationProvider } from "./types";
+import type { CreateMasterJobInput, GenerationJob, JobIdentity, MascotGenerationProvider, PoseChoices } from "./types";
+import { DEFAULT_POSE_CHOICES } from "./pose-catalog";
 
 type MockRecord = { createdAt: number; ownerId: string; job: GenerationJob };
 const globalStore = globalThis as typeof globalThis & { __puleiroMockJobs?: Map<string, MockRecord> };
@@ -21,6 +22,8 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
       message: "Foto recebida. Preparando o nascimento…",
       generationScheduled: false,
       masters: [],
+      subjectIdentity: input.subjectIdentity,
+      poseChoices: DEFAULT_POSE_CHOICES,
     };
     jobs.set(id, { createdAt: Date.now(), ownerId: input.ownerId, job });
     return job;
@@ -37,6 +40,9 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
   async getJob(jobId: string, identity: JobIdentity) {
     const record = jobs.get(jobId);
     if (!record || record.ownerId !== identity.ownerId) return null;
+    if (["master_approved", "generating_poses", "awaiting_set_approval", "failed", "canceled"].includes(record.job.status)) {
+      return record.job;
+    }
     if (Date.now() - record.createdAt < generationConfig.mockDelayMs) {
       return { ...record.job, status: "generating_masters" as const, message: "Criando o mascote mestre…" };
     }
@@ -65,5 +71,14 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
     const record = jobs.get(jobId);
     if (record) record.job = approved;
     return approved;
+  }
+
+  async startPoseGeneration(jobId: string, choices: PoseChoices, identity: JobIdentity) {
+    const job = await this.getJob(jobId, identity);
+    if (!job || job.status !== "master_approved") throw new Error("Aprove o mascote mestre antes das poses.");
+    const generating = { ...job, status: "generating_poses" as const, poseChoices: choices };
+    const record = jobs.get(jobId);
+    if (record) record.job = generating;
+    return generating;
   }
 }

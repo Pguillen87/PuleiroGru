@@ -19,6 +19,7 @@ O BFF valida o usuário com Supabase `auth.getUser()`. O claim `sub` recebe some
 | GET | `/api/mascot/jobs/:jobId` | consulta owner-scoped |
 | GET | `/api/mascot/jobs/:jobId/master/:masterId` | proxy privado owner-scoped |
 | POST | `/api/mascot/jobs/:jobId/masters/:masterId/approve` | aprova sem gerar poses |
+| POST | `/api/mascot/jobs/:jobId/pose-generations` | envia uma escolha para Normal, Ouvindo e Transcrevendo; bloqueado por flag até validação |
 
 Sessão ausente ou expirada retorna `401 SESSION_EXPIRED`. O BFF não expõe autorização de GPU nesta rodada.
 
@@ -39,6 +40,18 @@ JWT HS256: `iss=puleiro-bff`, `aud=gru-modal`, `sub=<supabase-user-id>`, `jti=<u
 | POST | `/v2/mascot/jobs/:jobId/master-generations` | bloqueada por kill switch |
 | POST | `/v2/mascot/jobs/:jobId/masters/:masterId/approve` | NÃO; apenas aprovação |
 | POST | `/v2/mascot/jobs/:jobId/pose-generations` | bloqueada por kill switch próprio |
+
+## Identidade antes da geração
+
+O Browser confirma uma categoria (`human`, `animal`, `object` ou `other`) e uma descrição curta antes do upload. Animais exigem espécie. O BFF valida esses campos e envia `subject_identity` ao Modal. O Modal não tenta transformar uma classificação implícita do modelo em fonte de verdade: o prompt é construído a partir da confirmação do usuário.
+
+Para humanos, o contrato proíbe traços animais e a transferência de estampas de roupa para a pele. Para animais, preserva a espécie confirmada. Para objetos, preserva construção e materiais sem acrescentar anatomia animal.
+
+## Três poses selecionadas
+
+Após a aprovação do Master, a interface apresenta uma decisão por vez: Normal, Ouvindo e Transcrevendo. A revisão envia exatamente uma opção por função. A aprovação não chama poses; `POST .../pose-generations` é uma operação separada, idempotente e protegida por `POSE_GENERATION_ENABLED`.
+
+O Master aprovado é a única referência visual das três imagens. A foto original não volta a ser usada para gerar cada pose de forma independente.
 
 ## Compatibilidade
 

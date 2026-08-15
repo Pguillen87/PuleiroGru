@@ -1,4 +1,4 @@
-import type { GenerationJob } from "./types";
+import type { GenerationJob, PoseChoices, SubjectIdentity } from "./types";
 
 type JobResponse = { job?: GenerationJob | null; message?: string; code?: string };
 
@@ -23,10 +23,26 @@ async function readResponse(response: Response, allowEmpty = false) {
   return body.job ?? null;
 }
 
-export async function createGenerationJob(photo: File, signal: AbortSignal) {
+export async function createGenerationJob(photo: File, subjectIdentity: SubjectIdentity, signal: AbortSignal) {
   const formData = new FormData();
   formData.set("photo", photo);
+  formData.set("subjectCategory", subjectIdentity.category);
+  formData.set("subjectLabel", subjectIdentity.label);
+  if (subjectIdentity.species) formData.set("subjectSpecies", subjectIdentity.species);
   const response = await fetch("/api/mascot/jobs", { method: "POST", body: formData, signal });
+  return await readResponse(response) as GenerationJob;
+}
+
+export async function startPoseGeneration(jobId: string, poseChoices: PoseChoices, signal: AbortSignal) {
+  const response = await fetch(
+    `/api/mascot/jobs/${encodeURIComponent(jobId)}/pose-generations`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ poseChoices }),
+      signal,
+    },
+  );
   return await readResponse(response) as GenerationJob;
 }
 
@@ -68,6 +84,7 @@ const terminal = new Set<GenerationJob["status"]>([
   "awaiting_generation_authorization",
   "awaiting_master_approval",
   "master_approved",
+  "awaiting_set_approval",
   "ready",
   "failed",
   "canceled",

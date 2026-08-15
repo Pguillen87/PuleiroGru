@@ -10,6 +10,8 @@ import { PhotoPreviewStage } from "@/components/stage/PhotoPreviewStage";
 import { PhotoSelectionStage } from "@/components/stage/PhotoSelectionStage";
 import { PreparingStage } from "@/components/stage/PreparingStage";
 import { PuleiroStage } from "@/components/stage/PuleiroStage";
+import { PoseSelectionReviewStage, PoseSelectionStage } from "@/components/stage/PoseSelectionStage";
+import { SubjectConfirmationStage } from "@/components/stage/SubjectConfirmationStage";
 import { useMascotGenerationFlow, type FlowConfig } from "@/lib/mascot-generation/useMascotGenerationFlow";
 import { AccountGate } from "@/components/auth/AccountGate";
 import { StageButton } from "@/components/actions/StageButton";
@@ -29,7 +31,8 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
   const stageContent = {
     entry: <EntryStage onStart={flow.openSelection} />,
     "photo-selection": <PhotoSelectionStage maxUploadBytes={config.maxUploadBytes} onSelect={flow.selectPhoto} />,
-    "photo-preview": <PhotoPreviewStage onConfirm={flow.startGeneration} onReplace={flow.changePhoto} onRemove={flow.changePhoto} />,
+    "photo-preview": <PhotoPreviewStage onConfirm={flow.confirmPhoto} onReplace={flow.changePhoto} onRemove={flow.changePhoto} />,
+    "subject-confirmation": <SubjectConfirmationStage onConfirm={flow.confirmSubject} onBack={flow.changePhoto} />,
     uploading: <PreparingStage title="Enviando sua foto…" message="Atravessando o portão do Puleiro…" />,
     "creating-job": <PreparingStage title="Abrindo o ovo" message="Criando o pedido de nascimento…" />,
     preparing: <PreparingStage message={flow.statusMessage} />,
@@ -49,16 +52,22 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
       />
     ),
     "master-ready": flow.revealComplete
-      ? <MasterDecisionStage mode="ready" position={flow.masterPosition} onAccept={flow.acceptMaster} onNext={flow.nextMaster} />
+      ? <MasterDecisionStage mode="ready" position={flow.masterPosition} errorMessage={flow.errorMessage} onAccept={flow.acceptMaster} onNext={flow.nextMaster} />
       : <PreparingStage title="O nascimento começou" message="O palco está revelando seu mascote." />,
     "master-approved": <MasterDecisionStage mode="approved" onAccept={flow.acceptMaster} onNext={flow.nextMaster} />,
     "master-rejected": <MasterDecisionStage mode="ready" position={flow.masterPosition} onAccept={flow.acceptMaster} onNext={flow.nextMaster} />,
+    "choosing-normal": <PoseSelectionStage role="normal" category={flow.subjectIdentity?.category ?? "other"} selected={flow.poseChoices.normal} onSelect={(option) => flow.selectPose("normal", option)} onContinue={() => flow.continuePoseSelection("normal")} onBack={() => flow.backPoseSelection("normal")} />,
+    "choosing-listening": <PoseSelectionStage role="listening" category={flow.subjectIdentity?.category ?? "other"} selected={flow.poseChoices.listening} onSelect={(option) => flow.selectPose("listening", option)} onContinue={() => flow.continuePoseSelection("listening")} onBack={() => flow.backPoseSelection("listening")} />,
+    "choosing-transcribing": <PoseSelectionStage role="transcribing" category={flow.subjectIdentity?.category ?? "other"} selected={flow.poseChoices.transcribing} onSelect={(option) => flow.selectPose("transcribing", option)} onContinue={() => flow.continuePoseSelection("transcribing")} onBack={() => flow.backPoseSelection("transcribing")} />,
+    "pose-selection-review": <PoseSelectionReviewStage choices={flow.poseChoices} enabled={config.poseGenerationEnabled} errorMessage={flow.errorMessage} onGenerate={flow.generatePoseSet} onBack={() => flow.backPoseSelection("review")} />,
+    "generating-poses": <PreparingStage title="Experimentando os três jeitos" message={flow.statusMessage} detail="O mascote mestre continua sendo a referência de identidade." />,
+    "pose-set-ready": <PreparingStage title="Os três jeitos chegaram" message={flow.statusMessage} detail="Normal, ouvindo e transcrevendo foram criados a partir do mesmo mascote mestre." />,
     "recoverable-error": <ErrorStage message={flow.errorMessage} onRetry={flow.startGeneration} onChange={flow.changePhoto} />,
   }[flow.state];
 
   const artwork = flow.state === "photo-preview" && flow.photoUrl
     ? { src: flow.photoUrl, alt: "Prévia da fotografia do pet escolhida para criar o mascote." }
-    : flow.masterUrl && ["master-ready", "master-approved", "master-rejected"].includes(flow.state)
+    : flow.masterUrl && ["master-ready", "master-approved", "master-rejected", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "generating-poses", "pose-set-ready"].includes(flow.state)
       ? { src: flow.masterUrl, alt: "Mascote mestre criado a partir da fotografia enviada." }
       : undefined;
 

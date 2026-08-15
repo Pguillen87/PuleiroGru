@@ -7,6 +7,7 @@ import { generationConfig } from "@/lib/mascot-generation/config";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import type { GenerationJob } from "@/lib/mascot-generation/types";
 import { ImageValidationError, validateAndSanitizeImage } from "@/lib/mascot-generation/validation";
+import { parseSubjectIdentity, SubjectIdentityError } from "@/lib/mascot-generation/subject-identity";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -28,11 +29,13 @@ export async function POST(request: Request) {
     }
 
     validateDeclaredLength(request);
-    const photo = (await request.formData()).get("photo");
+    const formData = await request.formData();
+    const photo = formData.get("photo");
     if (!(photo instanceof File)) {
       return NextResponse.json({ message: "Selecione uma foto para continuar.", code: "PHOTO_REQUIRED" }, { status: 400 });
     }
 
+    const subjectIdentity = parseSubjectIdentity(formData);
     const image = await validateAndSanitizeImage(photo, generationConfig.maxUploadBytes, generationConfig.maxImageDimension);
     const context = jobIdentity(identity.uid, attemptId);
     if (supabase) await reserveAttempt(supabase, identity.uid, attemptId);
@@ -40,13 +43,14 @@ export async function POST(request: Request) {
       ...image,
       ...context,
       idempotencyKey: `register:${identity.uid}:${attemptId}`,
+      subjectIdentity,
     });
     if (supabase) await saveAttemptJob(supabase, identity.uid, job);
     const response = jobResponse(job, attemptId);
     response.headers.set("X-Correlation-Id", context.correlationId);
     return response;
   } catch (error) {
-    if (error instanceof ImageValidationError) {
+    if (error instanceof ImageValidationError || error instanceof SubjectIdentityError) {
       return NextResponse.json({ message: error.message, code: error.code }, { status: 400 });
     }
     console.error("mascot_job_create_failed", { error: error instanceof Error ? error.name : "unknown" });

@@ -90,7 +90,11 @@ export function PuleiroStage({ state, children, artwork, revealing = false, onAr
   const revealed = ["master-ready", "master-approved", "master-rejected", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "pose-set-ready"].includes(state);
 
   return (
-    <section id="puleiro-stage" className={`stage stage--${preparing ? "preparing" : revealed ? "revealed" : state}`} aria-labelledby="state-title">
+    <section
+      id="puleiro-stage"
+      className={`stage stage--${preparing ? "preparing" : revealed ? "revealed" : state}${state === "generating-poses" ? " stage--master-reference" : ""}`}
+      aria-labelledby="state-title"
+    >
       <div className="stage__art">
         {/* Imagens locais, blobs de prévia e proxy privado usam a mesma moldura sem otimização externa. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -345,8 +345,14 @@ main {
 }
 
 .stage--photo-preview .stage__art img,
-.stage--revealed .stage__art img {
+.stage--revealed .stage__art img,
+.stage--master-reference .stage__art img {
   object-fit: contain;
+  object-position: center;
+}
+
+.stage--master-reference .stage__art {
+  background: var(--color-egg);
 }
 
 .stage--photo-preview .stage__art {

@@ -54,6 +54,21 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
     return this.toGenerationJob(await this.readJob(response));
   }
 
+  async startMasterGeneration(jobId: string, identity: JobIdentity) {
+    const response = await this.request(
+      `/v2/mascot/jobs/${encodeURIComponent(jobId)}/master-generations`,
+      identity,
+      {
+        method: "POST",
+        headers: {
+          "X-Correlation-Id": identity.correlationId,
+          "X-Idempotency-Key": `master:${identity.ownerId}:${identity.attemptId}:${jobId}`,
+        },
+      },
+    );
+    return this.toGenerationJob(await this.readJob(response));
+  }
+
   async getJob(jobId: string, identity: JobIdentity) {
     const response = await this.request(`/v2/mascot/jobs/${encodeURIComponent(jobId)}`, identity);
     if (response.status === 404) return null;

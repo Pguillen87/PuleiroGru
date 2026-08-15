@@ -12,6 +12,7 @@ import { PreparingStage } from "@/components/stage/PreparingStage";
 import { PuleiroStage } from "@/components/stage/PuleiroStage";
 import { useMascotGenerationFlow, type FlowConfig } from "@/lib/mascot-generation/useMascotGenerationFlow";
 import { AccountGate } from "@/components/auth/AccountGate";
+import { StageButton } from "@/components/actions/StageButton";
 
 export function PuleiroExperience({ config }: { config: FlowConfig }) {
   return (
@@ -36,8 +37,15 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
       <PreparingStage
         title="Nascimento guardado"
         message={flow.statusMessage}
-        detail="O pedido está seguro e não avançará sozinho neste ambiente de validação."
-        guidance="Você pode fechar esta página e voltar com a mesma conta."
+        detail={config.masterGenerationEnabled
+          ? "O pedido está seguro e pronto para iniciar."
+          : "O pedido está seguro e não avançará sozinho neste ambiente de validação."}
+        guidance={config.masterGenerationEnabled
+          ? "Quando estiver pronto, comece o nascimento."
+          : "Você pode fechar esta página e voltar com a mesma conta."}
+        action={config.masterGenerationEnabled
+          ? <StageButton type="button" onClick={flow.startRegisteredGeneration}>Começar nascimento</StageButton>
+          : undefined}
       />
     ),
     "master-ready": flow.revealComplete

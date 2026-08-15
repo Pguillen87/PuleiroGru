@@ -52,6 +52,7 @@ export interface MasterImage {
 
 export interface MascotGenerationProvider {
   createMasterJob(input: CreateMasterJobInput): Promise<GenerationJob>;
+  startMasterGeneration(jobId: string, identity: JobIdentity): Promise<GenerationJob>;
   getJob(jobId: string, identity: JobIdentity): Promise<GenerationJob | null>;
   getJobByAttempt(identity: JobIdentity): Promise<GenerationJob | null>;
   approveMaster(jobId: string, masterId: string, identity: JobIdentity): Promise<GenerationJob>;

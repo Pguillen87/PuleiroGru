@@ -6,6 +6,7 @@ describe("BFF → Modal v2 local sem GPU", () => {
   let server: Server;
   let baseUrl = "";
   let registrationCalls = 0;
+  let masterGenerationCalls = 0;
   const secret = "integration-secret-".padEnd(48, "x");
 
   beforeAll(async () => {
@@ -14,6 +15,7 @@ describe("BFF → Modal v2 local sem GPU", () => {
       const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), { issuer: "puleiro-bff", audience: "gru-modal" });
       const url = new URL(request.url ?? "/", "http://local");
       if (request.method === "POST" && url.pathname === "/v2/mascot/jobs") registrationCalls += 1;
+      if (request.method === "POST" && url.pathname === "/v2/mascot/jobs/job-local-1/master-generations") masterGenerationCalls += 1;
       response.setHeader("Content-Type", "application/json");
       response.end(JSON.stringify({
         jobId: "job-local-1",
@@ -30,7 +32,7 @@ describe("BFF → Modal v2 local sem GPU", () => {
 
   afterAll(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
 
-  it("registra, consulta e retoma sem endpoint de geração", async () => {
+  it("registra, autoriza Masters, consulta e retoma sem poses", async () => {
     vi.stubEnv("MODAL_MASCOT_API_URL", baseUrl);
     vi.stubEnv("MODAL_BFF_JWT_SECRET", secret);
     vi.resetModules();
@@ -43,12 +45,14 @@ describe("BFF → Modal v2 local sem GPU", () => {
       contentType: "image/jpeg",
       idempotencyKey: "register:owner-local:attempt-local-123456",
     });
+    const scheduled = await provider.startMasterGeneration(created.id, identity);
     const read = await provider.getJob(created.id, identity);
     const resumed = await provider.getJobByAttempt(identity);
     expect(created).toMatchObject({ status: "registered", generationScheduled: false });
+    expect(scheduled.id).toBe(created.id);
     expect(read?.id).toBe(created.id);
     expect(resumed?.attemptId).toBe(identity.attemptId);
     expect(registrationCalls).toBe(1);
-    expect({ gpuCalls: 0, masterGenerationCalls: 0, poseGenerationCalls: 0 }).toEqual({ gpuCalls: 0, masterGenerationCalls: 0, poseGenerationCalls: 0 });
+    expect({ masterGenerationCalls, poseGenerationCalls: 0 }).toEqual({ masterGenerationCalls: 1, poseGenerationCalls: 0 });
   });
 });

@@ -26,6 +26,14 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
     return job;
   }
 
+  async startMasterGeneration(jobId: string, identity: JobIdentity) {
+    const record = jobs.get(jobId);
+    if (!record || record.ownerId !== identity.ownerId) throw new Error("Nascimento não encontrado.");
+    record.createdAt = Date.now();
+    record.job = { ...record.job, status: "queued", generationScheduled: true };
+    return record.job;
+  }
+
   async getJob(jobId: string, identity: JobIdentity) {
     const record = jobs.get(jobId);
     if (!record || record.ownerId !== identity.ownerId) return null;

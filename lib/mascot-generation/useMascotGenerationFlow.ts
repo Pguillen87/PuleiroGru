@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PuleiroState } from "@/lib/puleiro-state";
 import { REDUCED_REVEAL_DURATION_MS, REVEAL_DURATION_MS } from "@/lib/puleiro-state";
-import { approveMaster, createGenerationJob, pollGenerationJob, resumeGenerationJob } from "./client";
+import { approveMaster, createGenerationJob, pollGenerationJob, resumeGenerationJob, startMasterGeneration } from "./client";
 import type { GenerationJob } from "./types";
 
 export type FlowConfig = {
@@ -11,6 +11,7 @@ export type FlowConfig = {
   pollIntervalMs: number;
   timeoutMs: number;
   technicalRegistrationOnly: boolean;
+  masterGenerationEnabled: boolean;
   authenticationRequired: boolean;
 };
 
@@ -97,7 +98,11 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     try {
       const created = await createGenerationJob(photo, current.signal);
       setState("creating-job");
-      const result = await pollGenerationJob(created, {
+      const scheduled = config.masterGenerationEnabled
+        && (created.status === "registered" || created.status === "awaiting_generation_authorization")
+        ? await startMasterGeneration(created.id, current.signal)
+        : created;
+      const result = await pollGenerationJob(scheduled, {
         intervalMs: config.pollIntervalMs,
         timeoutMs: config.timeoutMs,
         signal: current.signal,
@@ -113,6 +118,33 @@ export function useMascotGenerationFlow(config: FlowConfig) {
       setState("recoverable-error");
     }
   }, [applyJob, config, photo]);
+
+  const startRegisteredGeneration = useCallback(async () => {
+    if (!job) return;
+    controller.current?.abort();
+    const current = new AbortController();
+    controller.current = current;
+    setErrorMessage("");
+    setRevealComplete(false);
+    setState("preparing");
+    try {
+      const scheduled = await startMasterGeneration(job.id, current.signal);
+      const result = await pollGenerationJob(scheduled, {
+        intervalMs: config.pollIntervalMs,
+        timeoutMs: config.timeoutMs,
+        signal: current.signal,
+        onProgress: (progress) => {
+          setStatusMessage(progress.message);
+          setState("preparing");
+        },
+      });
+      applyJob(result);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setErrorMessage(error instanceof Error ? error.message : "Não conseguimos concluir este nascimento.");
+      setState("recoverable-error");
+    }
+  }, [applyJob, config, job]);
 
   const acceptMaster = useCallback(async () => {
     if (!job || !activeMaster) return;
@@ -145,6 +177,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     selectPhoto,
     changePhoto,
     startGeneration,
+    startRegisteredGeneration,
     reportMasterImageError: () => {
       setErrorMessage("O mascote foi criado, mas a imagem não pôde ser carregada.");
       setState("recoverable-error");

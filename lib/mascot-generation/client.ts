@@ -30,6 +30,14 @@ export async function createGenerationJob(photo: File, signal: AbortSignal) {
   return await readResponse(response) as GenerationJob;
 }
 
+export async function startMasterGeneration(jobId: string, signal: AbortSignal) {
+  const response = await fetch(
+    `/api/mascot/jobs/${encodeURIComponent(jobId)}/master-generations`,
+    { method: "POST", signal },
+  );
+  return await readResponse(response) as GenerationJob;
+}
+
 export async function resumeGenerationJob(signal: AbortSignal) {
   const response = await fetch("/api/mascot/jobs/current", { cache: "no-store", signal });
   return readResponse(response, true);

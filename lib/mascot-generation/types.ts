@@ -54,12 +54,17 @@ export interface GenerationJob {
   poses: GeneratedPose[];
   errorCode?: string;
   retryable?: boolean;
+  operationId?: string;
+  requestId?: string;
+  idempotentReplay?: boolean;
 }
 
 export interface JobIdentity {
   ownerId: string;
   attemptId: string;
   correlationId: string;
+  operationId?: string;
+  requestId?: string;
 }
 
 export interface CreateMasterJobInput extends JobIdentity {

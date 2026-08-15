@@ -1,6 +1,6 @@
 import "server-only";
-import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
+import type { MascotTraceContext } from "@/lib/observability/mascot-trace";
 
 export const ATTEMPT_COOKIE = "puleiro_attempt";
 const ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
@@ -26,7 +26,12 @@ export function attemptCookie(attemptId: string) {
   };
 }
 
-export function jobIdentity(ownerId: string, attemptId: string) {
-  const digest = createHash("sha256").update(`${ownerId}:${attemptId}`).digest("hex").slice(0, 24);
-  return { ownerId, attemptId, correlationId: `puleiro_${digest}` };
+export function jobIdentity(ownerId: string, attemptId: string, trace?: MascotTraceContext) {
+  return {
+    ownerId,
+    attemptId,
+    correlationId: trace?.puleiroTraceId ?? `puleiro_${attemptId.replace(/-/g, "")}`,
+    operationId: trace?.operationId,
+    requestId: trace?.requestId ?? crypto.randomUUID(),
+  };
 }

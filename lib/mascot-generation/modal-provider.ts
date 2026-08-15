@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { generationConfig } from "./config";
 import { createModalAccessToken } from "./modal-auth";
 import type {
@@ -25,6 +26,8 @@ type ModalJob = {
   poseChoices?: PoseChoices;
   poses?: Array<{ id: string; role: PoseRole; optionId: string; label: string }>;
   error?: { code?: string; retryable?: boolean };
+  operationId?: string;
+  idempotentReplay?: boolean;
 };
 
 export class ModalProviderError extends Error {
@@ -50,6 +53,8 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
         "Content-Type": "application/json",
         "X-Idempotency-Key": input.idempotencyKey,
         "X-Correlation-Id": input.correlationId,
+        ...(input.operationId ? { "X-Operation-Id": input.operationId } : {}),
+        ...(input.requestId ? { "X-Bff-Request-Id": input.requestId } : {}),
       },
       body: JSON.stringify({
         image_base64: Buffer.from(input.bytes).toString("base64"),
@@ -58,7 +63,7 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
         subject_identity: input.subjectIdentity,
       }),
     });
-    return this.toGenerationJob(await this.readJob(response));
+    return this.toGenerationJob(await this.readJob(response), response);
   }
 
   async startMasterGeneration(jobId: string, identity: JobIdentity) {
@@ -68,25 +73,25 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
       {
         method: "POST",
         headers: {
-          "X-Correlation-Id": identity.correlationId,
+          ...this.operationHeaders(identity),
           "X-Idempotency-Key": `master:${identity.ownerId}:${identity.attemptId}:${jobId}`,
         },
       },
     );
-    return this.toGenerationJob(await this.readJob(response));
+    return this.toGenerationJob(await this.readJob(response), response);
   }
 
   async getJob(jobId: string, identity: JobIdentity) {
     const response = await this.request(`/v2/mascot/jobs/${encodeURIComponent(jobId)}`, identity);
     if (response.status === 404) return null;
-    return this.toGenerationJob(await this.readJob(response));
+    return this.toGenerationJob(await this.readJob(response), response);
   }
 
   async getJobByAttempt(identity: JobIdentity) {
     const query = encodeURIComponent(identity.attemptId);
     const response = await this.request(`/v2/mascot/jobs?attempt_id=${query}`, identity);
     if (response.status === 404) return null;
-    return this.toGenerationJob(await this.readJob(response));
+    return this.toGenerationJob(await this.readJob(response), response);
   }
 
   async approveMaster(jobId: string, masterId: string, identity: JobIdentity) {
@@ -94,11 +99,11 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
     const response = await this.request(path, identity, {
       method: "POST",
       headers: {
-        "X-Correlation-Id": identity.correlationId,
+        ...this.operationHeaders(identity),
         "X-Idempotency-Key": `approve:${identity.ownerId}:${identity.attemptId}:${jobId}:${masterId}`,
       },
     });
-    return this.toGenerationJob(await this.readJob(response));
+    return this.toGenerationJob(await this.readJob(response), response);
   }
 
   async startPoseGeneration(jobId: string, choices: PoseChoices, identity: JobIdentity) {
@@ -107,12 +112,12 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Correlation-Id": identity.correlationId,
-        "X-Idempotency-Key": `poses:${identity.ownerId}:${identity.attemptId}:${jobId}`,
+        ...this.operationHeaders(identity),
+        "X-Idempotency-Key": poseIdempotencyKey(identity, jobId, choices),
       },
       body: JSON.stringify({ pose_choices: choices }),
     });
-    return this.toGenerationJob(await this.readJob(response));
+    return this.toGenerationJob(await this.readJob(response), response);
   }
 
   async getMasterImage(jobId: string, masterId: string, identity: JobIdentity): Promise<MasterImage | null> {
@@ -139,11 +144,23 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
     const token = await createModalAccessToken(identity.ownerId, identity.attemptId);
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...init,
-      headers: { ...init.headers, Authorization: `Bearer ${token}` },
+      headers: {
+        ...this.operationHeaders(identity),
+        ...init.headers,
+        Authorization: `Bearer ${token}`,
+      },
       cache: "no-store",
       signal: AbortSignal.timeout(init.method === "POST" ? 15_000 : 8_000),
     });
     return response;
+  }
+
+  private operationHeaders(identity: JobIdentity) {
+    return {
+      "X-Correlation-Id": identity.correlationId,
+      ...(identity.operationId ? { "X-Operation-Id": identity.operationId } : {}),
+      ...(identity.requestId ? { "X-Bff-Request-Id": identity.requestId } : {}),
+    };
   }
 
   private async readJob(response: Response) {
@@ -165,7 +182,7 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
     );
   }
 
-  private toGenerationJob(job: ModalJob): GenerationJob {
+  private toGenerationJob(job: ModalJob, response?: Response): GenerationJob {
     const masterIds = job.masters?.map(({ id }) => id)
       ?? (job.approvedMasterId ? [job.approvedMasterId] : []);
     return {
@@ -191,8 +208,19 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
       })),
       errorCode: job.error?.code,
       retryable: job.error?.retryable,
+      operationId: job.operationId ?? response?.headers.get("x-operation-id") ?? undefined,
+      requestId: response?.headers.get("x-request-id") ?? undefined,
+      idempotentReplay: job.idempotentReplay,
     };
   }
+}
+
+function poseIdempotencyKey(identity: JobIdentity, jobId: string, choices: PoseChoices) {
+  const fingerprint = createHash("sha256")
+    .update(JSON.stringify({ jobId, choices }))
+    .digest("hex")
+    .slice(0, 24);
+  return `poses:${identity.ownerId}:${identity.attemptId}:${jobId}:${fingerprint}`;
 }
 
 function statusMessage(status: GenerationJob["status"]) {

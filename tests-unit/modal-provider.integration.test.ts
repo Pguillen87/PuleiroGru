@@ -8,7 +8,10 @@ describe("BFF → Modal v2 local sem GPU", () => {
   let registrationCalls = 0;
   let masterGenerationCalls = 0;
   let approvalCalls = 0;
+  let poseHttpCalls = 0;
+  let poseWorkerReservations = 0;
   let approvalIdempotencyKey = "";
+  let reservedPoseKey = "";
   const secret = "integration-secret-".padEnd(48, "x");
 
   beforeAll(async () => {
@@ -22,12 +25,31 @@ describe("BFF → Modal v2 local sem GPU", () => {
         approvalCalls += 1;
         approvalIdempotencyKey = String(request.headers["x-idempotency-key"] ?? "");
       }
+      let operationId = String(request.headers["x-operation-id"] ?? "");
+      let idempotentReplay = false;
+      if (request.method === "POST" && url.pathname === "/v2/mascot/jobs/job-local-1/pose-generations") {
+        poseHttpCalls += 1;
+        const key = String(request.headers["x-idempotency-key"] ?? "");
+        if (!reservedPoseKey) {
+          reservedPoseKey = key;
+          poseWorkerReservations += 1;
+          operationId = "pose-operation-1";
+        } else {
+          expect(key).toBe(reservedPoseKey);
+          operationId = "pose-operation-1";
+          idempotentReplay = true;
+        }
+      }
+      response.setHeader("X-Request-ID", `modal-request-${poseHttpCalls + registrationCalls}`);
+      if (operationId) response.setHeader("X-Operation-ID", operationId);
       response.setHeader("Content-Type", "application/json");
       response.end(JSON.stringify({
         jobId: "job-local-1",
         attemptId: payload.attempt_id,
         status: "registered",
         generationScheduled: false,
+        operationId: operationId || undefined,
+        idempotentReplay,
       }));
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -44,7 +66,13 @@ describe("BFF → Modal v2 local sem GPU", () => {
     vi.resetModules();
     const { ModalMascotGenerationProvider } = await import("@/lib/mascot-generation/modal-provider");
     const provider = new ModalMascotGenerationProvider();
-    const identity = { ownerId: "owner-local", attemptId: "attempt-local-123456", correlationId: crypto.randomUUID() };
+    const identity = {
+      ownerId: "owner-local",
+      attemptId: "attempt-local-123456",
+      correlationId: crypto.randomUUID(),
+      operationId: "bff-operation-1",
+      requestId: "bff-request-1",
+    };
     const created = await provider.createMasterJob({
       ...identity,
       bytes: new Uint8Array([1, 2, 3]),
@@ -56,6 +84,17 @@ describe("BFF → Modal v2 local sem GPU", () => {
     const read = await provider.getJob(created.id, identity);
     const resumed = await provider.getJobByAttempt(identity);
     await provider.approveMaster(created.id, "master_1", identity);
+    const poseChoices = {
+      normal: "normal_attentive",
+      listening: "listening_focus",
+      transcribing: "transcribing_fast",
+    } as const;
+    const firstPoseRequest = await provider.startPoseGeneration(created.id, poseChoices, identity);
+    const replayPoseRequest = await provider.startPoseGeneration(created.id, poseChoices, {
+      ...identity,
+      operationId: "bff-operation-2",
+      requestId: "bff-request-2",
+    });
     expect(created).toMatchObject({ status: "registered", generationScheduled: false });
     expect(scheduled.id).toBe(created.id);
     expect(read?.id).toBe(created.id);
@@ -63,6 +102,13 @@ describe("BFF → Modal v2 local sem GPU", () => {
     expect(registrationCalls).toBe(1);
     expect(approvalCalls).toBe(1);
     expect(approvalIdempotencyKey).toContain("approve:owner-local:attempt-local-123456:job-local-1:master_1");
-    expect({ masterGenerationCalls, poseGenerationCalls: 0 }).toEqual({ masterGenerationCalls: 1, poseGenerationCalls: 0 });
+    expect(firstPoseRequest.operationId).toBe("pose-operation-1");
+    expect(replayPoseRequest).toMatchObject({ operationId: "pose-operation-1", idempotentReplay: true });
+    expect({ masterGenerationCalls, poseHttpCalls, poseWorkerReservations, poseWorkerCalls: 0 }).toEqual({
+      masterGenerationCalls: 1,
+      poseHttpCalls: 2,
+      poseWorkerReservations: 1,
+      poseWorkerCalls: 0,
+    });
   });
 });

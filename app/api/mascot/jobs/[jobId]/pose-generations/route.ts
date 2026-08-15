@@ -5,18 +5,25 @@ import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { generationConfig } from "@/lib/mascot-generation/config";
 import { DEFAULT_POSE_CHOICES, POSE_OPTIONS } from "@/lib/mascot-generation/pose-catalog";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
+import { saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
 import type { PoseChoices, PoseRole } from "@/lib/mascot-generation/types";
+import { createTraceContext, mascotLog, traceResponse, type MascotTraceContext } from "@/lib/observability/mascot-trace";
+import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 const validId = (value: string) => /^[A-Za-z0-9_-]{1,128}$/.test(value);
 
 export async function POST(request: Request, context: { params: Promise<{ jobId: string }> }) {
+  const startedAt = performance.now();
   const { jobId } = await context.params;
+  let trace: MascotTraceContext | undefined;
   if (!validId(jobId)) return NextResponse.json({ message: "Identificador inválido." }, { status: 400 });
-  if (!generationConfig.poseGenerationEnabled) {
-    return NextResponse.json({ message: "A geração das poses ainda não foi habilitada.", code: "POSE_GENERATION_DISABLED" }, { status: 409 });
-  }
   try {
+    requireTrustedMutationRequest(request, { contentTypes: ["application/json"] });
+    if (!generationConfig.poseGenerationEnabled) {
+      return NextResponse.json({ message: "A geração das poses ainda não foi habilitada.", code: "POSE_GENERATION_DISABLED" }, { status: 409 });
+    }
     const body = await request.json().catch(() => ({})) as { poseChoices?: PoseChoices };
     const poseChoices = validatePoseChoices(body.poseChoices);
     if (!poseChoices) {
@@ -24,14 +31,36 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     }
     const [identity, attemptId] = await Promise.all([requireBrowserIdentity(request), getAttemptId()]);
     if (!attemptId) return NextResponse.json({ message: "Nascimento não encontrado." }, { status: 404 });
+    trace = createTraceContext(attemptId, true);
+    mascotLog("pose_request_received", { ...trace, jobId });
     const job = await getMascotGenerationProvider().startPoseGeneration(
       jobId,
       poseChoices,
-      jobIdentity(identity.uid, attemptId),
+      jobIdentity(identity.uid, attemptId, trace),
     );
-    return NextResponse.json({ job }, { status: 202 });
+    const responseTrace = job.operationId ? { ...trace, operationId: job.operationId } : trace;
+    if (identity.mode === "supabase-session") {
+      await saveAttemptJob(await createClient(), identity.uid, job);
+      mascotLog("pose_attempt_persisted", { ...responseTrace, jobId, result: "persisted" });
+    }
+    mascotLog(job.idempotentReplay ? "pose_operation_replayed" : "pose_operation_created", {
+      ...responseTrace,
+      jobId,
+      result: "accepted",
+      durationMs: Math.round(performance.now() - startedAt),
+      httpStatus: 202,
+    });
+    return traceResponse(NextResponse.json({ job }, { status: 202 }), responseTrace, job.requestId);
   } catch (error) {
-    return integrationErrorResponse(error, "POSE_GENERATION_FAILED", "Não foi possível iniciar as poses agora.");
+    mascotLog("pose_request_failed", {
+      ...(trace ?? {}),
+      jobId,
+      result: "failure",
+      durationMs: Math.round(performance.now() - startedAt),
+      safeErrorCode: error instanceof Error ? error.name : "UNKNOWN",
+      httpStatus: 503,
+    });
+    return integrationErrorResponse(error, "POSE_GENERATION_FAILED", "Não foi possível iniciar as poses agora.", trace);
   }
 }
 

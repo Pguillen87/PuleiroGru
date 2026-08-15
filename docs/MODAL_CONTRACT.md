@@ -53,6 +53,8 @@ Após a aprovação do Master, a interface apresenta uma decisão por vez: Norma
 
 O Master aprovado é a única referência visual das três imagens. A foto original não volta a ser usada para gerar cada pose de forma independente.
 
+Quando o conjunto termina, o status público inclui referências para exatamente três resultados. O Browser baixa cada imagem por `GET /api/mascot/jobs/:jobId/pose/:role`; o BFF valida sessão, attemptId e ownership e então usa o endpoint privado v2 correspondente. URLs internas e caminhos do Volume nunca chegam ao navegador.
+
 ## Compatibilidade
 
 Rotas Modal v1, Firebase Auth e App Check do Android permanecem inalterados. A separação Supabase aplica-se somente ao Puleiro Web e termina no BFF.

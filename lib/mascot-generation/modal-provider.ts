@@ -9,6 +9,7 @@ import type {
   MascotGenerationProvider,
   MasterImage,
   PoseChoices,
+  PoseRole,
   SubjectIdentity,
 } from "./types";
 import { ACCEPTED_IMAGE_TYPES } from "./types";
@@ -22,6 +23,7 @@ type ModalJob = {
   approvedMasterId?: string;
   subjectIdentity?: SubjectIdentity;
   poseChoices?: PoseChoices;
+  poses?: Array<{ id: string; role: PoseRole; optionId: string; label: string }>;
   error?: { code?: string; retryable?: boolean };
 };
 
@@ -123,6 +125,16 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
     return { bytes: new Uint8Array(await response.arrayBuffer()), contentType };
   }
 
+  async getPoseImage(jobId: string, role: PoseRole, identity: JobIdentity): Promise<MasterImage | null> {
+    const path = `/v2/mascot/jobs/${encodeURIComponent(jobId)}/poses/${encodeURIComponent(role)}`;
+    const response = await this.request(path, identity);
+    if (response.status === 404) return null;
+    if (!response.ok) await this.throwResponse(response);
+    const contentType = response.headers.get("content-type")?.split(";")[0] as AcceptedImageType;
+    if (!ACCEPTED_IMAGE_TYPES.includes(contentType)) throw new Error("Modal retornou tipo de imagem não suportado.");
+    return { bytes: new Uint8Array(await response.arrayBuffer()), contentType };
+  }
+
   private async request(path: string, identity: JobIdentity, init: RequestInit = {}) {
     const token = await createModalAccessToken(identity.ownerId, identity.attemptId);
     const response = await fetch(`${this.baseUrl}${path}`, {
@@ -171,6 +183,10 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
         listening: "listening_focus",
         transcribing: "transcribing_fast",
       },
+      poses: (job.poses ?? []).map((pose) => ({
+        ...pose,
+        imageUrl: `/api/mascot/jobs/${encodeURIComponent(job.jobId)}/pose/${encodeURIComponent(pose.role)}`,
+      })),
       errorCode: job.error?.code,
       retryable: job.error?.retryable,
     };

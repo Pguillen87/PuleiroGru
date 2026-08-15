@@ -24,6 +24,7 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
       masters: [],
       subjectIdentity: input.subjectIdentity,
       poseChoices: DEFAULT_POSE_CHOICES,
+      poses: [],
     };
     jobs.set(id, { createdAt: Date.now(), ownerId: input.ownerId, job });
     return job;
@@ -40,6 +41,20 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
   async getJob(jobId: string, identity: JobIdentity) {
     const record = jobs.get(jobId);
     if (!record || record.ownerId !== identity.ownerId) return null;
+    if (record.job.status === "generating_poses" && Date.now() - record.createdAt >= generationConfig.mockDelayMs) {
+      record.job = {
+        ...record.job,
+        status: "awaiting_set_approval",
+        message: "As três poses estão prontas para revisão.",
+        poses: (["normal", "listening", "transcribing"] as const).map((role, index) => ({
+          id: `pose_0${index + 1}`,
+          role,
+          optionId: record.job.poseChoices[role],
+          label: role,
+          imageUrl: "/assets/puleiro-reveal.jpg",
+        })),
+      };
+    }
     if (["master_approved", "generating_poses", "awaiting_set_approval", "failed", "canceled"].includes(record.job.status)) {
       return record.job;
     }
@@ -78,7 +93,10 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
     if (!job || job.status !== "master_approved") throw new Error("Aprove o mascote mestre antes das poses.");
     const generating = { ...job, status: "generating_poses" as const, poseChoices: choices };
     const record = jobs.get(jobId);
-    if (record) record.job = generating;
+    if (record) {
+      record.createdAt = Date.now();
+      record.job = generating;
+    }
     return generating;
   }
 }

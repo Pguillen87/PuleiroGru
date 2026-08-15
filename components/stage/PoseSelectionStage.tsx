@@ -1,6 +1,6 @@
 import { StageButton } from "@/components/actions/StageButton";
 import { StatusMessage } from "@/components/status/StatusMessage";
-import { optionsForRole, POSE_ROLE_LABELS } from "@/lib/mascot-generation/pose-catalog";
+import { optionsForRole, POSE_OPTIONS, POSE_ROLE_LABELS } from "@/lib/mascot-generation/pose-catalog";
 import type { PoseChoices, PoseRole, SubjectCategory } from "@/lib/mascot-generation/types";
 
 export function PoseSelectionStage({
@@ -24,11 +24,17 @@ export function PoseSelectionStage({
       <span className="state-kicker">Escolha das poses · {label}</span>
       <h2 id="state-title">Como ele fica quando está {role === "normal" ? "pronto" : label.toLowerCase()}?</h2>
       <StatusMessage title={`Função ${label}`} detail="Escolha o gesto. A imagem personalizada será criada somente depois da revisão das três funções." />
+      <p className="pose-reference-note">As imagens abaixo são referências de movimento. O resultado usará a identidade do seu mascote.</p>
       <fieldset className="choice-grid pose-choice-grid">
         <legend className="sr-only">Opções para {label}</legend>
         {optionsForRole(role, category).map((option) => (
           <label className="choice-option" key={option.id}>
             <input type="radio" name={`pose-${role}`} checked={selected === option.id} onChange={() => onSelect(option.id)} />
+            <span
+              className="pose-reference-preview"
+              style={{ backgroundPosition: option.previewPosition }}
+              aria-hidden="true"
+            />
             <span><strong>{option.label}</strong><small>{option.description}</small></span>
           </label>
         ))}
@@ -54,7 +60,7 @@ export function PoseSelectionReviewStage({
   onGenerate: () => void;
   onBack: () => void;
 }) {
-  const labels = Object.fromEntries(optionsForAll().map((option) => [option.id, option.label]));
+  const selectedOptions = Object.fromEntries(POSE_OPTIONS.map((option) => [option.id, option]));
   return (
     <>
       <span className="state-kicker">Três funções, um personagem</span>
@@ -65,7 +71,17 @@ export function PoseSelectionReviewStage({
       />
       <dl className="pose-summary">
         {(Object.keys(choices) as PoseRole[]).map((role) => (
-          <div key={role}><dt>{POSE_ROLE_LABELS[role]}</dt><dd>{labels[choices[role]]}</dd></div>
+          <div key={role}>
+            <dt>{POSE_ROLE_LABELS[role]}</dt>
+            <dd>
+              <span
+                className="pose-reference-preview pose-reference-preview--summary"
+                style={{ backgroundPosition: selectedOptions[choices[role]]?.previewPosition }}
+                aria-hidden="true"
+              />
+              <span>{selectedOptions[choices[role]]?.label}</span>
+            </dd>
+          </div>
         ))}
       </dl>
       {errorMessage && <p className="stage-error" role="alert">{errorMessage}</p>}
@@ -76,8 +92,4 @@ export function PoseSelectionReviewStage({
       {!enabled && <p className="stage-guidance">Nenhuma GPU será acionada enquanto a geração de poses estiver desabilitada.</p>}
     </>
   );
-}
-
-function optionsForAll() {
-  return (["normal", "listening", "transcribing"] as PoseRole[]).flatMap((role) => optionsForRole(role, "other"));
 }

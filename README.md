@@ -18,6 +18,8 @@ O registro não agenda GPU. `MASTER_GENERATION_ENABLED` e `POSE_GENERATION_ENABL
 
 Antes de gerar, o usuário confirma se o sujeito é pessoa, animal, objeto ou outro; animais também informam a espécie. Essa confirmação alimenta prompts específicos que impedem mistura de categorias. Depois de aprovar um dos três Masters, o usuário escolhe uma opção para cada função — Normal, Ouvindo e Transcrevendo — e revisa o conjunto antes da operação separada de poses.
 
+Cada conceito de pose possui uma referência visual editorial identificada como exemplo de movimento, não como resultado personalizado. Depois da geração, as três imagens reais são servidas por proxy privado owner-scoped. Em staging, a geração só fica disponível quando o deploy é iniciado explicitamente com o modo de teste GPU.
+
 ## Configuração local
 
 ```powershell

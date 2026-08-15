@@ -557,6 +557,29 @@ main {
   line-height: 1.4;
 }
 
+.pose-reference-note {
+  max-width: 60ch;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.pose-choice-grid .choice-option {
+  display: grid;
+  grid-template-columns: auto minmax(5.5rem, 7rem) minmax(0, 1fr);
+  align-items: center;
+}
+
+.pose-reference-preview {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border: var(--border-ink);
+  background-image: url("/assets/pose-reference-sheet.webp");
+  background-repeat: no-repeat;
+  background-size: 400% 300%;
+  background-color: var(--color-egg);
+}
+
 .subject-description > span {
   font-weight: 800;
 }
@@ -602,6 +625,54 @@ main {
 
 .pose-summary dd {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.pose-reference-preview--summary {
+  flex: 0 0 5rem;
+}
+
+.generated-pose-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.generated-pose-grid figure {
+  min-width: 0;
+  margin: 0;
+  border: 2px solid var(--color-border);
+  background: var(--color-paper-raised);
+  box-shadow: 4px 4px 0 rgb(24 23 19 / 18%);
+}
+
+.generated-pose-grid img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: block;
+  object-fit: contain;
+  background: var(--color-egg);
+}
+
+.generated-pose-grid figcaption {
+  padding: var(--space-3);
+  border-top: var(--border-ink);
+  display: grid;
+  gap: var(--space-1);
+  text-align: left;
+}
+
+.generated-pose-grid figcaption strong {
+  font-family: var(--font-display), Arial, sans-serif;
+  text-transform: uppercase;
+}
+
+.generated-pose-grid figcaption span {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
 }
 
 .stage-error {
@@ -797,6 +868,14 @@ footer span:first-child {
   .pose-summary > div {
     grid-template-columns: 1fr;
     gap: var(--space-1);
+  }
+
+  .pose-choice-grid .choice-option {
+    grid-template-columns: auto minmax(5rem, 6rem) minmax(0, 1fr);
+  }
+
+  .generated-pose-grid {
+    grid-template-columns: 1fr;
   }
 }
 

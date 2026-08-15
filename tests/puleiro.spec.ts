@@ -167,6 +167,7 @@ test("escolhe uma pose por função sem acionar GPU quando a flag está desligad
   await page.goto("/");
   await completeFlow(page);
   await page.getByRole("button", { name: "Gostei deste" }).click();
+  await expect(page.locator(".pose-choice-grid .pose-reference-preview")).toHaveCount(4);
   await page.getByRole("radio", { name: /Relaxado/ }).check();
   await page.getByRole("button", { name: "Continuar" }).click();
   await page.getByRole("radio", { name: /Reação natural/ }).check();
@@ -174,6 +175,7 @@ test("escolhe uma pose por função sem acionar GPU quando a flag está desligad
   await page.getByRole("radio", { name: /Organizando ideias/ }).check();
   await page.getByRole("button", { name: "Continuar" }).click();
   await expect(page.getByRole("heading", { name: "Revise os jeitos do seu mascote" })).toBeVisible();
+  await expect(page.locator(".pose-summary .pose-reference-preview")).toHaveCount(3);
   await expect(page.getByRole("button", { name: "Gerar as três poses" })).toBeDisabled();
   expect(posePosts).toBe(0);
 });

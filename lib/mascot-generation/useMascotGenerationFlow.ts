@@ -247,6 +247,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     nextMaster,
     subjectIdentity,
     poseChoices,
+    poses: job?.poses ?? [],
     selectPose,
     continuePoseSelection,
     backPoseSelection,

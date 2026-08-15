@@ -12,6 +12,7 @@ import { PreparingStage } from "@/components/stage/PreparingStage";
 import { PuleiroStage } from "@/components/stage/PuleiroStage";
 import { PoseSelectionReviewStage, PoseSelectionStage } from "@/components/stage/PoseSelectionStage";
 import { SubjectConfirmationStage } from "@/components/stage/SubjectConfirmationStage";
+import { PoseSetReadyStage } from "@/components/stage/PoseSetReadyStage";
 import { useMascotGenerationFlow, type FlowConfig } from "@/lib/mascot-generation/useMascotGenerationFlow";
 import { AccountGate } from "@/components/auth/AccountGate";
 import { StageButton } from "@/components/actions/StageButton";
@@ -61,7 +62,9 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
     "choosing-transcribing": <PoseSelectionStage role="transcribing" category={flow.subjectIdentity?.category ?? "other"} selected={flow.poseChoices.transcribing} onSelect={(option) => flow.selectPose("transcribing", option)} onContinue={() => flow.continuePoseSelection("transcribing")} onBack={() => flow.backPoseSelection("transcribing")} />,
     "pose-selection-review": <PoseSelectionReviewStage choices={flow.poseChoices} enabled={config.poseGenerationEnabled} errorMessage={flow.errorMessage} onGenerate={flow.generatePoseSet} onBack={() => flow.backPoseSelection("review")} />,
     "generating-poses": <PreparingStage title="Experimentando os três jeitos" message={flow.statusMessage} detail="O mascote mestre continua sendo a referência de identidade." />,
-    "pose-set-ready": <PreparingStage title="Os três jeitos chegaram" message={flow.statusMessage} detail="Normal, ouvindo e transcrevendo foram criados a partir do mesmo mascote mestre." />,
+    "pose-set-ready": flow.poses.length === 3
+      ? <PoseSetReadyStage poses={flow.poses} />
+      : <PreparingStage title="Conferindo os três jeitos" message={flow.statusMessage} detail="As imagens estão sendo validadas antes de aparecerem no palco." />,
     "recoverable-error": <ErrorStage message={flow.errorMessage} onRetry={flow.startGeneration} onChange={flow.changePhoto} />,
   }[flow.state];
 

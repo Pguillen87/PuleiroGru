@@ -33,6 +33,14 @@ export interface SubjectIdentity {
 export type PoseRole = "normal" | "listening" | "transcribing";
 export type PoseChoices = Record<PoseRole, string>;
 
+export interface GeneratedPose {
+  id: string;
+  role: PoseRole;
+  optionId: string;
+  label: string;
+  imageUrl: string;
+}
+
 export interface GenerationJob {
   id: string;
   attemptId: string;
@@ -43,6 +51,7 @@ export interface GenerationJob {
   approvedMasterId?: string;
   subjectIdentity: SubjectIdentity;
   poseChoices: PoseChoices;
+  poses: GeneratedPose[];
   errorCode?: string;
   retryable?: boolean;
 }
@@ -73,4 +82,5 @@ export interface MascotGenerationProvider {
   approveMaster(jobId: string, masterId: string, identity: JobIdentity): Promise<GenerationJob>;
   startPoseGeneration(jobId: string, choices: PoseChoices, identity: JobIdentity): Promise<GenerationJob>;
   getMasterImage?(jobId: string, masterId: string, identity: JobIdentity): Promise<MasterImage | null>;
+  getPoseImage?(jobId: string, role: PoseRole, identity: JobIdentity): Promise<MasterImage | null>;
 }

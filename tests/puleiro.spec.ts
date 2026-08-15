@@ -159,6 +159,28 @@ test("ver outra opção percorre os Masters existentes sem novo job", async ({ p
   await expect(page.getByText(/opção 2 de 3/)).toBeVisible();
 });
 
+test("retoma job já aprovado sem acusar ausência de Masters", async ({ page }) => {
+  await page.route("**/api/mascot/jobs/current", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      job: {
+        id: "aprovado",
+        attemptId: "attempt-aprovado",
+        status: "master_approved",
+        message: "Mascote mestre aprovado.",
+        generationScheduled: true,
+        masters: [{ id: "master_3", imageUrl: "/api/mascot/jobs/aprovado/master/master_3" }],
+        approvedMasterId: "master_3",
+        ...jobIdentity,
+      },
+    }),
+  }));
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Como ele fica quando está pronto?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Este nascimento precisa de outra tentativa" })).toHaveCount(0);
+  await expect(page.locator(".stage__art img")).toHaveAttribute("src", "/api/mascot/jobs/aprovado/master/master_3");
+});
+
 test("escolhe uma pose por função sem acionar GPU quando a flag está desligada", async ({ page }) => {
   let posePosts = 0;
   page.on("request", (request) => {

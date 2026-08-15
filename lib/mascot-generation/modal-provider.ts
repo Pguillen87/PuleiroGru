@@ -166,13 +166,15 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
   }
 
   private toGenerationJob(job: ModalJob): GenerationJob {
+    const masterIds = job.masters?.map(({ id }) => id)
+      ?? (job.approvedMasterId ? [job.approvedMasterId] : []);
     return {
       id: job.jobId,
       attemptId: job.attemptId,
       status: job.status,
       message: statusMessage(job.status),
       generationScheduled: job.generationScheduled,
-      masters: (job.masters ?? []).map(({ id }) => ({
+      masters: masterIds.map((id) => ({
         id,
         imageUrl: `/api/mascot/jobs/${encodeURIComponent(job.jobId)}/master/${encodeURIComponent(id)}`,
       })),

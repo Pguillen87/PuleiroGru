@@ -92,7 +92,10 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setStatusMessage(result.message);
     if (result.status === "registered" || result.status === "awaiting_generation_authorization") return setState("registered-safe");
     if (result.status === "failed" || result.status === "canceled") throw new Error(result.message);
-    if (result.status !== "awaiting_master_approval" || result.masters.length === 0) throw new Error("O resultado chegou sem opções válidas.");
+    if (result.status === "master_approved") return setState("choosing-normal");
+    if (result.status === "awaiting_set_approval") return setState("pose-set-ready");
+    if (result.status !== "awaiting_master_approval") throw new Error("O nascimento retornou em um estado inesperado.");
+    if (result.masters.length === 0) throw new Error("O nascimento terminou, mas as opções ainda não estão disponíveis.");
     setMasterIndex(0);
     setState("master-ready");
     finishReveal();

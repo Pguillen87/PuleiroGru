@@ -30,6 +30,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   const [revealComplete, setRevealComplete] = useState(false);
   const controller = useRef<AbortController | undefined>(undefined);
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const poseOperationInFlight = useRef(false);
   const activeMaster = job?.masters[masterIndex];
 
   useEffect(() => {
@@ -201,13 +202,17 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   }, []);
 
   const generatePoseSet = useCallback(async () => {
-    if (!job || !config.poseGenerationEnabled) return;
+    if (!job || !config.poseGenerationEnabled || poseOperationInFlight.current) return;
+    poseOperationInFlight.current = true;
     const current = new AbortController();
     controller.current = current;
     setErrorMessage("");
     setState("generating-poses");
+    let operationAccepted = false;
     try {
       const scheduled = await startPoseGeneration(job.id, poseChoices, current.signal);
+      operationAccepted = true;
+      setJob(scheduled);
       const result = await pollGenerationJob(scheduled, {
         intervalMs: config.pollIntervalMs,
         timeoutMs: config.timeoutMs,
@@ -219,8 +224,16 @@ export function useMascotGenerationFlow(config: FlowConfig) {
       setState(result.status === "awaiting_set_approval" ? "pose-set-ready" : "generating-poses");
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      setErrorMessage(error instanceof Error ? error.message : "Não foi possível criar as poses.");
-      setState("pose-selection-review");
+      const message = error instanceof Error ? error.message : "Não foi possível consultar as poses agora.";
+      if (operationAccepted) {
+        setStatusMessage(`${message} A operação continua guardada e será retomada sem novo pedido.`);
+        setState("generating-poses");
+      } else {
+        setErrorMessage(message);
+        setState("pose-selection-review");
+      }
+    } finally {
+      poseOperationInFlight.current = false;
     }
   }, [config, job, poseChoices]);
 

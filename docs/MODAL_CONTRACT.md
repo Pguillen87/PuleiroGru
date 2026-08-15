@@ -53,6 +53,8 @@ Após a aprovação do Master, a interface apresenta uma decisão por vez: Norma
 
 O Master aprovado é a única referência visual das três imagens. A foto original não volta a ser usada para gerar cada pose de forma independente.
 
+O contrato operacional assíncrono, os IDs distribuídos, o diagnóstico do incidente de 503 e o procedimento de suporte estão em [`POSE_OPERATION_DIAGNOSTIC.md`](./POSE_OPERATION_DIAGNOSTIC.md). Um aceite de poses retorna `202`; replay preserva a primeira `operationId` e não reserva outro worker.
+
 Quando o conjunto termina, o status público inclui referências para exatamente três resultados. O Browser baixa cada imagem por `GET /api/mascot/jobs/:jobId/pose/:role`; o BFF valida sessão, attemptId e ownership e então usa o endpoint privado v2 correspondente. URLs internas e caminhos do Volume nunca chegam ao navegador.
 
 ## Compatibilidade

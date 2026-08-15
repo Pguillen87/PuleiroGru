@@ -181,6 +181,35 @@ test("retoma job já aprovado sem acusar ausência de Masters", async ({ page })
   await expect(page.locator(".stage__art img")).toHaveAttribute("src", "/api/mascot/jobs/aprovado/master/master_3");
 });
 
+test("retoma geração de poses por GET e preserva o Master inteiro", async ({ page }) => {
+  let posePosts = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes("/pose-generations")) posePosts += 1;
+  });
+  await page.route("**/api/mascot/jobs/current", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      job: {
+        id: "poses-em-andamento",
+        attemptId: "attempt-poses-em-andamento",
+        status: "generating_poses",
+        message: "Preparando os jeitos do seu mascote…",
+        generationScheduled: true,
+        masters: [{ id: "master_1", imageUrl: "/assets/puleiro-reveal.jpg" }],
+        approvedMasterId: "master_1",
+        ...jobIdentity,
+      },
+    }),
+  }));
+
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Experimentando os três jeitos" })).toBeVisible();
+  await expect(page.locator("#puleiro-stage")).toHaveClass(/stage--master-reference/);
+  expect(await page.locator(".stage__art img").evaluate((image) => getComputedStyle(image).objectFit)).toBe("contain");
+  expect(await page.locator(".stage__art img").evaluate((image) => getComputedStyle(image).objectPosition)).toBe("50% 50%");
+  expect(posePosts).toBe(0);
+});
+
 test("escolhe uma pose por função sem acionar GPU quando a flag está desligada", async ({ page }) => {
   let posePosts = 0;
   page.on("request", (request) => {

@@ -1,9 +1,14 @@
 import type { GenerationJob, PoseChoices, SubjectIdentity } from "./types";
 
-type JobResponse = { job?: GenerationJob | null; message?: string; code?: string };
+type JobResponse = { job?: GenerationJob | null; message?: string; code?: string; supportCode?: string };
 
 export class GenerationRequestError extends Error {
-  constructor(message: string, readonly retryable = true, readonly code = "REQUEST_FAILED") {
+  constructor(
+    message: string,
+    readonly retryable = true,
+    readonly code = "REQUEST_FAILED",
+    readonly supportCode?: string,
+  ) {
     super(message);
   }
 }
@@ -15,12 +20,17 @@ async function readResponse(response: Response, allowEmpty = false) {
       globalThis.window?.dispatchEvent(new Event("puleiro:auth-required"));
     }
     throw new GenerationRequestError(
-      body.message ?? "O Puleiro não respondeu como esperado.",
+      safeSupportMessage(body.message ?? "O Puleiro não respondeu como esperado.", body.supportCode),
       response.status >= 500,
       body.code,
+      body.supportCode,
     );
   }
   return body.job ?? null;
+}
+
+function safeSupportMessage(message: string, supportCode?: string) {
+  return supportCode ? `${message} Código de suporte: ${supportCode}.` : message;
 }
 
 export async function createGenerationJob(photo: File, subjectIdentity: SubjectIdentity, signal: AbortSignal) {
@@ -49,7 +59,7 @@ export async function startPoseGeneration(jobId: string, poseChoices: PoseChoice
 export async function startMasterGeneration(jobId: string, signal: AbortSignal) {
   const response = await fetch(
     `/api/mascot/jobs/${encodeURIComponent(jobId)}/master-generations`,
-    { method: "POST", signal },
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", signal },
   );
   return await readResponse(response) as GenerationJob;
 }
@@ -62,7 +72,7 @@ export async function resumeGenerationJob(signal: AbortSignal) {
 export async function approveMaster(jobId: string, masterId: string, signal: AbortSignal) {
   const response = await fetch(
     `/api/mascot/jobs/${encodeURIComponent(jobId)}/masters/${encodeURIComponent(masterId)}/approve`,
-    { method: "POST", signal },
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", signal },
   );
   return await readResponse(response) as GenerationJob;
 }

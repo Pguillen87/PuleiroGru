@@ -8,6 +8,7 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL: "http://127.0.0.1:3107",
+    extraHTTPHeaders: { Origin: "http://127.0.0.1:3107" },
     trace: "retain-on-failure",
   },
   webServer: {
@@ -16,6 +17,8 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 120_000,
     env: {
+      NEXT_DIST_DIR: ".next-playwright",
+      PULEIRO_ALLOWED_ORIGINS: "http://127.0.0.1:3107",
       MASCOT_GENERATION_PROVIDER: "mock",
       MOCK_GENERATION_DELAY_MS: "250",
       JOB_POLL_INTERVAL_MS: "100",

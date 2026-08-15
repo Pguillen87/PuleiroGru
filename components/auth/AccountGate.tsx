@@ -188,7 +188,8 @@ function AccountForm({ initialMessage, onSignedIn }: { initialMessage: string; o
         <input id="puleiro-email" name="email" type="email" autoComplete="email" autoFocus required />
         {mode !== "recovery" && <>
           <label htmlFor="puleiro-password">Senha</label>
-          <input id="puleiro-password" name="password" type="password" minLength={8} autoComplete={mode === "signup" ? "new-password" : "current-password"} required />
+          <input id="puleiro-password" name="password" type="password" minLength={6} autoComplete={mode === "signup" ? "new-password" : "current-password"} required />
+          {mode === "signup" && <p className="account-gate__availability">Use pelo menos 6 caracteres.</p>}
         </>}
         <StageButton type="submit" disabled={busy}>{busy ? "Aguarde…" : actionLabel(mode)}</StageButton>
       </form>

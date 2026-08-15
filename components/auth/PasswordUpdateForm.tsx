@@ -10,7 +10,7 @@ export function PasswordUpdateForm() {
   const supabase = useMemo(() => createClient(), []);
   const [busy, setBusy] = useState(false);
   const [completed, setCompleted] = useState(false);
-  const [message, setMessage] = useState("Escolha uma nova senha com pelo menos oito caracteres.");
+  const [message, setMessage] = useState("Escolha uma nova senha com pelo menos 6 caracteres.");
   const returnRef = useRef<HTMLAnchorElement>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -45,9 +45,10 @@ export function PasswordUpdateForm() {
       <h1>Crie uma nova senha</h1>
       {!completed && <form onSubmit={submit}>
         <label htmlFor="new-password">Nova senha</label>
-        <input id="new-password" name="password" type="password" autoComplete="new-password" minLength={8} required />
+        <input id="new-password" name="password" type="password" autoComplete="new-password" minLength={6} required />
+        <p className="account-gate__availability">Use pelo menos 6 caracteres.</p>
         <label htmlFor="new-password-confirmation">Confirme a nova senha</label>
-        <input id="new-password-confirmation" name="password-confirmation" type="password" autoComplete="new-password" minLength={8} required />
+        <input id="new-password-confirmation" name="password-confirmation" type="password" autoComplete="new-password" minLength={6} required />
         <StageButton type="submit" disabled={busy}>{busy ? "Salvando…" : "Salvar nova senha"}</StageButton>
       </form>}
       <p role="status" aria-live="polite" aria-atomic="true">{message}</p>

@@ -186,12 +186,14 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   }, []);
 
   const continuePoseSelection = useCallback((role: PoseRole) => {
+    setErrorMessage("");
     const index = POSE_ROLE_ORDER.indexOf(role);
     const next = POSE_ROLE_ORDER[index + 1];
     setState(next ? `choosing-${next}` as PuleiroState : "pose-selection-review");
   }, []);
 
   const backPoseSelection = useCallback((role: PoseRole | "review") => {
+    setErrorMessage("");
     if (role === "review") return setState("choosing-transcribing");
     const index = POSE_ROLE_ORDER.indexOf(role);
     const previous = POSE_ROLE_ORDER[index - 1];

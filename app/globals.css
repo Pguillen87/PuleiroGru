@@ -365,7 +365,10 @@ main {
   object-position: center;
 }
 
-.stage--photo-preview .stage__art img,
+.stage-state--entry .stage__art img,
+.stage-state--photo-selection .stage__art img,
+.stage-state--photo-preview .stage__art img,
+.stage-state--subject-confirmation .stage__art img,
 .stage--revealed .stage__art img,
 .stage--master-reference .stage__art img {
   object-fit: contain;
@@ -390,6 +393,30 @@ main {
 
 .stage--photo-preview .stage__art {
   background: var(--color-egg);
+}
+
+.photo-preview-card {
+  width: min(100%, 30rem);
+  margin: 0;
+  overflow: hidden;
+  border: var(--border-ink);
+  background: var(--color-egg);
+  box-shadow: 0.25rem 0.25rem 0 var(--color-ink);
+}
+
+.photo-preview-card img {
+  display: block;
+  width: 100%;
+  max-height: min(36svh, 20rem);
+  object-fit: contain;
+  background: var(--color-paper-raised);
+}
+
+.photo-preview-card figcaption {
+  padding: var(--space-2) var(--space-3);
+  border-top: var(--border-ink);
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
 }
 
 .stage--preparing .stage__art img {
@@ -1587,43 +1614,40 @@ footer span:first-child {
 /* Em telas amplas, cada estado de criação cabe no palco inicial. Em zoom alto,
    a media query deixa de valer e a coluna volta a rolar naturalmente. */
 @media (min-width: 64rem) and (min-height: 44rem) {
-  body:has(.experience-layout) .site-shell {
+  body:has(.stage--compact-viewport) .site-shell {
     height: 100svh;
     min-height: 0;
     overflow: hidden;
   }
 
-  body:has(.experience-layout) main {
+  body:has(.stage--compact-viewport) main {
     min-height: 0;
     padding-block: clamp(0.75rem, 1.8vh, 1.25rem);
     overflow: hidden;
   }
 
-  body:has(.experience-layout) footer {
+  body:has(.stage--compact-viewport) footer {
     display: none;
   }
 
-  .experience-layout {
+  body:has(.stage--compact-viewport) .experience-layout {
     height: 100%;
     min-height: 0;
     align-items: center;
   }
 
-  .stage {
+  .stage--compact-viewport {
     display: grid;
     grid-template-rows: auto auto;
     max-height: 100%;
   }
 
-  .stage__art {
+  .stage--compact-viewport .stage__art {
     height: min(34svh, 20rem);
     aspect-ratio: auto;
   }
 
-  .stage-state--photo-selection .stage__art,
-  .stage-state--photo-preview .stage__art,
-  .stage-state--subject-confirmation .stage__art,
-  .stage-state--pose-selection-review .stage__art {
+  .stage--compact-viewport.stage-state--photo-selection .stage__art {
     height: min(19svh, 11rem);
   }
 

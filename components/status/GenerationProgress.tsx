@@ -18,7 +18,7 @@ export function GenerationProgress({ progress }: { progress: GenerationProgressM
     <div className="generation-progress">
       <div className="generation-progress__heading">
         <span>{progress.label}</span>
-        <strong>{elapsedMs === undefined ? `${progress.percent}%` : formatElapsed(elapsedMs)}</strong>
+        <strong>{progress.percent}%</strong>
       </div>
       <div
         className="generation-progress__track"
@@ -31,7 +31,11 @@ export function GenerationProgress({ progress }: { progress: GenerationProgressM
       >
         <span style={{ "--progress-scale": progress.percent / 100 } as CSSProperties} />
       </div>
-      <small>{elapsedMs === undefined ? "Avanço confirmado pelo Puleiro." : "Tempo decorrido ao vivo. A previsão aparece quando houver histórico suficiente."}</small>
+      <small>
+        {elapsedMs === undefined
+          ? "Avanço confirmado pelo Puleiro."
+          : `${formatElapsed(elapsedMs)} decorridos · percentual baseado nos marcos confirmados.`}
+      </small>
     </div>
   );
 }

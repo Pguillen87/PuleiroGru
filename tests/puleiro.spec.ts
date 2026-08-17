@@ -75,10 +75,25 @@ for (const mimeType of ["image/jpeg", "image/png", "image/webp"]) {
   test(`aceita e mostra prévia de ${mimeType}`, async ({ page }) => {
     await page.goto("/criar");
     await selectPhoto(page, mimeType);
-    await expect(page.locator(".stage__art img")).toHaveAttribute("src", /^blob:/);
+    await expect(page.locator(".photo-preview-card img")).toHaveAttribute("src", /^blob:/);
+    await expect(page.locator(".stage__art img")).toHaveAttribute("src", "/assets/puleiro-entry.jpg");
     await expect(page.getByRole("button", { name: "Usar esta foto" })).toBeVisible();
   });
 }
+
+test("preserva o portão inteiro e libera rolagem nas confirmações longas", async ({ page }) => {
+  await page.setViewportSize({ width: 1213, height: 732 });
+  await page.goto("/criar");
+  expect(await page.locator(".stage__art img").evaluate((image) => getComputedStyle(image).objectFit)).toBe("contain");
+
+  await selectPhoto(page);
+  await page.getByRole("button", { name: "Usar esta foto" }).click();
+  await expect(page.getByRole("heading", { name: "O que deve virar mascote?" })).toBeVisible();
+  expect(await page.locator("body").evaluate(() => document.documentElement.scrollHeight > window.innerHeight)).toBeTruthy();
+  await page.getByRole("radio", { name: /Pessoa/ }).check();
+  await page.getByRole("button", { name: "Confirmar e começar" }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole("button", { name: "Confirmar e começar" })).toBeVisible();
+});
 
 test("rejeita somente um arquivo que não é imagem", async ({ page }) => {
   await page.goto("/criar");
@@ -287,6 +302,7 @@ test("mostra somente progresso de nascimento confirmado pelo backend", async ({ 
 
   await page.goto("/criar");
   await expect(page.getByRole("progressbar", { name: "Mascote mestre em criação" })).toHaveAttribute("aria-valuenow", "75");
+  await expect(page.locator(".generation-progress__heading strong")).toHaveText("75%");
   await expect(page.locator(".stage-progress-seal")).toHaveText("75%");
   await expect(page.locator(".egg-crack")).toHaveCount(2);
 });

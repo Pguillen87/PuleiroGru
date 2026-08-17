@@ -98,11 +98,12 @@ export function PuleiroStage({ state, children, artwork, revealing = false, onAr
   const image = artwork ?? images[state];
   const preparing = ["uploading", "creating-job", "preparing", "registered-safe", "generating-poses"].includes(state);
   const revealed = ["master-ready", "master-approved", "master-rejected", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "pose-set-ready", "saving-library", "code-ready"].includes(state);
+  const compactViewport = ["entry", "photo-selection", "uploading", "creating-job", "preparing", "registered-safe", "master-ready", "master-rejected", "generating-poses", "saving-library", "code-ready"].includes(state);
 
   return (
     <section
       id="puleiro-stage"
-      className={`stage stage--${preparing ? "preparing" : revealed ? "revealed" : state} stage-state--${state}${state === "generating-poses" ? " stage--master-reference" : ""}`}
+      className={`stage stage--${preparing ? "preparing" : revealed ? "revealed" : state} stage-state--${state}${compactViewport ? " stage--compact-viewport" : ""}${state === "generating-poses" ? " stage--master-reference" : ""}`}
       aria-labelledby="state-title"
     >
       <div className="stage__art">

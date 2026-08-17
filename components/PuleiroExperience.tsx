@@ -33,7 +33,14 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
   const stageContent = {
     entry: <EntryStage onStart={flow.openSelection} />,
     "photo-selection": <PhotoSelectionStage maxUploadBytes={config.maxUploadBytes} onSelect={flow.selectPhoto} />,
-    "photo-preview": <PhotoPreviewStage onConfirm={flow.confirmPhoto} onReplace={flow.changePhoto} onRemove={flow.changePhoto} />,
+    "photo-preview": flow.photoUrl ? (
+      <PhotoPreviewStage
+        photoUrl={flow.photoUrl}
+        onConfirm={flow.confirmPhoto}
+        onReplace={flow.changePhoto}
+        onRemove={flow.changePhoto}
+      />
+    ) : <PhotoSelectionStage maxUploadBytes={config.maxUploadBytes} onSelect={flow.selectPhoto} />,
     "subject-confirmation": <SubjectConfirmationStage onConfirm={flow.confirmSubject} onBack={flow.changePhoto} />,
     uploading: <PreparingStage title="Enviando sua foto…" message="Atravessando o portão do Puleiro…" progress={flow.progress} />,
     "creating-job": <PreparingStage title="Abrindo o ovo" message="Criando o pedido de nascimento…" progress={flow.progress} />,
@@ -71,9 +78,7 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
     "recoverable-error": <ErrorStage message={flow.errorMessage} canRetry={!isPhotoValidationError(flow.errorCode)} onRetry={flow.startGeneration} onChange={flow.changePhoto} />,
   }[flow.state];
 
-  const artwork = flow.state === "photo-preview" && flow.photoUrl
-    ? { src: flow.photoUrl, alt: "Prévia da fotografia do pet escolhida para criar o mascote." }
-    : flow.masterUrl && ["master-ready", "master-approved", "master-rejected", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "generating-poses", "pose-set-ready", "saving-library", "code-ready"].includes(flow.state)
+  const artwork = flow.masterUrl && ["master-ready", "master-approved", "master-rejected", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "generating-poses", "pose-set-ready", "saving-library", "code-ready"].includes(flow.state)
       ? { src: flow.masterUrl, alt: "Mascote mestre criado a partir da fotografia enviada." }
       : undefined;
 

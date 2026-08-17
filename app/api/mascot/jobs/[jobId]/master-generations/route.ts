@@ -7,7 +7,8 @@ import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import { saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
 import { createClient } from "@/lib/supabase/server";
 import { recordGenerationRequested } from "@/lib/mascot-generation/telemetry-store";
-import { createTraceContext, traceResponse, type MascotTraceContext } from "@/lib/observability/mascot-trace";
+import { createTraceContext, mascotLog, traceResponse, type MascotTraceContext } from "@/lib/observability/mascot-trace";
+import { ModalProviderError } from "@/lib/mascot-generation/modal-provider";
 import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
 
 export const runtime = "nodejs";
@@ -35,7 +36,17 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     const responseTrace = job.operationId ? { ...trace, operationId: job.operationId } : trace;
     return traceResponse(NextResponse.json({ job }, { status: 202 }), responseTrace, job.requestId);
   } catch (error) {
-    console.error("mascot_master_generation_start_failed", { jobId, error: error instanceof Error ? error.name : "unknown" });
+    const modalError = error instanceof ModalProviderError ? error : undefined;
+    mascotLog("master_generation_start_failed", {
+      result: "failed",
+      puleiroTraceId: trace?.puleiroTraceId,
+      attemptId: trace?.attemptId,
+      operationId: trace?.operationId,
+      requestId: trace?.requestId,
+      jobId,
+      safeErrorCode: modalError?.code ?? (error instanceof Error ? error.name : "UNKNOWN"),
+      httpStatus: modalError?.status ?? 503,
+    });
     return integrationErrorResponse(error, "MASTER_GENERATION_FAILED", "Não foi possível iniciar o nascimento agora.", trace);
   }
 }

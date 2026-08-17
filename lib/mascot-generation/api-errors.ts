@@ -24,6 +24,12 @@ export function integrationErrorResponse(
     const safeMessages: Record<string, string> = {
       GENERATION_DISABLED: "A geração real ainda não foi autorizada.",
       POSE_GENERATION_DISABLED: "A criação de poses ainda não está disponível.",
+      RATE_LIMITED: "O limite temporário de testes deste ambiente foi atingido. Tente novamente mais tarde.",
+      COST_LIMIT_REACHED: "O limite temporário de testes deste ambiente foi atingido. Tente novamente mais tarde.",
+      MASTER_CACHE_UNAVAILABLE: "O Puleiro está preparando a oficina de geração. Tente novamente em instantes.",
+      MASTER_AUTHORIZATION_UNAVAILABLE: "O Puleiro não conseguiu reservar este nascimento agora. Tente novamente em instantes.",
+      MASTER_WORKER_ENQUEUE_FAILED: "A oficina de geração não respondeu. Tente novamente em instantes.",
+      MASTER_WORKER_RECORD_UNAVAILABLE: "O nascimento foi iniciado, mas ainda não pôde ser confirmado. Aguarde um instante e atualize a página.",
       JOB_NOT_FOUND: "Nascimento não encontrado.",
       ATTEMPT_MISMATCH: "Esta tentativa não pertence à sessão atual.",
     };

@@ -173,7 +173,9 @@ function isFlatBackgroundPixel(data: Buffer, offset: number, color: [number, num
 }
 
 function isTechnicalPixel(data: Buffer, offset: number) {
-  if (data[offset + 3] === 0) return true;
+  // Transparent edges are valid output from the Modal post-processor. They are
+  // not the opaque checkerboard background this normalizer removes.
+  if (data[offset + 3] === 0) return false;
   const red = data[offset];
   const green = data[offset + 1];
   const blue = data[offset + 2];

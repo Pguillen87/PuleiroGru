@@ -61,7 +61,7 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
       />
     ),
     "master-ready": flow.revealComplete
-      ? <MasterDecisionStage mode="ready" position={flow.masterPosition} errorMessage={flow.errorMessage} onAccept={flow.acceptMaster} onNext={flow.nextMaster} />
+      ? <MasterDecisionStage mode="ready" position={flow.masterPosition} errorMessage={flow.errorMessage} onAccept={flow.acceptMaster} onNext={flow.nextMaster} onReloadImage={flow.retryMasterImage} />
       : <PreparingStage title="O nascimento começou" message="O palco está revelando seu mascote." />,
     "master-approved": <MasterDecisionStage mode="approved" onAccept={flow.acceptMaster} onNext={flow.nextMaster} />,
     "master-rejected": <MasterDecisionStage mode="ready" position={flow.masterPosition} onAccept={flow.acceptMaster} onNext={flow.nextMaster} />,
@@ -93,7 +93,7 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
             state={flow.state}
             artwork={artwork}
             revealing={flow.state === "master-ready" && !flow.revealComplete}
-            onArtworkError={flow.masterUrl ? flow.reportMasterImageError : undefined}
+            onArtworkError={flow.state === "master-ready" && flow.masterUrl ? flow.reportMasterImageError : undefined}
             progress={flow.progress}
           >
             {stageContent}

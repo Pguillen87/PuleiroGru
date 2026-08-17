@@ -26,6 +26,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   const [subjectIdentity, setSubjectIdentity] = useState<SubjectIdentity>();
   const [poseChoices, setPoseChoices] = useState<PoseChoices>(DEFAULT_POSE_CHOICES);
   const [masterIndex, setMasterIndex] = useState(0);
+  const [masterImageVersion, setMasterImageVersion] = useState(0);
   const [statusMessage, setStatusMessage] = useState("Preparando o nascimento…");
   const [errorMessage, setErrorMessage] = useState("");
   const [errorCode, setErrorCode] = useState("");
@@ -120,6 +121,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setPhotoUrl("");
     setJob(undefined);
     setMasterIndex(0);
+    setMasterImageVersion(0);
     setSubjectIdentity(undefined);
     setPoseChoices(DEFAULT_POSE_CHOICES);
     setLibraryItem(undefined);
@@ -136,6 +138,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setJob(undefined);
     setSubjectIdentity(undefined);
     setMasterIndex(0);
+    setMasterImageVersion(0);
     setPoseChoices(DEFAULT_POSE_CHOICES);
     setLibraryItem(undefined);
     setErrorMessage("");
@@ -163,6 +166,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     if (result.status !== "awaiting_master_approval") throw new Error("O nascimento retornou em um estado inesperado.");
     if (result.masters.length === 0) throw new Error("O nascimento terminou, mas as opções ainda não estão disponíveis.");
     setMasterIndex(0);
+    setMasterImageVersion(0);
     setState("master-ready");
     finishReveal();
   }, [finishReveal]);
@@ -320,13 +324,24 @@ export function useMascotGenerationFlow(config: FlowConfig) {
 
   const nextMaster = useCallback(() => {
     if (!job?.masters.length) return;
+    setErrorMessage("");
+    setMasterImageVersion(0);
     setMasterIndex((current) => (current + 1) % job.masters.length);
   }, [job]);
+
+  const retryMasterImage = useCallback(() => {
+    setErrorMessage("");
+    setMasterImageVersion((current) => current + 1);
+  }, []);
+
+  const masterUrl = activeMaster?.imageUrl
+    ? `${activeMaster.imageUrl}${activeMaster.imageUrl.includes("?") ? "&" : "?"}preview=${masterImageVersion}`
+    : "";
 
   return useMemo(() => ({
     state,
     photoUrl,
-    masterUrl: activeMaster?.imageUrl ?? "",
+    masterUrl,
     masterPosition: activeMaster ? `${masterIndex + 1} de ${job?.masters.length ?? 1}` : "",
     statusMessage,
     progress,
@@ -342,9 +357,11 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     startGeneration,
     startRegisteredGeneration,
     reportMasterImageError: () => {
-      setErrorMessage("O mascote foi criado, mas a imagem não pôde ser carregada.");
-      setState("recoverable-error");
+      setErrorMessage("O mascote foi criado, mas a prévia não carregou. Seu nascimento continua salvo; recarregue a imagem.");
+      setRevealComplete(true);
+      setState("master-ready");
     },
+    retryMasterImage,
     acceptMaster,
     nextMaster,
     subjectIdentity,
@@ -360,7 +377,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     continuePoseSelection,
     backPoseSelection,
     generatePoseSet,
-  }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorCode, errorMessage, finishLibrary, generatePoseSet, job, libraryItem, masterIndex, nextMaster, photoUrl, poseChoices, progress, revealComplete, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
+  }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorCode, errorMessage, finishLibrary, generatePoseSet, job, libraryItem, masterIndex, masterUrl, nextMaster, photoUrl, poseChoices, progress, revealComplete, retryMasterImage, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
 }
 
 function generationProgress(state: PuleiroState, job?: GenerationJob, startedAt?: number): GenerationProgressModel | undefined {

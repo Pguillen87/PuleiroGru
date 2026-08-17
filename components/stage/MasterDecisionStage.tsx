@@ -6,6 +6,7 @@ type MasterDecisionStageProps = {
   position?: string;
   onAccept: () => void;
   onNext: () => void;
+  onReloadImage?: () => void;
   errorMessage?: string;
 };
 
@@ -24,7 +25,10 @@ export function MasterDecisionStage(props: MasterDecisionStageProps) {
       <h2 id="state-title">Seu mascote chegou!</h2>
       <StatusMessage title="Três opções, uma única geração" detail="Veja as opções já criadas e escolha seu mascote mestre sem iniciar outro custo." />
       {props.errorMessage && (
-        <p className="stage-error" role="alert">{props.errorMessage}</p>
+        <>
+          <p className="stage-error" role="alert">{props.errorMessage}</p>
+          {props.onReloadImage && <StageButton tone="secondary" onClick={props.onReloadImage}>Recarregar imagem</StageButton>}
+        </>
       )}
       <div className="stage-actions" aria-label="Escolha do mascote">
         <StageButton onClick={props.onAccept}>Gostei deste</StageButton>

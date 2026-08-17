@@ -26,6 +26,21 @@ describe("prepareMascotDisplayAsset", () => {
     expect(Buffer.from(result.bytes)).toEqual(source);
   });
 
+  it("mantém intacto um PNG transparente já preparado pelo Modal", async () => {
+    const source = await sharp({
+      create: { width: 100, height: 120, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    }).composite([{
+      input: Buffer.from('<svg width="60" height="90" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="4" width="52" height="82" rx="10" fill="#c91f37"/></svg>'),
+      left: 20,
+      top: 15,
+    }]).png().toBuffer();
+
+    const result = await prepareMascotDisplayAsset({ bytes: new Uint8Array(source), contentType: "image/png" });
+
+    expect(result.contentType).toBe("image/png");
+    expect(Buffer.from(result.bytes)).toEqual(source);
+  });
+
   it("gera uma miniatura WebP limitada para a biblioteca", async () => {
     const source = await sharp({
       create: { width: 1200, height: 1600, channels: 3, background: "#efe1bd" },

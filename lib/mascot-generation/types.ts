@@ -49,6 +49,7 @@ export interface MascotLibraryItem {
   masterId: string;
   poses: GeneratedPose[];
   createdAt: string;
+  isFavorite: boolean;
 }
 
 export interface GenerationJob {

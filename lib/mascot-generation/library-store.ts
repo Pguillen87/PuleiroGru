@@ -12,6 +12,7 @@ type LibraryRow = {
   mascot_code: string;
   pose_snapshot: GeneratedPose[];
   created_at: string;
+  is_favorite: boolean;
 };
 
 export class MascotLibraryStoreError extends Error {
@@ -23,7 +24,7 @@ export class MascotLibraryStoreError extends Error {
 export async function saveLibraryItem(
   client: SupabaseClient,
   userId: string,
-  item: Omit<MascotLibraryItem, "id" | "mascotCode" | "createdAt">,
+  item: Omit<MascotLibraryItem, "id" | "mascotCode" | "createdAt" | "isFavorite">,
 ) {
   const existing = await findLibraryItemByJob(client, userId, item.jobId);
   if (existing) return existing;
@@ -58,6 +59,22 @@ export async function findLibraryItem(client: SupabaseClient, userId: string, it
   return data ? toLibraryItem(data) : null;
 }
 
+export async function setLibraryItemFavorite(
+  client: SupabaseClient,
+  userId: string,
+  itemId: string,
+  isFavorite: boolean,
+) {
+  const { data, error } = await client.from("mascot_library_items")
+    .update({ is_favorite: isFavorite })
+    .eq("user_id", userId)
+    .eq("id", itemId)
+    .select("*")
+    .maybeSingle<LibraryRow>();
+  if (error) throw new MascotLibraryStoreError();
+  return data ? toLibraryItem(data) : null;
+}
+
 export async function listLibraryItems(client: SupabaseClient, userId: string) {
   const { data, error } = await client.from("mascot_library_items")
     .select("*").eq("user_id", userId).order("created_at", { ascending: false }).returns<LibraryRow[]>();
@@ -74,6 +91,7 @@ function toLibraryItem(row: LibraryRow): MascotLibraryItem {
     masterId: row.master_id,
     poses: row.pose_snapshot,
     createdAt: row.created_at,
+    isFavorite: row.is_favorite,
   };
 }
 

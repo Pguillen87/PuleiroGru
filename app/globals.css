@@ -81,6 +81,24 @@ FORM: sistema responsivo canônico do Tablet aprovado no Stitch, sem nova direç
   font-size: 0.875rem;
 }
 
+.account-gate__remember {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.account-gate__remember input { width: 1.1rem; min-height: 1.1rem; accent-color: var(--color-editorial-red); }
+
+.account-gate__session-note {
+  margin: var(--space-4) 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 .account-gate__switches {
   display: flex;
   flex-wrap: wrap;

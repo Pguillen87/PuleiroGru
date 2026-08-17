@@ -6,6 +6,11 @@ import { supabasePublicConfig } from "./config";
 export function createClient() {
   const { url, anonKey } = supabasePublicConfig();
   return createBrowserClient(url, anonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
     cookieOptions: {
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",

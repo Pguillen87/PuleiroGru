@@ -1,29 +1,14 @@
 "use client";
 
-import {
-  createContext,
-  FormEvent,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { StageButton } from "@/components/actions/StageButton";
 import { PuleiroWordmark } from "@/components/brand/PuleiroWordmark";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { defaultPersistentSessionPreference, saveSessionPreference, shouldEndSessionAfterBrowserClose } from "@/lib/auth/session-preference";
 
 type AccountMode = "login" | "signup" | "recovery";
 type GateStatus = "checking" | "signed-out" | "signed-in";
-type AuthActions = { signOut?: () => Promise<void> };
-
-const AuthActionsContext = createContext<AuthActions>({});
-
-export function usePuleiroAuth() {
-  return useContext(AuthActionsContext);
-}
-
 export function AccountGate({ required, children }: { required: boolean; children: React.ReactNode }) {
   const configured = isSupabaseConfigured();
   const supabase = useMemo(
@@ -45,8 +30,17 @@ export function AccountGate({ required, children }: { required: boolean; childre
     let active = true;
     void supabase.auth
       .getUser()
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (!active) return;
+        if (!error && data.user && shouldEndSessionAfterBrowserClose()) {
+          await supabase.auth.signOut();
+          if (active) {
+            setStatus("signed-out");
+            setMessage("Sua sessão neste navegador terminou. Entre novamente para continuar.");
+          }
+          return;
+        }
+        if (!error && data.user) defaultPersistentSessionPreference();
         setStatus(!error && data.user ? "signed-in" : "signed-out");
         setMessage(
           !error && data.user
@@ -85,23 +79,12 @@ export function AccountGate({ required, children }: { required: boolean; childre
     return () => window.removeEventListener("puleiro:auth-required", requireAuthentication);
   }, [required]);
 
-  async function signOut() {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-    setStatus("signed-out");
-    setMessage("Você saiu do Puleiro. Entre novamente para retomar.");
-  }
-
   if (status === "checking") return <AccountStatus message={message} />;
   if (status === "signed-out" && !configured) return <AccountStatus message={message} />;
   if (status === "signed-out") {
     return <AccountForm initialMessage={message} onSignedIn={() => setStatus("signed-in")} />;
   }
-  return (
-    <AuthActionsContext.Provider value={{ signOut: required ? signOut : undefined }}>
-      {children}
-    </AuthActionsContext.Provider>
-  );
+  return children;
 }
 
 function AccountStatus({ message }: { message: string }) {
@@ -121,6 +104,7 @@ function AccountForm({ initialMessage, onSignedIn }: { initialMessage: string; o
   const [mode, setMode] = useState<AccountMode>("login");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState(initialMessage);
+  const [rememberSession, setRememberSession] = useState(true);
   const titleRef = useRef<HTMLHeadingElement>(null);
 
   function switchMode(nextMode: AccountMode) {
@@ -141,6 +125,7 @@ function AccountForm({ initialMessage, onSignedIn }: { initialMessage: string; o
       if (mode === "signup") return await signUp(email, password);
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
+      saveSessionPreference(rememberSession);
       setFeedback("Entrada confirmada.");
       onSignedIn();
       window.requestAnimationFrame(() => document.querySelector<HTMLElement>("#puleiro-main-title")?.focus());
@@ -159,6 +144,7 @@ function AccountForm({ initialMessage, onSignedIn }: { initialMessage: string; o
     });
     if (error) throw error;
     if (data.session) {
+      saveSessionPreference(rememberSession);
       onSignedIn();
       return;
     }
@@ -185,14 +171,16 @@ function AccountForm({ initialMessage, onSignedIn }: { initialMessage: string; o
       <p>{modeInstruction(mode)}</p>
       <form onSubmit={submit}>
         <label htmlFor="puleiro-email">E-mail</label>
-        <input id="puleiro-email" name="email" type="email" autoComplete="email" autoFocus required />
+        <input id="puleiro-email" name="email" type="email" autoComplete="username" autoFocus required />
         {mode !== "recovery" && <>
           <label htmlFor="puleiro-password">Senha</label>
           <input id="puleiro-password" name="password" type="password" minLength={6} autoComplete={mode === "signup" ? "new-password" : "current-password"} required />
           {mode === "signup" && <p className="account-gate__availability">Use pelo menos 6 caracteres.</p>}
+          <label className="account-gate__remember"><input type="checkbox" checked={rememberSession} onChange={(event) => setRememberSession(event.target.checked)} /> <span>Lembrar meu acesso neste dispositivo</span></label>
         </>}
         <StageButton type="submit" disabled={busy}>{busy ? "Aguarde…" : actionLabel(mode)}</StageButton>
       </form>
+      <p className="account-gate__session-note">O Puleiro não salva sua senha. Marcado, o acesso continua neste aparelho; desmarcado, ele termina ao fechar o navegador.</p>
       <p role="status" aria-live="polite" aria-atomic="true">{feedback}</p>
       <div className="account-gate__switches" role="group" aria-label="Opções de acesso">
         {mode !== "login" && <button type="button" onClick={() => switchMode("login")}>Já tenho conta</button>}

@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { PuleiroWordmark } from "@/components/brand/PuleiroWordmark";
-import { usePuleiroAuth } from "@/components/auth/AccountGate";
+import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { clearSessionPreference, defaultPersistentSessionPreference, shouldEndSessionAfterBrowserClose } from "@/lib/auth/session-preference";
 
 type HeaderProps = { onUnavailableNavigation?: (destination: string) => void };
 
@@ -14,7 +17,42 @@ const destinations = [
 
 export function Header({ onUnavailableNavigation }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { signOut } = usePuleiroAuth();
+  const configured = isSupabaseConfigured();
+  const supabase = useMemo(() => configured ? createClient() : null, [configured]);
+  const router = useRouter();
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    if (!supabase) return;
+    let active = true;
+    void supabase.auth.getUser().then(async ({ data, error }) => {
+      if (!active) return;
+      if (!error && data.user && shouldEndSessionAfterBrowserClose()) {
+        await supabase.auth.signOut();
+        if (active) setSignedIn(false);
+        return;
+      }
+      if (!error && data.user) defaultPersistentSessionPreference();
+      setSignedIn(!error && Boolean(data.user));
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (active) setSignedIn(Boolean(session?.user));
+    });
+    return () => {
+      active = false;
+      data.subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  async function signOut() {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    clearSessionPreference();
+    setMenuOpen(false);
+    setSignedIn(false);
+    router.push("/");
+    router.refresh();
+  }
 
   const destinationLinks = destinations.map((destination) => (
     <a
@@ -34,7 +72,7 @@ export function Header({ onUnavailableNavigation }: HeaderProps) {
       <PuleiroWordmark />
       <nav className="desktop-navigation" aria-label="Navegação principal">
         {destinationLinks}
-        {signOut && <button type="button" onClick={signOut}>Sair</button>}
+        {signedIn && <button type="button" onClick={() => void signOut()}>Sair</button>}
       </nav>
       <button
         className="menu-trigger"
@@ -54,7 +92,7 @@ export function Header({ onUnavailableNavigation }: HeaderProps) {
         hidden={!menuOpen}
       >
         {destinationLinks}
-        {signOut && <button type="button" onClick={signOut}>Sair</button>}
+        {signedIn && <button type="button" onClick={() => void signOut()}>Sair</button>}
       </nav>
     </header>
   );

@@ -86,12 +86,19 @@ function LibraryItem({ item, onChange }: { item: MascotLibraryItem; onChange: Di
   return <article className="library-item">
     {/* eslint-disable-next-line @next/next/no-img-element */}
     <img src={imageUrl} alt="Pose normal do mascote salvo." />
+    <button
+      type="button"
+      className="library-item__favorite"
+      aria-pressed={item.isFavorite}
+      aria-label={item.isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+      disabled={saving}
+      onClick={() => void toggleFavorite()}
+    ><span aria-hidden="true">★</span></button>
     <div className="library-item__body">
       <div className="library-item__heading"><span>Conjunto de três poses</span><strong>{item.mascotCode}</strong></div>
       <p>{formatCreatedAt(item.createdAt)}</p>
       <div className="library-item__actions">
         <button type="button" onClick={() => void copyCode()}>{copied ? "Código copiado" : "Copiar código"}</button>
-        <button type="button" aria-pressed={item.isFavorite} disabled={saving} onClick={() => void toggleFavorite()}>{item.isFavorite ? "Favorito" : "Favoritar"}</button>
         <button type="button" className="library-item__open-gru" disabled title="Disponível quando existir um pacote compatível com o aplicativo GRU.">Abrir no GRU em breve</button>
       </div>
       {actionError && <p className="library-item__error" role="alert">{actionError}</p>}

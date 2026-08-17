@@ -805,6 +805,7 @@ main {
 }
 
 .library-item {
+  position: relative;
   border: 2px solid var(--color-border);
   background: var(--color-paper-raised);
   box-shadow: 4px 4px 0 rgb(24 23 19 / 18%);
@@ -844,9 +845,31 @@ main {
 
 .library-item__actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: var(--space-2);
   margin-top: var(--space-2);
+}
+
+.library-item__favorite {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 1;
+  width: 3rem;
+  height: 3rem;
+  border: 2px solid var(--color-border);
+  border-radius: 50%;
+  background: var(--color-paper-raised);
+  color: var(--color-ink);
+  cursor: pointer;
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.library-item__favorite[aria-pressed="true"] {
+  border-color: #9b6a00;
+  background: var(--color-sun);
+  color: #332300;
 }
 
 .library-item__open-gru {

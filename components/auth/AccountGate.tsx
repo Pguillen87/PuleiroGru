@@ -81,6 +81,16 @@ export function AccountGate({ required, children }: { required: boolean; childre
     return () => window.removeEventListener("puleiro:auth-required", requireAuthentication);
   }, [required]);
 
+  useEffect(() => {
+    if (!required) return;
+    const handleSignedOut = () => {
+      setStatus("signed-out");
+      setMessage("Você saiu do Puleiro. Entre novamente para continuar.");
+    };
+    window.addEventListener("puleiro:auth-signed-out", handleSignedOut);
+    return () => window.removeEventListener("puleiro:auth-signed-out", handleSignedOut);
+  }, [required]);
+
   if (status === "checking") return <AccountStatus message={message} />;
   if (status === "signed-out" && !configured) return <AccountStatus message={message} />;
   if (status === "signed-out") {

@@ -21,6 +21,7 @@ export function Header({ onUnavailableNavigation }: HeaderProps) {
   const supabase = useMemo(() => configured ? createClient() : null, [configured]);
   const router = useRouter();
   const [signedIn, setSignedIn] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     if (!supabase) return;
@@ -45,13 +46,23 @@ export function Header({ onUnavailableNavigation }: HeaderProps) {
   }, [supabase]);
 
   async function signOut() {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-    clearSessionPreference();
-    setMenuOpen(false);
-    setSignedIn(false);
-    router.push("/");
-    router.refresh();
+    if (signingOut) return;
+    setSigningOut(true);
+
+    try {
+      await fetch("/auth/signout", { method: "POST", credentials: "same-origin" });
+    } catch {
+      // A limpeza local abaixo mantém a saída funcional se a revogação remota falhar.
+    } finally {
+      await supabase?.auth.signOut({ scope: "local" });
+      clearSessionPreference();
+      window.dispatchEvent(new Event("puleiro:auth-signed-out"));
+      setMenuOpen(false);
+      setSignedIn(false);
+      setSigningOut(false);
+      router.replace("/");
+      router.refresh();
+    }
   }
 
   const destinationLinks = destinations.map((destination) => (
@@ -72,7 +83,7 @@ export function Header({ onUnavailableNavigation }: HeaderProps) {
       <PuleiroWordmark />
       <nav className="desktop-navigation" aria-label="Navegação principal">
         {destinationLinks}
-        {signedIn && <button type="button" onClick={() => void signOut()}>Sair</button>}
+        {signedIn && <button type="button" onClick={() => void signOut()} disabled={signingOut}>{signingOut ? "Saindo…" : "Sair"}</button>}
       </nav>
       <button
         className="menu-trigger"
@@ -92,7 +103,7 @@ export function Header({ onUnavailableNavigation }: HeaderProps) {
         hidden={!menuOpen}
       >
         {destinationLinks}
-        {signedIn && <button type="button" onClick={() => void signOut()}>Sair</button>}
+        {signedIn && <button type="button" onClick={() => void signOut()} disabled={signingOut}>{signingOut ? "Saindo…" : "Sair"}</button>}
       </nav>
     </header>
   );

@@ -51,8 +51,28 @@ describe("prepareMascotDisplayAsset", () => {
     expect(decoded.data[3]).toBe(0);
     const centerAlpha = decoded.data[((200 * 320 + 160) * 4) + 3];
     expect(centerAlpha).toBe(255);
+    const bounds = alphaBounds(decoded.data, 320, 400);
+    expect(bounds.width).toBeLessThanOrEqual(144);
+    expect(bounds.height).toBeLessThanOrEqual(192);
   });
 });
+
+function alphaBounds(data: Buffer, width: number, height: number) {
+  let left = width;
+  let right = -1;
+  let top = height;
+  let bottom = -1;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (data[(y * width + x) * 4 + 3] === 0) continue;
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  return { width: right - left + 1, height: bottom - top + 1 };
+}
 
 function checkerboard(width: number, height: number) {
   const data = Buffer.alloc(width * height * 4);

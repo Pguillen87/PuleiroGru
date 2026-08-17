@@ -5,6 +5,7 @@ import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import type { PoseRole } from "@/lib/mascot-generation/types";
 import { prepareMascotDisplayAsset } from "@/lib/mascot-generation/display-asset";
+import { getCachedMascotAsset } from "@/lib/mascot-generation/asset-cache";
 
 export const runtime = "nodejs";
 const validId = (value: string) => /^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -20,13 +21,16 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
     if (!attemptId) return new NextResponse(null, { status: 404 });
     const provider = getMascotGenerationProvider();
     if (!provider.getPoseImage) return new NextResponse(null, { status: 404 });
-    const sourceImage = await provider.getPoseImage(jobId, role as PoseRole, jobIdentity(uid, attemptId));
+    const sourceImage = await getCachedMascotAsset(
+      `pose:${uid}:${attemptId}:${jobId}:${role}`,
+      () => provider.getPoseImage!(jobId, role as PoseRole, jobIdentity(uid, attemptId)),
+    );
     const image = sourceImage ? await prepareMascotDisplayAsset(sourceImage) : null;
     if (!image) return new NextResponse(null, { status: 404 });
     return new NextResponse(Buffer.from(image.bytes), {
       headers: {
         "Content-Type": image.contentType,
-        "Cache-Control": "private, max-age=86400, stale-while-revalidate=604800",
+        "Cache-Control": "private, max-age=86400, immutable",
         "X-Content-Type-Options": "nosniff",
       },
     });

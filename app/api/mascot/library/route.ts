@@ -36,7 +36,7 @@ function presentLibraryItem(item: Awaited<ReturnType<typeof listLibraryItems>>["
     ...item,
     poses: item.poses.map((pose) => ({
       ...pose,
-      imageUrl: `/api/mascot/library/${encodeURIComponent(item.id)}/pose/${encodeURIComponent(pose.role)}?variant=thumb&v=2`,
+      imageUrl: `/api/mascot/library/${encodeURIComponent(item.id)}/pose/${encodeURIComponent(pose.role)}?variant=thumb&v=4`,
     })),
   };
 }

@@ -7,6 +7,8 @@ import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import type { PoseRole } from "@/lib/mascot-generation/types";
 import { createClient } from "@/lib/supabase/server";
 import { prepareMascotDisplayAsset } from "@/lib/mascot-generation/display-asset";
+import { getCachedMascotAsset } from "@/lib/mascot-generation/asset-cache";
+import { readLibraryThumbnail, saveLibraryThumbnail } from "@/lib/mascot-generation/library-thumbnail-store";
 
 export const runtime = "nodejs";
 const validId = (value: string) => /^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -20,22 +22,32 @@ export async function GET(request: Request, context: { params: Promise<{ itemId:
     if (identity.mode !== "supabase-session") return new NextResponse(null, { status: 401 });
     const item = await findLibraryItem(await createClient(), identity.uid, itemId);
     if (!item) return new NextResponse(null, { status: 404 });
-    const sourceImage = await getMascotGenerationProvider().getPoseImage?.(
-      item.jobId,
-      role as PoseRole,
-      jobIdentity(identity.uid, item.attemptId),
-    );
+    const jobIdentityValue = jobIdentity(identity.uid, item.attemptId);
     const variant = new URL(request.url).searchParams.get("variant") === "thumb" ? "thumbnail" : "full";
+    const storedThumbnail = variant === "thumbnail"
+      ? await readLibraryThumbnail(identity.uid, item.id, role as PoseRole)
+      : null;
+    if (storedThumbnail) return imageResponse(storedThumbnail.bytes, storedThumbnail.contentType, "storage");
+    const sourceImage = await getCachedMascotAsset(
+      `pose:${identity.uid}:${item.attemptId}:${item.jobId}:${role}`,
+      () => getMascotGenerationProvider().getPoseImage?.(item.jobId, role as PoseRole, jobIdentityValue) ?? Promise.resolve(null),
+    );
     const image = sourceImage ? await prepareMascotDisplayAsset(sourceImage, variant) : null;
     if (!image) return new NextResponse(null, { status: 404 });
-    return new NextResponse(Buffer.from(image.bytes), {
-      headers: {
-        "Content-Type": image.contentType,
-        "Cache-Control": "private, max-age=86400, stale-while-revalidate=604800",
-        "X-Content-Type-Options": "nosniff",
-      },
-    });
+    if (variant === "thumbnail") await saveLibraryThumbnail(identity.uid, item.id, role as PoseRole, image.bytes);
+    return imageResponse(image.bytes, image.contentType, "generated");
   } catch (error) {
     return integrationErrorResponse(error, "LIBRARY_ASSET_READ_FAILED", "Imagem indisponível.");
   }
+}
+
+function imageResponse(bytes: Uint8Array, contentType: string, source: "storage" | "generated") {
+  return new NextResponse(Buffer.from(bytes), {
+    headers: {
+      "Content-Type": contentType,
+      "Cache-Control": "private, max-age=86400, immutable",
+      "X-Content-Type-Options": "nosniff",
+      "X-Library-Thumbnail-Source": source,
+    },
+  });
 }

@@ -3,6 +3,7 @@ import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { getAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
+import { prepareMascotDisplayAsset } from "@/lib/mascot-generation/display-asset";
 
 export const runtime = "nodejs";
 const validId = (value: string) => /^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -15,7 +16,8 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
     if (!attemptId) return new NextResponse(null, { status: 404 });
     const provider = getMascotGenerationProvider();
     if (!provider.getMasterImage) return new NextResponse(null, { status: 404 });
-    const image = await provider.getMasterImage(jobId, masterId, jobIdentity(uid, attemptId));
+    const sourceImage = await provider.getMasterImage(jobId, masterId, jobIdentity(uid, attemptId));
+    const image = sourceImage ? await prepareMascotDisplayAsset(sourceImage) : null;
     if (!image) return new NextResponse(null, { status: 404 });
     return new NextResponse(Buffer.from(image.bytes), {
       headers: {

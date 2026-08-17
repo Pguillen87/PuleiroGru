@@ -102,7 +102,7 @@ export function PuleiroStage({ state, children, artwork, revealing = false, onAr
   return (
     <section
       id="puleiro-stage"
-      className={`stage stage--${preparing ? "preparing" : revealed ? "revealed" : state}${state === "generating-poses" ? " stage--master-reference" : ""}`}
+      className={`stage stage--${preparing ? "preparing" : revealed ? "revealed" : state} stage-state--${state}${state === "generating-poses" ? " stage--master-reference" : ""}`}
       aria-labelledby="state-title"
     >
       <div className="stage__art">

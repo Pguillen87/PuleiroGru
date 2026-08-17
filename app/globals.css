@@ -358,6 +358,18 @@ main {
   background: var(--color-egg);
 }
 
+.stage-state--pose-set-ready .stage__art,
+.stage-state--saving-library .stage__art,
+.stage-state--code-ready .stage__art {
+  background: var(--color-egg);
+}
+
+.stage-state--pose-set-ready .stage__art img,
+.stage-state--saving-library .stage__art img,
+.stage-state--code-ready .stage__art img {
+  filter: drop-shadow(0.6rem 0.75rem 0.35rem rgb(45 25 18 / 24%));
+}
+
 .stage--photo-preview .stage__art {
   background: var(--color-egg);
 }

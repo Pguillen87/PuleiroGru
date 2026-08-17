@@ -20,6 +20,12 @@ describe("validateAndSanitizeImage", () => {
   it("rejeita MIME declarado diferente do conteúdo", async () => {
     const bytes = await sharp({ create: { width: 300, height: 300, channels: 3, background: "red" } }).png().toBuffer();
     const file = new File([bytes], "foto.jpg", { type: "image/jpeg" });
-    await expect(validateAndSanitizeImage(file, 2 * 1024 * 1024)).rejects.toMatchObject({ code: "INVALID_IMAGE" });
+    await expect(validateAndSanitizeImage(file, 2 * 1024 * 1024)).rejects.toMatchObject({ code: "IMAGE_FORMAT_MISMATCH" });
+  });
+
+  it("rejeita uma foto pequena antes de tentar criar o job", async () => {
+    const bytes = await sharp({ create: { width: 255, height: 300, channels: 3, background: "red" } }).jpeg().toBuffer();
+    const file = new File([bytes], "pequena.jpg", { type: "image/jpeg" });
+    await expect(validateAndSanitizeImage(file, 2 * 1024 * 1024)).rejects.toMatchObject({ code: "IMAGE_TOO_SMALL" });
   });
 });

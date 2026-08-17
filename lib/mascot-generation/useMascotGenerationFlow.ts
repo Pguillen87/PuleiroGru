@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PuleiroState } from "@/lib/puleiro-state";
 import { REDUCED_REVEAL_DURATION_MS, REVEAL_DURATION_MS } from "@/lib/puleiro-state";
-import { approveMaster, createGenerationJob, finalizeMascot, pollGenerationJob, resumeGenerationJob, startMasterGeneration, startPoseGeneration } from "./client";
+import { approveMaster, createGenerationJob, finalizeMascot, GenerationRequestError, pollGenerationJob, resumeGenerationJob, startMasterGeneration, startPoseGeneration } from "./client";
 import { DEFAULT_POSE_CHOICES, POSE_ROLE_ORDER } from "./pose-catalog";
 import type { GenerationJob, MascotLibraryItem, PoseChoices, PoseRole, SubjectIdentity } from "./types";
 
@@ -27,6 +27,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   const [masterIndex, setMasterIndex] = useState(0);
   const [statusMessage, setStatusMessage] = useState("Preparando o nascimento…");
   const [errorMessage, setErrorMessage] = useState("");
+  const [errorCode, setErrorCode] = useState("");
   const [revealComplete, setRevealComplete] = useState(false);
   const [libraryItem, setLibraryItem] = useState<MascotLibraryItem>();
   const controller = useRef<AbortController | undefined>(undefined);
@@ -44,6 +45,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     const current = new AbortController();
     controller.current = current;
     setErrorMessage("");
+    setErrorCode("");
     setState("saving-library");
     try {
       const saved = await finalizeMascot(completedJob.id, current.signal);
@@ -101,6 +103,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setPhoto(file);
     setPhotoUrl(URL.createObjectURL(file));
     setErrorMessage("");
+    setErrorCode("");
     setLibraryItem(undefined);
     newAttemptForPhoto.current = true;
     libraryAutoSaveAttempted.current = false;
@@ -133,6 +136,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setPoseChoices(DEFAULT_POSE_CHOICES);
     setLibraryItem(undefined);
     setErrorMessage("");
+    setErrorCode("");
     setRevealComplete(false);
     newAttemptForPhoto.current = true;
     libraryAutoSaveAttempted.current = false;
@@ -169,6 +173,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     const current = new AbortController();
     controller.current = current;
     setErrorMessage("");
+    setErrorCode("");
     setJob(undefined);
     setRevealComplete(false);
     setState("uploading");
@@ -192,6 +197,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
       applyJob(result);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
+      setErrorCode(error instanceof GenerationRequestError ? error.code : "CREATE_JOB_FAILED");
       setErrorMessage(error instanceof Error ? error.message : "Não conseguimos concluir este nascimento.");
       setState("recoverable-error");
     }
@@ -203,6 +209,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     const current = new AbortController();
     controller.current = current;
     setErrorMessage("");
+    setErrorCode("");
     setRevealComplete(false);
     setState("preparing");
     try {
@@ -219,6 +226,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
       applyJob(result);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
+      setErrorCode(error instanceof GenerationRequestError ? error.code : "CREATE_JOB_FAILED");
       setErrorMessage(error instanceof Error ? error.message : "Não conseguimos concluir este nascimento.");
       setState("recoverable-error");
     }
@@ -308,6 +316,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     masterPosition: activeMaster ? `${masterIndex + 1} de ${job?.masters.length ?? 1}` : "",
     statusMessage,
     errorMessage,
+    errorCode,
     revealComplete,
     openSelection: startNewMascot,
     selectPhoto,
@@ -336,7 +345,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     continuePoseSelection,
     backPoseSelection,
     generatePoseSet,
-  }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorMessage, finishLibrary, generatePoseSet, job, libraryItem, masterIndex, nextMaster, photoUrl, poseChoices, revealComplete, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
+  }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorCode, errorMessage, finishLibrary, generatePoseSet, job, libraryItem, masterIndex, nextMaster, photoUrl, poseChoices, revealComplete, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
 }
 
 function stopResume(controller: React.MutableRefObject<AbortController | undefined>) {

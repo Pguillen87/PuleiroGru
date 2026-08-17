@@ -106,7 +106,7 @@ test("API rejeita job inexistente e conteúdo incompatível com o MIME", async (
     multipart: { photo: { name: "falso.jpg", mimeType: "image/jpeg", buffer: Buffer.from("falso") }, ...humanIdentity },
   });
   expect(invalid.status()).toBe(400);
-  expect((await invalid.json()).code).toBe("INVALID_IMAGE");
+  expect((await invalid.json()).code).toBe("IMAGE_DECODE_FAILED");
 });
 
 test("falha do job preserva foto e oferece retry", async ({ page }) => {
@@ -126,6 +126,25 @@ test("falha do job preserva foto e oferece retry", async ({ page }) => {
   await page.getByRole("button", { name: "Confirmar e começar" }).click();
   await expect(page.getByRole("heading", { name: "Este nascimento precisa de outra tentativa" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Tentar novamente" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Trocar foto" })).toBeVisible();
+});
+
+test("uma foto inválida não oferece retry para o mesmo arquivo", async ({ page }) => {
+  await page.route("**/api/mascot/jobs", (route) => route.fulfill({
+    status: 400,
+    contentType: "application/json",
+    body: JSON.stringify({
+      code: "IMAGE_TOO_SMALL",
+      message: "Esta foto é pequena para criar um mascote. Escolha uma imagem com pelo menos 256 × 256 pixels.",
+    }),
+  }));
+  await page.goto("/");
+  await selectPhoto(page);
+  await page.getByRole("button", { name: "Usar esta foto" }).click();
+  await page.getByRole("radio", { name: /Pessoa/ }).check();
+  await page.getByRole("button", { name: "Confirmar e começar" }).click();
+  await expect(page.getByRole("heading", { name: "Este nascimento precisa de outra tentativa" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Tentar novamente" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Trocar foto" })).toBeVisible();
 });
 
@@ -157,6 +176,17 @@ test("ver outra opção percorre os Masters existentes sem novo job", async ({ p
   await completeFlow(page);
   await page.getByRole("button", { name: "Ver outra opção" }).click();
   await expect(page.getByText(/opção 2 de 3/)).toBeVisible();
+});
+
+test("bloqueia uma foto pequena antes da confirmação de identidade", async ({ page }) => {
+  const buffer = await sharp({
+    create: { width: 255, height: 300, channels: 3, background: { r: 116, g: 131, b: 70 } },
+  }).jpeg().toBuffer();
+  await page.goto("/");
+  await page.getByRole("button", { name: "Criar meu mascote" }).click();
+  await page.locator("#pet-photo").setInputFiles({ name: "pequena.jpg", mimeType: "image/jpeg", buffer });
+  await expect(page.locator(".field-error")).toContainText("pelo menos 256 × 256 pixels");
+  await expect(page.getByRole("heading", { name: "O que deve virar mascote?" })).toHaveCount(0);
 });
 
 test("retoma job já aprovado sem acusar ausência de Masters", async ({ page }) => {

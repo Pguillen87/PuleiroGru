@@ -68,7 +68,7 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
       : <PreparingStage title="Conferindo os três jeitos" message={flow.statusMessage} detail="As imagens estão sendo validadas antes de aparecerem no palco." />,
     "saving-library": <PreparingStage title="Guardando seu mascote" message="Preparando o bilhete de saída do Puleiro…" detail="O conjunto ficará salvo na sua biblioteca privada." />,
     "code-ready": flow.libraryItem ? <MascotCodeStage item={flow.libraryItem} onCreateAnother={flow.startNewMascot} /> : <PreparingStage title="Guardando seu mascote" message="Preparando o código do seu mascote…" />,
-    "recoverable-error": <ErrorStage message={flow.errorMessage} onRetry={flow.startGeneration} onChange={flow.changePhoto} />,
+    "recoverable-error": <ErrorStage message={flow.errorMessage} canRetry={!isPhotoValidationError(flow.errorCode)} onRetry={flow.startGeneration} onChange={flow.changePhoto} />,
   }[flow.state];
 
   const artwork = flow.state === "photo-preview" && flow.photoUrl
@@ -109,4 +109,8 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
       </footer>
     </div>
   );
+}
+
+function isPhotoValidationError(code: string) {
+  return ["INVALID_TYPE", "FILE_TOO_LARGE", "IMAGE_TOO_SMALL", "IMAGE_FORMAT_MISMATCH", "IMAGE_DECODE_FAILED"].includes(code);
 }

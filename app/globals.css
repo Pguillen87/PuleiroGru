@@ -175,6 +175,9 @@ button {
 }
 
 .wordmark {
+  display: inline-flex;
+  align-items: center;
+  min-height: 3rem;
   font-family: var(--font-display), Arial, sans-serif;
   font-size: clamp(1.05rem, 2vw, 1.45rem);
   font-weight: 800;

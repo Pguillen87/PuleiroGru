@@ -9,7 +9,7 @@ import type { GenerationJob } from "@/lib/mascot-generation/types";
 import { ImageValidationError, validateAndSanitizeImage } from "@/lib/mascot-generation/validation";
 import { parseSubjectIdentity, SubjectIdentityError } from "@/lib/mascot-generation/subject-identity";
 import { createClient } from "@/lib/supabase/server";
-import { createTraceContext, traceResponse, type MascotTraceContext } from "@/lib/observability/mascot-trace";
+import { createTraceContext, mascotLog, traceResponse, type MascotTraceContext } from "@/lib/observability/mascot-trace";
 import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
 
 export const runtime = "nodejs";
@@ -56,7 +56,17 @@ export async function POST(request: Request) {
     return traceResponse(response, trace, job.requestId);
   } catch (error) {
     if (error instanceof ImageValidationError || error instanceof SubjectIdentityError) {
-      return NextResponse.json({ message: error.message, code: error.code }, { status: 400 });
+      mascotLog("photo_validation_rejected", {
+        result: "rejected",
+        puleiroTraceId: trace?.puleiroTraceId,
+        attemptId: trace?.attemptId,
+        operationId: trace?.operationId,
+        requestId: trace?.requestId,
+        safeErrorCode: error.code,
+        httpStatus: 400,
+      });
+      const response = NextResponse.json({ message: error.message, code: error.code }, { status: 400 });
+      return trace ? traceResponse(response, trace) : response;
     }
     console.error("mascot_job_create_failed", { error: error instanceof Error ? error.name : "unknown" });
     return integrationErrorResponse(error, "CREATE_JOB_FAILED", "Não conseguimos registrar este nascimento.", trace);

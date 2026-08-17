@@ -1,4 +1,5 @@
 export const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+export const MIN_IMAGE_DIMENSION = 256;
 
 export type AcceptedImageType = (typeof ACCEPTED_IMAGE_TYPES)[number];
 

@@ -2,7 +2,7 @@
 
 import { useRef, useState, type DragEvent } from "react";
 import { StageButton } from "@/components/actions/StageButton";
-import { ACCEPTED_IMAGE_TYPES } from "@/lib/mascot-generation/types";
+import { ACCEPTED_IMAGE_TYPES, MIN_IMAGE_DIMENSION } from "@/lib/mascot-generation/types";
 
 type PhotoSelectionStageProps = {
   maxUploadBytes: number;
@@ -14,7 +14,7 @@ export function PhotoSelectionStage({ maxUploadBytes, onSelect }: PhotoSelection
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
 
-  const inspect = (file?: File) => {
+  const inspect = async (file?: File) => {
     setError("");
     if (!file || !ACCEPTED_IMAGE_TYPES.includes(file.type as (typeof ACCEPTED_IMAGE_TYPES)[number])) {
       setError("Escolha uma imagem JPEG, PNG ou WebP.");
@@ -24,13 +24,22 @@ export function PhotoSelectionStage({ maxUploadBytes, onSelect }: PhotoSelection
       setError(`A foto deve ter até ${Math.floor(maxUploadBytes / 1024 / 1024)} MB.`);
       return;
     }
+    const dimensions = await readImageDimensions(file);
+    if (!dimensions) {
+      setError("Não foi possível abrir esta imagem. Escolha uma foto JPEG, PNG ou WebP válida.");
+      return;
+    }
+    if (dimensions.width < MIN_IMAGE_DIMENSION || dimensions.height < MIN_IMAGE_DIMENSION) {
+      setError(`Esta foto é pequena para criar um mascote. Escolha uma imagem com pelo menos ${MIN_IMAGE_DIMENSION} × ${MIN_IMAGE_DIMENSION} pixels.`);
+      return;
+    }
     onSelect(file);
   };
 
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setIsDragging(false);
-    inspect(event.dataTransfer.files[0]);
+    void inspect(event.dataTransfer.files[0]);
   };
 
   return (
@@ -52,7 +61,11 @@ export function PhotoSelectionStage({ maxUploadBytes, onSelect }: PhotoSelection
           className="sr-only"
           type="file"
           accept={ACCEPTED_IMAGE_TYPES.join(",")}
-          onChange={(event) => inspect(event.target.files?.[0])}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            void inspect(file);
+          }}
         />
         <StageButton type="button" onClick={() => inputRef.current?.click()}>Escolher foto</StageButton>
         <span>ou arraste a imagem para este palco</span>
@@ -61,4 +74,19 @@ export function PhotoSelectionStage({ maxUploadBytes, onSelect }: PhotoSelection
       {error && <p className="field-error" role="alert">{error}</p>}
     </>
   );
+}
+
+async function readImageDimensions(file: File) {
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    const dimensions = await new Promise<{ width: number; height: number } | undefined>((resolve) => {
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => resolve(undefined);
+      image.src = url;
+    });
+    return dimensions;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }

@@ -5,7 +5,7 @@ import { StageButton } from "@/components/actions/StageButton";
 import { StatusMessage } from "@/components/status/StatusMessage";
 import type { MascotLibraryItem } from "@/lib/mascot-generation/types";
 
-export function MascotCodeStage({ item }: { item: MascotLibraryItem }) {
+export function MascotCodeStage({ item, onCreateAnother }: { item: MascotLibraryItem; onCreateAnother: () => void }) {
   const [copied, setCopied] = useState(false);
 
   async function copyCode() {
@@ -25,6 +25,7 @@ export function MascotCodeStage({ item }: { item: MascotLibraryItem }) {
       <div className="stage-actions">
         <StageButton type="button" onClick={() => void copyCode()}>{copied ? "Código copiado" : "Copiar código"}</StageButton>
         <a className="stage-button stage-button--secondary" href="/meus-mascotes">Ver meus mascotes</a>
+        <StageButton type="button" tone="secondary" onClick={onCreateAnother}>Criar outro mascote</StageButton>
       </div>
     </>
   );

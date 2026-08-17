@@ -241,6 +241,35 @@ test("conjunto pronto é guardado uma vez e recebe código da biblioteca", async
   expect(completionPosts).toBe(1);
 });
 
+test("uma nova foto não é substituída pela retomada de um mascote já concluído", async ({ page }) => {
+  await page.route("**/api/mascot/jobs/current", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        job: {
+          id: "mascote-antigo",
+          attemptId: "tentativa-antiga",
+          status: "awaiting_set_approval",
+          message: "As três poses estão prontas.",
+          generationScheduled: true,
+          masters: [{ id: "master_1", imageUrl: "/assets/puleiro-reveal.jpg" }],
+          approvedMasterId: "master_1",
+          poses: ["normal", "listening", "transcribing"].map((role) => ({ id: `pose-${role}`, role, optionId: `${role}_choice`, label: role, imageUrl: "/assets/puleiro-reveal.jpg" })),
+          ...jobIdentity,
+        },
+      }),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Criar meu mascote" }).click();
+  await page.locator("#pet-photo").setInputFiles({ name: "novo.jpg", mimeType: "image/jpeg", buffer: sourcePhoto });
+  await expect(page.getByRole("heading", { name: "Esta é a foto certa?" })).toBeVisible();
+  await page.waitForTimeout(900);
+  await expect(page.getByRole("heading", { name: "Esta é a foto certa?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Seu GRU está pronto" })).toHaveCount(0);
+});
+
 test("escolhe uma pose por função sem acionar GPU quando a flag está desligada", async ({ page }) => {
   let posePosts = 0;
   page.on("request", (request) => {

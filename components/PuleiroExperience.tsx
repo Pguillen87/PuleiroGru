@@ -67,7 +67,7 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
       ? <PoseSetReadyStage poses={flow.poses} errorMessage={flow.errorMessage} onRetrySave={flow.errorMessage ? flow.retryLibrarySave : undefined} />
       : <PreparingStage title="Conferindo os três jeitos" message={flow.statusMessage} detail="As imagens estão sendo validadas antes de aparecerem no palco." />,
     "saving-library": <PreparingStage title="Guardando seu mascote" message="Preparando o bilhete de saída do Puleiro…" detail="O conjunto ficará salvo na sua biblioteca privada." />,
-    "code-ready": flow.libraryItem ? <MascotCodeStage item={flow.libraryItem} /> : <PreparingStage title="Guardando seu mascote" message="Preparando o código do seu mascote…" />,
+    "code-ready": flow.libraryItem ? <MascotCodeStage item={flow.libraryItem} onCreateAnother={flow.startNewMascot} /> : <PreparingStage title="Guardando seu mascote" message="Preparando o código do seu mascote…" />,
     "recoverable-error": <ErrorStage message={flow.errorMessage} onRetry={flow.startGeneration} onChange={flow.changePhoto} />,
   }[flow.state];
 

@@ -30,6 +30,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   const [revealComplete, setRevealComplete] = useState(false);
   const [libraryItem, setLibraryItem] = useState<MascotLibraryItem>();
   const controller = useRef<AbortController | undefined>(undefined);
+  const resumeController = useRef<AbortController | undefined>(undefined);
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const poseOperationInFlight = useRef(false);
   const newAttemptForPhoto = useRef(false);
@@ -59,8 +60,9 @@ export function useMascotGenerationFlow(config: FlowConfig) {
 
   useEffect(() => {
     const current = new AbortController();
+    resumeController.current = current;
     void resumeGenerationJob(current.signal).then((resumed) => {
-      if (!resumed) return;
+      if (current.signal.aborted || !resumed) return;
       setJob(resumed);
       setSubjectIdentity(resumed.subjectIdentity);
       setPoseChoices(resumed.poseChoices);
@@ -80,6 +82,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
 
   useEffect(() => () => {
     controller.current?.abort();
+    resumeController.current?.abort();
     if (transitionTimer.current) clearTimeout(transitionTimer.current);
   }, []);
 
@@ -94,6 +97,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   }, [finishLibrary, job, libraryItem, state]);
 
   const selectPhoto = useCallback((file: File) => {
+    stopResume(resumeController);
     setPhoto(file);
     setPhotoUrl(URL.createObjectURL(file));
     setErrorMessage("");
@@ -105,6 +109,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
 
   const changePhoto = useCallback(() => {
     controller.current?.abort();
+    stopResume(resumeController);
     setPhoto(undefined);
     setPhotoUrl("");
     setJob(undefined);
@@ -112,6 +117,23 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setSubjectIdentity(undefined);
     setPoseChoices(DEFAULT_POSE_CHOICES);
     setLibraryItem(undefined);
+    newAttemptForPhoto.current = true;
+    libraryAutoSaveAttempted.current = false;
+    setState("photo-selection");
+  }, []);
+
+  const startNewMascot = useCallback(() => {
+    controller.current?.abort();
+    stopResume(resumeController);
+    setPhoto(undefined);
+    setPhotoUrl("");
+    setJob(undefined);
+    setSubjectIdentity(undefined);
+    setMasterIndex(0);
+    setPoseChoices(DEFAULT_POSE_CHOICES);
+    setLibraryItem(undefined);
+    setErrorMessage("");
+    setRevealComplete(false);
     newAttemptForPhoto.current = true;
     libraryAutoSaveAttempted.current = false;
     setState("photo-selection");
@@ -287,11 +309,12 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     statusMessage,
     errorMessage,
     revealComplete,
-    openSelection: () => setState("photo-selection"),
+    openSelection: startNewMascot,
     selectPhoto,
     confirmPhoto,
     confirmSubject: startGeneration,
     changePhoto,
+    startNewMascot,
     startGeneration,
     startRegisteredGeneration,
     reportMasterImageError: () => {
@@ -313,5 +336,10 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     continuePoseSelection,
     backPoseSelection,
     generatePoseSet,
-  }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorMessage, finishLibrary, generatePoseSet, job, libraryItem, masterIndex, nextMaster, photoUrl, poseChoices, revealComplete, selectPhoto, selectPose, startGeneration, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
+  }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorMessage, finishLibrary, generatePoseSet, job, libraryItem, masterIndex, nextMaster, photoUrl, poseChoices, revealComplete, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
+}
+
+function stopResume(controller: React.MutableRefObject<AbortController | undefined>) {
+  controller.current?.abort();
+  controller.current = undefined;
 }

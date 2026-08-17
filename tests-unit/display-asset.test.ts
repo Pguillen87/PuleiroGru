@@ -52,8 +52,8 @@ describe("prepareMascotDisplayAsset", () => {
     const centerAlpha = decoded.data[((200 * 320 + 160) * 4) + 3];
     expect(centerAlpha).toBe(255);
     const bounds = alphaBounds(decoded.data, 320, 400);
-    expect(bounds.width).toBeLessThanOrEqual(144);
-    expect(bounds.height).toBeLessThanOrEqual(192);
+    expect(bounds.width).toBeLessThanOrEqual(220);
+    expect(bounds.height).toBeLessThanOrEqual(300);
   });
 });
 

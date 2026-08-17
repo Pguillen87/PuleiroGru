@@ -10,8 +10,10 @@ const FLAT_BACKGROUND_THRESHOLD = 0.82;
 const FLAT_BACKGROUND_TOLERANCE = 24;
 const THUMBNAIL_WIDTH = 320;
 const THUMBNAIL_HEIGHT = 400;
-const THUMBNAIL_SUBJECT_WIDTH = 144;
-const THUMBNAIL_SUBJECT_HEIGHT = 192;
+// Keep the library card compact while giving the mascot a clear, consistent
+// optical footprint across subjects with different original dimensions.
+const THUMBNAIL_SUBJECT_WIDTH = 220;
+const THUMBNAIL_SUBJECT_HEIGHT = 300;
 const MAX_CACHE_ENTRIES = 64;
 const MAX_CACHE_BYTES = 32 * 1024 * 1024;
 const displayAssetCache = new Map<string, MasterImage>();

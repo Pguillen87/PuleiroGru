@@ -3,7 +3,7 @@ import type { PoseRole } from "./types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const BUCKET = "mascot-library-assets";
-const VERSION = "v4";
+const VERSION = "v5";
 let bucketReady: Promise<boolean> | undefined;
 
 export async function readLibraryThumbnail(userId: string, itemId: string, role: PoseRole) {

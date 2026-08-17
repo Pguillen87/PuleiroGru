@@ -112,5 +112,5 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
 }
 
 function isPhotoValidationError(code: string) {
-  return ["INVALID_TYPE", "FILE_TOO_LARGE", "IMAGE_TOO_SMALL", "IMAGE_FORMAT_MISMATCH", "IMAGE_DECODE_FAILED"].includes(code);
+  return ["INVALID_TYPE", "FILE_TOO_LARGE", "IMAGE_FORMAT_MISMATCH", "IMAGE_DECODE_FAILED"].includes(code);
 }

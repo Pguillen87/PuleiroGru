@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
-import { ACCEPTED_IMAGE_TYPES, MIN_IMAGE_DIMENSION, type AcceptedImageType } from "./types";
+import { ACCEPTED_IMAGE_TYPES, NORMALIZED_IMAGE_MIN_DIMENSION, type AcceptedImageType } from "./types";
 
 const MIME_BY_FORMAT: Record<string, AcceptedImageType | undefined> = {
   jpeg: "image/jpeg",
@@ -15,7 +15,6 @@ export class ImageValidationError extends Error {
     readonly code:
       | "INVALID_TYPE"
       | "FILE_TOO_LARGE"
-      | "IMAGE_TOO_SMALL"
       | "IMAGE_FORMAT_MISMATCH"
       | "IMAGE_DECODE_FAILED",
   ) {
@@ -45,16 +44,23 @@ export async function validateAndSanitizeImage(
     if (!decodedType || decodedType !== file.type || !metadata.width || !metadata.height) {
       throw new ImageValidationError("O tipo da foto não corresponde ao arquivo enviado. Escolha a imagem novamente.", "IMAGE_FORMAT_MISMATCH");
     }
-    if (metadata.width < MIN_IMAGE_DIMENSION || metadata.height < MIN_IMAGE_DIMENSION) {
-      throw new ImageValidationError(
-        `Esta foto é pequena para criar um mascote. Escolha uma imagem com pelo menos ${MIN_IMAGE_DIMENSION} × ${MIN_IMAGE_DIMENSION} pixels.`,
-        "IMAGE_TOO_SMALL",
-      );
-    }
+    const sourceDimensions = orientedDimensions(metadata.width, metadata.height, metadata.orientation);
+    const dimensions = normalizedImageDimensions(sourceDimensions.width, sourceDimensions.height, maxDimension);
 
     let pipeline = sharp(input, { failOn: "error" })
       .rotate()
-      .resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true });
+      .resize({ width: dimensions.width, height: dimensions.height, fit: "fill" });
+    const horizontalPadding = Math.max(0, NORMALIZED_IMAGE_MIN_DIMENSION - dimensions.width);
+    const verticalPadding = Math.max(0, NORMALIZED_IMAGE_MIN_DIMENSION - dimensions.height);
+    if (horizontalPadding || verticalPadding) {
+      pipeline = pipeline.extend({
+        left: Math.floor(horizontalPadding / 2),
+        right: Math.ceil(horizontalPadding / 2),
+        top: Math.floor(verticalPadding / 2),
+        bottom: Math.ceil(verticalPadding / 2),
+        background: { r: 247, g: 243, b: 233, alpha: 1 },
+      });
+    }
     if (decodedType === "image/jpeg") pipeline = pipeline.jpeg({ quality: 90, mozjpeg: true });
     if (decodedType === "image/png") pipeline = pipeline.png({ compressionLevel: 9 });
     if (decodedType === "image/webp") pipeline = pipeline.webp({ quality: 90 });
@@ -76,4 +82,22 @@ export async function validateAndSanitizeImage(
       "IMAGE_DECODE_FAILED",
     );
   }
+}
+
+function normalizedImageDimensions(width: number, height: number, maxDimension: number) {
+  const shortestSide = Math.min(width, height);
+  const longestSide = Math.max(width, height);
+  const enlargement = shortestSide < NORMALIZED_IMAGE_MIN_DIMENSION
+    ? NORMALIZED_IMAGE_MIN_DIMENSION / shortestSide
+    : 1;
+  const boundedScale = Math.min(enlargement, maxDimension / longestSide);
+  return {
+    width: Math.max(1, Math.round(width * boundedScale)),
+    height: Math.max(1, Math.round(height * boundedScale)),
+  };
+}
+
+function orientedDimensions(width: number, height: number, orientation?: number) {
+  const swapsAxes = orientation !== undefined && [5, 6, 7, 8].includes(orientation);
+  return swapsAxes ? { width: height, height: width } : { width, height };
 }

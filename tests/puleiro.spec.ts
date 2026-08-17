@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
@@ -66,13 +67,25 @@ for (const mimeType of ["image/jpeg", "image/png", "image/webp"]) {
   });
 }
 
-test("rejeita tipo inválido e arquivo acima do limite", async ({ page }) => {
+test("rejeita somente um arquivo que não é imagem", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Criar meu mascote" }).click();
   await page.locator("#pet-photo").setInputFiles({ name: "pet.txt", mimeType: "text/plain", buffer: Buffer.from("não é imagem") });
   await expect(page.locator(".field-error")).toContainText("JPEG, PNG ou WebP");
-  await page.locator("#pet-photo").setInputFiles({ name: "pet.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(10 * 1024 * 1024 + 1) });
-  await expect(page.locator(".field-error")).toContainText("até 10 MB");
+});
+
+test("comprime automaticamente uma imagem válida acima do limite de transporte", async ({ page }) => {
+  const pixels = randomBytes(2_048 * 2_048 * 3);
+  const largePng = await sharp(pixels, { raw: { width: 2_048, height: 2_048, channels: 3 } })
+    .png({ compressionLevel: 0, adaptiveFiltering: false })
+    .toBuffer();
+  expect(largePng.byteLength).toBeGreaterThan(10 * 1024 * 1024);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Criar meu mascote" }).click();
+  await page.locator("#pet-photo").setInputFiles({ name: "foto-grande.png", mimeType: "image/png", buffer: largePng });
+  await expect(page.getByRole("heading", { name: "Esta é a foto certa?" })).toBeVisible();
+  await expect(page.locator(".field-error")).toHaveCount(0);
 });
 
 test("permite remover e substituir antes do envio", async ({ page }) => {
@@ -134,8 +147,8 @@ test("uma foto inválida não oferece retry para o mesmo arquivo", async ({ page
     status: 400,
     contentType: "application/json",
     body: JSON.stringify({
-      code: "IMAGE_TOO_SMALL",
-      message: "Esta foto é pequena para criar um mascote. Escolha uma imagem com pelo menos 256 × 256 pixels.",
+      code: "IMAGE_DECODE_FAILED",
+      message: "Não foi possível abrir esta imagem.",
     }),
   }));
   await page.goto("/");
@@ -178,15 +191,15 @@ test("ver outra opção percorre os Masters existentes sem novo job", async ({ p
   await expect(page.getByText(/opção 2 de 3/)).toBeVisible();
 });
 
-test("bloqueia uma foto pequena antes da confirmação de identidade", async ({ page }) => {
+test("ajusta uma foto pequena e permite continuar", async ({ page }) => {
   const buffer = await sharp({
     create: { width: 255, height: 300, channels: 3, background: { r: 116, g: 131, b: 70 } },
   }).jpeg().toBuffer();
   await page.goto("/");
   await page.getByRole("button", { name: "Criar meu mascote" }).click();
   await page.locator("#pet-photo").setInputFiles({ name: "pequena.jpg", mimeType: "image/jpeg", buffer });
-  await expect(page.locator(".field-error")).toContainText("pelo menos 256 × 256 pixels");
-  await expect(page.getByRole("heading", { name: "O que deve virar mascote?" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Esta é a foto certa?" })).toBeVisible();
+  await expect(page.locator(".field-error")).toHaveCount(0);
 });
 
 test("retoma job já aprovado sem acusar ausência de Masters", async ({ page }) => {

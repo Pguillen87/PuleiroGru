@@ -23,9 +23,12 @@ describe("validateAndSanitizeImage", () => {
     await expect(validateAndSanitizeImage(file, 2 * 1024 * 1024)).rejects.toMatchObject({ code: "IMAGE_FORMAT_MISMATCH" });
   });
 
-  it("rejeita uma foto pequena antes de tentar criar o job", async () => {
+  it("amplia uma foto pequena antes de criar o job", async () => {
     const bytes = await sharp({ create: { width: 255, height: 300, channels: 3, background: "red" } }).jpeg().toBuffer();
     const file = new File([bytes], "pequena.jpg", { type: "image/jpeg" });
-    await expect(validateAndSanitizeImage(file, 2 * 1024 * 1024)).rejects.toMatchObject({ code: "IMAGE_TOO_SMALL" });
+    const result = await validateAndSanitizeImage(file, 2 * 1024 * 1024);
+    const metadata = await sharp(result.bytes).metadata();
+    expect(metadata.width).toBeGreaterThanOrEqual(256);
+    expect(metadata.height).toBeGreaterThanOrEqual(256);
   });
 });

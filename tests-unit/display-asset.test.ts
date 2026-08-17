@@ -29,7 +29,11 @@ describe("prepareMascotDisplayAsset", () => {
   it("gera uma miniatura WebP limitada para a biblioteca", async () => {
     const source = await sharp({
       create: { width: 1200, height: 1600, channels: 3, background: "#efe1bd" },
-    }).png().toBuffer();
+    }).composite([{
+      input: Buffer.from('<svg width="440" height="860" xmlns="http://www.w3.org/2000/svg"><ellipse cx="220" cy="430" rx="180" ry="390" fill="#c91f37"/></svg>'),
+      left: 380,
+      top: 370,
+    }]).png().toBuffer();
 
     const result = await prepareMascotDisplayAsset(
       { bytes: new Uint8Array(source), contentType: "image/png" },
@@ -41,6 +45,12 @@ describe("prepareMascotDisplayAsset", () => {
     expect(metadata.width).toBeLessThanOrEqual(320);
     expect(metadata.height).toBeLessThanOrEqual(400);
     expect(result.bytes.byteLength).toBeLessThan(source.byteLength);
+    const decoded = await sharp(result.bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    expect(decoded.info.width).toBe(320);
+    expect(decoded.info.height).toBe(400);
+    expect(decoded.data[3]).toBe(0);
+    const centerAlpha = decoded.data[((200 * 320 + 160) * 4) + 3];
+    expect(centerAlpha).toBe(255);
   });
 });
 

@@ -6,6 +6,12 @@ import type { MasterImage } from "./types";
 const TECHNICAL_BORDER_THRESHOLD = 0.55;
 const MIN_TECHNICAL_CHANNEL = 145;
 const MAX_CHANNEL_SPREAD = 34;
+const FLAT_BACKGROUND_THRESHOLD = 0.82;
+const FLAT_BACKGROUND_TOLERANCE = 24;
+const THUMBNAIL_WIDTH = 320;
+const THUMBNAIL_HEIGHT = 400;
+const THUMBNAIL_SUBJECT_WIDTH = 224;
+const THUMBNAIL_SUBJECT_HEIGHT = 296;
 const MAX_CACHE_ENTRIES = 64;
 const MAX_CACHE_BYTES = 32 * 1024 * 1024;
 const displayAssetCache = new Map<string, MasterImage>();
@@ -52,14 +58,23 @@ async function buildDisplayAsset(image: MasterImage, variant: DisplayAssetVarian
   const { width, height, channels } = decoded.info;
   const hasTechnicalBackground = channels === 4 && hasTechnicalBorder(decoded.data, width, height);
   if (!hasTechnicalBackground && variant === "full") return image;
+  const flatBackground = !hasTechnicalBackground ? findFlatBorderColor(decoded.data, width, height) : null;
 
-  const normalized = hasTechnicalBackground
-    ? sharp(removeConnectedTechnicalBackground(decoded.data, width, height), { raw: { width, height, channels: 4 } })
+  const normalized = hasTechnicalBackground || flatBackground
+    ? sharp(removeConnectedBackground(decoded.data, width, height, (data, offset) => hasTechnicalBackground
+      ? isTechnicalPixel(data, offset)
+      : isFlatBackgroundPixel(data, offset, flatBackground!)), { raw: { width, height, channels: 4 } })
       .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 } })
     : sharp(image.bytes, { failOn: "error" });
   if (variant === "thumbnail") {
-    const bytes = await normalized
-      .resize({ width: 320, height: 400, fit: "inside", withoutEnlargement: true })
+    const subject = await normalized
+      .resize({ width: THUMBNAIL_SUBJECT_WIDTH, height: THUMBNAIL_SUBJECT_HEIGHT, fit: "inside", withoutEnlargement: false })
+      .png()
+      .toBuffer();
+    const bytes = await sharp({
+      create: { width: THUMBNAIL_WIDTH, height: THUMBNAIL_HEIGHT, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    })
+      .composite([{ input: subject, gravity: "center" }])
       .webp({ quality: 82, alphaQuality: 90, effort: 4 })
       .toBuffer();
     return { bytes: new Uint8Array(bytes), contentType: "image/webp" };
@@ -84,7 +99,7 @@ function hasTechnicalBorder(data: Buffer, width: number, height: number) {
   return inspected > 0 && technical / inspected >= TECHNICAL_BORDER_THRESHOLD;
 }
 
-function removeConnectedTechnicalBackground(source: Buffer, width: number, height: number) {
+function removeConnectedBackground(source: Buffer, width: number, height: number, isBackgroundPixel: (data: Buffer, offset: number) => boolean) {
   const output = Buffer.from(source);
   const visited = new Uint8Array(width * height);
   const queue = new Int32Array(width * height);
@@ -92,7 +107,7 @@ function removeConnectedTechnicalBackground(source: Buffer, width: number, heigh
   let tail = 0;
   const enqueue = (x: number, y: number) => {
     const pixel = y * width + x;
-    if (visited[pixel] || !isTechnicalPixel(output, pixel * 4)) return;
+    if (visited[pixel] || !isBackgroundPixel(output, pixel * 4)) return;
     visited[pixel] = 1;
     queue[tail] = pixel;
     tail += 1;
@@ -122,6 +137,37 @@ function removeConnectedTechnicalBackground(source: Buffer, width: number, heigh
     if (y + 1 < height) enqueue(x, y + 1);
   }
   return output;
+}
+
+function findFlatBorderColor(data: Buffer, width: number, height: number) {
+  const samples: Array<[number, number, number]> = [];
+  const collect = (x: number, y: number) => {
+    const offset = pixelOffset(x, y, width);
+    if (data[offset + 3] < 245) return;
+    samples.push([data[offset], data[offset + 1], data[offset + 2]]);
+  };
+  for (let x = 0; x < width; x += 1) {
+    collect(x, 0);
+    collect(x, height - 1);
+  }
+  for (let y = 1; y < height - 1; y += 1) {
+    collect(0, y);
+    collect(width - 1, y);
+  }
+  if (samples.length === 0) return null;
+  const color = samples.reduce((total, sample) => [total[0] + sample[0], total[1] + sample[1], total[2] + sample[2]], [0, 0, 0] as [number, number, number])
+    .map((channel) => Math.round(channel / samples.length)) as [number, number, number];
+  const matching = samples.filter(([red, green, blue]) => Math.max(Math.abs(red - color[0]), Math.abs(green - color[1]), Math.abs(blue - color[2])) <= FLAT_BACKGROUND_TOLERANCE).length;
+  return matching / samples.length >= FLAT_BACKGROUND_THRESHOLD ? color : null;
+}
+
+function isFlatBackgroundPixel(data: Buffer, offset: number, color: [number, number, number]) {
+  if (data[offset + 3] === 0) return true;
+  return Math.max(
+    Math.abs(data[offset] - color[0]),
+    Math.abs(data[offset + 1] - color[1]),
+    Math.abs(data[offset + 2] - color[2]),
+  ) <= FLAT_BACKGROUND_TOLERANCE;
 }
 
 function isTechnicalPixel(data: Buffer, offset: number) {

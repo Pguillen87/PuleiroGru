@@ -269,6 +269,8 @@ test("conjunto pronto é guardado uma vez e recebe código da biblioteca", async
   await expect(page.getByRole("heading", { name: "Seu GRU está pronto" })).toBeVisible();
   await expect(page.getByText("GRU-ABCD-2345")).toBeVisible();
   expect(completionPosts).toBe(1);
+  await page.getByRole("button", { name: "Criar outro mascote" }).click();
+  await expect(page.getByRole("heading", { name: "Quem vai nascer no Puleiro?" })).toBeVisible();
 });
 
 test("uma nova foto não é substituída pela retomada de um mascote já concluído", async ({ page }) => {

@@ -19,6 +19,19 @@ export class MascotAttemptStoreError extends Error {
   }
 }
 
+const RESUMABLE_ATTEMPT_STATUSES: GenerationJobStatus[] = [
+  "registered",
+  "awaiting_generation_authorization",
+  "queued",
+  "generating_masters",
+  "awaiting_master_approval",
+  "master_approved",
+  "generating_poses",
+  "awaiting_set_approval",
+  "packaging",
+  "failed",
+];
+
 export async function findAttempt(client: SupabaseClient, userId: string, attemptId: string) {
   const { data, error } = await client.from("mascot_attempts")
     .select("*")
@@ -29,15 +42,30 @@ export async function findAttempt(client: SupabaseClient, userId: string, attemp
   return data;
 }
 
-export async function findLatestAttempt(client: SupabaseClient, userId: string) {
+export async function findLatestResumableAttempt(client: SupabaseClient, userId: string) {
   const { data, error } = await client.from("mascot_attempts")
     .select("*")
     .eq("user_id", userId)
+    .in("status", RESUMABLE_ATTEMPT_STATUSES)
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle<MascotAttempt>();
   if (error) throw new MascotAttemptStoreError();
   return data;
+}
+
+export function isResumableAttemptStatus(status: GenerationJobStatus) {
+  return RESUMABLE_ATTEMPT_STATUSES.includes(status);
+}
+
+export async function markAttemptReady(client: SupabaseClient, userId: string, attemptId: string) {
+  const { data, error } = await client.from("mascot_attempts")
+    .update({ status: "ready" satisfies GenerationJobStatus, updated_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("attempt_id", attemptId)
+    .select("id")
+    .maybeSingle<{ id: string }>();
+  if (error || !data) throw new MascotAttemptStoreError();
 }
 
 export async function reserveAttempt(client: SupabaseClient, userId: string, attemptId: string) {

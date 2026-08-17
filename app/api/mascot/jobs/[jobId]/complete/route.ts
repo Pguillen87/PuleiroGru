@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { getAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
+import { markAttemptReady } from "@/lib/mascot-generation/attempt-store";
 import { saveLibraryItem } from "@/lib/mascot-generation/library-store";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import type { GeneratedPose, PoseRole } from "@/lib/mascot-generation/types";
@@ -26,12 +27,14 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     if (!job || job.status !== "awaiting_set_approval" || !job.approvedMasterId || !hasCompletePoseSet(job.poses)) {
       return NextResponse.json({ message: "As três poses ainda não estão prontas para guardar.", code: "POSE_SET_NOT_READY" }, { status: 409 });
     }
-    const item = await saveLibraryItem(await createClient(), identity.uid, {
+    const supabase = await createClient();
+    const item = await saveLibraryItem(supabase, identity.uid, {
       jobId: job.id,
       attemptId: job.attemptId,
       masterId: job.approvedMasterId,
       poses: job.poses.map((pose) => ({ ...pose, imageUrl: "" })),
     });
+    await markAttemptReady(supabase, identity.uid, attemptId);
     return NextResponse.json({ item: presentLibraryItem(item) }, { status: 201 });
   } catch (error) {
     return integrationErrorResponse(error, "LIBRARY_SAVE_FAILED", "Não foi possível guardar este mascote agora.");

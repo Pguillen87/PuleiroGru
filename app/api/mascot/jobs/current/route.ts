@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { attemptCookie, getAttemptId, getOrCreateAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
-import { findAttempt, findLatestAttempt, saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
+import { findAttempt, findLatestResumableAttempt, isResumableAttemptStatus, saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import { createClient } from "@/lib/supabase/server";
@@ -19,8 +19,12 @@ export async function GET(request: Request) {
     if (supabase) {
       const persisted = cookieAttemptId
         ? await findAttempt(supabase, identity.uid, cookieAttemptId)
-        : await findLatestAttempt(supabase, identity.uid);
-      attemptId = persisted?.attempt_id ?? cookieAttemptId;
+        : await findLatestResumableAttempt(supabase, identity.uid);
+      attemptId = persisted && isResumableAttemptStatus(persisted.status)
+        ? persisted.attempt_id
+        : persisted
+          ? crypto.randomUUID()
+          : cookieAttemptId;
     }
 
     attemptId ??= await getOrCreateAttemptId();

@@ -732,6 +732,7 @@ main {
   color: var(--color-text-primary) !important;
   font-weight: 750;
   white-space: nowrap;
+  text-decoration: none;
 }
 
 .library-controls {

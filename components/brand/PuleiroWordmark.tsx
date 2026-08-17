@@ -1,7 +1,9 @@
+import Link from "next/link";
+
 export function PuleiroWordmark() {
   return (
-    <span className="wordmark" aria-label="Puleiro do GRU">
+    <Link className="wordmark" href="/" aria-label="Voltar à tela principal do Puleiro do GRU">
       Puleiro <span>do GRU</span>
-    </span>
+    </Link>
   );
 }

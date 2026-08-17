@@ -35,9 +35,9 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
     "photo-selection": <PhotoSelectionStage maxUploadBytes={config.maxUploadBytes} onSelect={flow.selectPhoto} />,
     "photo-preview": <PhotoPreviewStage onConfirm={flow.confirmPhoto} onReplace={flow.changePhoto} onRemove={flow.changePhoto} />,
     "subject-confirmation": <SubjectConfirmationStage onConfirm={flow.confirmSubject} onBack={flow.changePhoto} />,
-    uploading: <PreparingStage title="Enviando sua foto…" message="Atravessando o portão do Puleiro…" />,
-    "creating-job": <PreparingStage title="Abrindo o ovo" message="Criando o pedido de nascimento…" />,
-    preparing: <PreparingStage message={flow.statusMessage} />,
+    uploading: <PreparingStage title="Enviando sua foto…" message="Atravessando o portão do Puleiro…" progress={flow.progress} />,
+    "creating-job": <PreparingStage title="Abrindo o ovo" message="Criando o pedido de nascimento…" progress={flow.progress} />,
+    preparing: <PreparingStage message={flow.statusMessage} progress={flow.progress} />,
     "registered-safe": (
       <PreparingStage
         title="Nascimento guardado"
@@ -62,7 +62,7 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
     "choosing-listening": <PoseSelectionStage role="listening" category={flow.subjectIdentity?.category ?? "other"} selected={flow.poseChoices.listening} onSelect={(option) => flow.selectPose("listening", option)} onContinue={() => flow.continuePoseSelection("listening")} onBack={() => flow.backPoseSelection("listening")} />,
     "choosing-transcribing": <PoseSelectionStage role="transcribing" category={flow.subjectIdentity?.category ?? "other"} selected={flow.poseChoices.transcribing} onSelect={(option) => flow.selectPose("transcribing", option)} onContinue={() => flow.continuePoseSelection("transcribing")} onBack={() => flow.backPoseSelection("transcribing")} />,
     "pose-selection-review": <PoseSelectionReviewStage choices={flow.poseChoices} enabled={config.poseGenerationEnabled} errorMessage={flow.errorMessage} onGenerate={flow.generatePoseSet} onBack={() => flow.backPoseSelection("review")} />,
-    "generating-poses": <PreparingStage title="Experimentando os três jeitos" message={flow.statusMessage} detail="O mascote mestre continua sendo a referência de identidade." />,
+    "generating-poses": <PreparingStage title="Experimentando os três jeitos" message={flow.statusMessage} detail="O mascote mestre continua sendo a referência de identidade." progress={flow.progress} />,
     "pose-set-ready": flow.poses.length === 3
       ? <PoseSetReadyStage poses={flow.poses} errorMessage={flow.errorMessage} onRetrySave={flow.errorMessage ? flow.retryLibrarySave : undefined} />
       : <PreparingStage title="Conferindo os três jeitos" message={flow.statusMessage} detail="As imagens estão sendo validadas antes de aparecerem no palco." />,
@@ -89,6 +89,7 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
             artwork={artwork}
             revealing={flow.state === "master-ready" && !flow.revealComplete}
             onArtworkError={flow.masterUrl ? flow.reportMasterImageError : undefined}
+            progress={flow.progress}
           >
             {stageContent}
           </PuleiroStage>

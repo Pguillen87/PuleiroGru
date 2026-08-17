@@ -42,7 +42,7 @@ export function EditorialNote({ state }: { state: PuleiroState }) {
     "subject-confirmation": "A categoria confirmada protege a identidade: pessoa continua pessoa, animal preserva a espécie e objeto mantém sua natureza.",
     uploading: "A fotografia está atravessando o portão protegido da API do Puleiro.",
     "creating-job": "O pedido recebeu uma identidade própria para poder ser acompanhado com segurança.",
-    preparing: "O trabalho acontece nos bastidores. O texto informa o estágio sem inventar porcentagens.",
+    preparing: "O trabalho acontece nos bastidores. A porcentagem avança somente quando o serviço confirma um novo marco.",
     "registered-safe": "Este nascimento ficou guardado. Nada novo começa sozinho enquanto o Puleiro aguarda a próxima etapa.",
     "master-ready": "O palco desacelera. Agora existe uma única escolha: ficar com este mascote ou ver outro.",
     "master-approved": "A escolha ficou registrada para esta conta. As próximas poses pertencem a uma fase futura.",

@@ -6,6 +6,7 @@ import { REDUCED_REVEAL_DURATION_MS, REVEAL_DURATION_MS } from "@/lib/puleiro-st
 import { approveMaster, createGenerationJob, finalizeMascot, GenerationRequestError, pollGenerationJob, resumeGenerationJob, startMasterGeneration, startPoseGeneration } from "./client";
 import { DEFAULT_POSE_CHOICES, POSE_ROLE_ORDER } from "./pose-catalog";
 import type { GenerationJob, MascotLibraryItem, PoseChoices, PoseRole, SubjectIdentity } from "./types";
+import type { GenerationProgressModel } from "@/components/status/GenerationProgress";
 
 export type FlowConfig = {
   maxUploadBytes: number;
@@ -38,6 +39,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   const librarySaveInFlight = useRef(false);
   const libraryAutoSaveAttempted = useRef(false);
   const activeMaster = job?.masters[masterIndex];
+  const progress = generationProgress(state, job);
 
   const finishLibrary = useCallback(async (completedJob: GenerationJob) => {
     if (librarySaveInFlight.current) return;
@@ -180,16 +182,19 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     try {
       const created = await createGenerationJob(photo, identity, current.signal, newAttemptForPhoto.current);
       newAttemptForPhoto.current = false;
+      setJob(created);
       setState("creating-job");
       const scheduled = config.masterGenerationEnabled
         && (created.status === "registered" || created.status === "awaiting_generation_authorization")
         ? await startMasterGeneration(created.id, current.signal)
         : created;
+      setJob(scheduled);
       const result = await pollGenerationJob(scheduled, {
         intervalMs: config.pollIntervalMs,
         timeoutMs: config.timeoutMs,
         signal: current.signal,
         onProgress: (progress) => {
+          setJob(progress);
           setStatusMessage(progress.message);
           setState("preparing");
         },
@@ -214,11 +219,13 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setState("preparing");
     try {
       const scheduled = await startMasterGeneration(job.id, current.signal);
+      setJob(scheduled);
       const result = await pollGenerationJob(scheduled, {
         intervalMs: config.pollIntervalMs,
         timeoutMs: config.timeoutMs,
         signal: current.signal,
         onProgress: (progress) => {
+          setJob(progress);
           setStatusMessage(progress.message);
           setState("preparing");
         },
@@ -284,7 +291,10 @@ export function useMascotGenerationFlow(config: FlowConfig) {
         intervalMs: config.pollIntervalMs,
         timeoutMs: config.timeoutMs,
         signal: current.signal,
-        onProgress: (progress) => setStatusMessage(progress.message),
+        onProgress: (progress) => {
+          setJob(progress);
+          setStatusMessage(progress.message);
+        },
       });
       setJob(result);
       setStatusMessage(result.message);
@@ -315,6 +325,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     masterUrl: activeMaster?.imageUrl ?? "",
     masterPosition: activeMaster ? `${masterIndex + 1} de ${job?.masters.length ?? 1}` : "",
     statusMessage,
+    progress,
     errorMessage,
     errorCode,
     revealComplete,
@@ -345,7 +356,29 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     continuePoseSelection,
     backPoseSelection,
     generatePoseSet,
-  }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorCode, errorMessage, finishLibrary, generatePoseSet, job, libraryItem, masterIndex, nextMaster, photoUrl, poseChoices, revealComplete, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
+  }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorCode, errorMessage, finishLibrary, generatePoseSet, job, libraryItem, masterIndex, nextMaster, photoUrl, poseChoices, progress, revealComplete, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
+}
+
+function generationProgress(state: PuleiroState, job?: GenerationJob): GenerationProgressModel | undefined {
+  if (state === "uploading") return { kind: "birth", percent: 0, label: "Preparando a fotografia" };
+  if (state === "creating-job") return { kind: "birth", percent: 50, label: "Fotografia recebida com segurança" };
+  if (state === "preparing") {
+    const workerStarted = job?.status === "generating_masters";
+    return {
+      kind: "birth",
+      percent: workerStarted ? 75 : 50,
+      label: workerStarted ? "Mascote mestre em criação" : "Nascimento registrado",
+    };
+  }
+  if (state === "generating-poses") {
+    const completedPoses = Math.min(job?.poses?.length ?? 0, 3);
+    return {
+      kind: "poses",
+      percent: completedPoses > 0 ? Math.round((completedPoses / 3) * 100) : 25,
+      label: completedPoses > 0 ? `${completedPoses} de 3 poses verificadas` : "Operação de poses confirmada",
+    };
+  }
+  return undefined;
 }
 
 function stopResume(controller: React.MutableRefObject<AbortController | undefined>) {

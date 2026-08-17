@@ -247,10 +247,35 @@ test("retoma geração de poses por GET e preserva o Master inteiro", async ({ p
 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Experimentando os três jeitos" })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Operação de poses confirmada" })).toHaveAttribute("aria-valuenow", "25");
+  await expect(page.locator(".pose-workshop-motion li")).toHaveText(["01 Normal", "02 Ouvindo", "03 Transcrevendo"]);
   await expect(page.locator("#puleiro-stage")).toHaveClass(/stage--master-reference/);
   expect(await page.locator(".stage__art img").evaluate((image) => getComputedStyle(image).objectFit)).toBe("contain");
   expect(await page.locator(".stage__art img").evaluate((image) => getComputedStyle(image).objectPosition)).toBe("50% 50%");
   expect(posePosts).toBe(0);
+});
+
+test("mostra somente progresso de nascimento confirmado pelo backend", async ({ page }) => {
+  await page.route("**/api/mascot/jobs/current", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      job: {
+        id: "master-em-andamento",
+        attemptId: "attempt-master-em-andamento",
+        status: "generating_masters",
+        message: "Criando o mascote mestre…",
+        generationScheduled: true,
+        masters: [],
+        poses: [],
+        ...jobIdentity,
+      },
+    }),
+  }));
+
+  await page.goto("/");
+  await expect(page.getByRole("progressbar", { name: "Mascote mestre em criação" })).toHaveAttribute("aria-valuenow", "75");
+  await expect(page.locator(".stage-progress-seal")).toHaveText("75%");
+  await expect(page.locator(".egg-crack")).toHaveCount(2);
 });
 
 test("conjunto pronto é guardado uma vez e recebe código da biblioteca", async ({ page }) => {

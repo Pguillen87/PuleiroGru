@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { PuleiroState } from "@/lib/puleiro-state";
+import type { GenerationProgressModel } from "@/components/status/GenerationProgress";
 
 const images: Record<PuleiroState, { src: string; alt: string }> = {
   entry: {
@@ -90,9 +91,10 @@ type PuleiroStageProps = {
   artwork?: { src: string; alt: string };
   revealing?: boolean;
   onArtworkError?: () => void;
+  progress?: GenerationProgressModel;
 };
 
-export function PuleiroStage({ state, children, artwork, revealing = false, onArtworkError }: PuleiroStageProps) {
+export function PuleiroStage({ state, children, artwork, revealing = false, onArtworkError, progress }: PuleiroStageProps) {
   const image = artwork ?? images[state];
   const preparing = ["uploading", "creating-job", "preparing", "registered-safe", "generating-poses"].includes(state);
   const revealed = ["master-ready", "master-approved", "master-rejected", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "pose-set-ready", "saving-library", "code-ready"].includes(state);
@@ -114,6 +116,24 @@ export function PuleiroStage({ state, children, artwork, revealing = false, onAr
           onError={onArtworkError}
         />
         {preparing && <span className="egg-glow" aria-hidden="true" />}
+        {progress?.kind === "birth" && (
+          <div className={`incubation-motion incubation-motion--${progress.percent}`} aria-hidden="true">
+            <span className="egg-crack egg-crack--one" />
+            <span className="egg-crack egg-crack--two" />
+            <span className="stage-progress-seal">{progress.percent}%</span>
+          </div>
+        )}
+        {progress?.kind === "poses" && (
+          <div className="pose-workshop-motion" aria-hidden="true">
+            <span className="pose-workshop-motion__light" />
+            <ol>
+              <li><span>01</span> Normal</li>
+              <li><span>02</span> Ouvindo</li>
+              <li><span>03</span> Transcrevendo</li>
+            </ol>
+            <strong>{progress.percent}%</strong>
+          </div>
+        )}
         {revealing && (
           <div className="reveal-effects" aria-hidden="true">
             <span className="curtain curtain--left" />

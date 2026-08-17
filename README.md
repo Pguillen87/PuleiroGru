@@ -11,7 +11,7 @@ O Puleiro Web usa Supabase Auth. O BFF valida a sessão com `auth.getUser()`, de
 ## Estado seguro desta fase
 
 ```text
-foto → remoção de EXIF → tentativa RLS owner-scoped → registro Modal sem GPU → retomada
+foto → remoção de EXIF → tentativa RLS owner-scoped → registro Modal → retomada → biblioteca privada
 ```
 
 O registro não agenda GPU. `MASTER_GENERATION_ENABLED` e `POSE_GENERATION_ENABLED` permanecem `false`. Aprovar um Master não inicia poses.
@@ -30,9 +30,11 @@ npm run dev
 
 Variáveis públicas: URL e anon key do Supabase. `SUPABASE_SERVICE_ROLE_KEY` é somente servidor, não participa da sessão comum e nunca pode usar prefixo `NEXT_PUBLIC`. O provider `mock` usa a identidade local apenas fora de produção e com geração desabilitada.
 
+Ao concluir, o BFF salva o conjunto idempotentemente em uma biblioteca privada e emite um código `GRU-XXXX-XXXX`. Esse código ainda não é um código de instalação Android: pacote e manifest continuam em fase posterior. O Modal normaliza cada pose em canvas editorial opaco antes de ela aparecer como resultado final.
+
 ## Banco e RLS
 
-A migration em `supabase/migrations` cria `mascot_attempts`, restringe status, ativa RLS e limita SELECT/INSERT/UPDATE a `auth.uid() = user_id`. A aplicação ao projeto remoto deve ocorrer com Supabase CLI autenticada por Personal Access Token ou conexão de banco autorizada, seguida de `RUN_REAL_STAGING_TESTS=true npm run test:integration`. A anon key e a service role não concedem permissão de DDL.
+As migrations em `supabase/migrations` criam `mascot_attempts` e `mascot_library_items`, restringem acesso com RLS e limitam SELECT/INSERT/UPDATE a `auth.uid() = user_id`. A aplicação ao projeto remoto deve ocorrer com Supabase CLI autenticada por Personal Access Token ou conexão de banco autorizada, seguida de `RUN_REAL_STAGING_TESTS=true npm run test:integration`. A anon key e a service role não concedem permissão de DDL.
 
 ## Segurança e privacidade
 

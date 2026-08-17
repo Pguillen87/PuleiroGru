@@ -41,6 +41,16 @@ export interface GeneratedPose {
   imageUrl: string;
 }
 
+export interface MascotLibraryItem {
+  id: string;
+  mascotCode: string;
+  jobId: string;
+  attemptId: string;
+  masterId: string;
+  poses: GeneratedPose[];
+  createdAt: string;
+}
+
 export interface GenerationJob {
   id: string;
   attemptId: string;

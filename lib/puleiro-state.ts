@@ -16,6 +16,8 @@ export type PuleiroState =
   | "pose-selection-review"
   | "generating-poses"
   | "pose-set-ready"
+  | "saving-library"
+  | "code-ready"
   | "recoverable-error";
 
 export const REVEAL_DURATION_MS = 1_050;
@@ -39,5 +41,7 @@ export const stageNumber: Record<PuleiroState, string> = {
   "pose-selection-review": "05",
   "generating-poses": "05",
   "pose-set-ready": "05",
+  "saving-library": "05",
+  "code-ready": "05",
   "recoverable-error": "03",
 };

@@ -19,6 +19,8 @@ const labels: Record<PuleiroState, string> = {
   "pose-selection-review": "Poses",
   "generating-poses": "Poses",
   "pose-set-ready": "Poses",
+  "saving-library": "Biblioteca",
+  "code-ready": "Biblioteca",
   "recoverable-error": "Incubação",
 };
 
@@ -51,6 +53,8 @@ export function EditorialNote({ state }: { state: PuleiroState }) {
     "pose-selection-review": "As três decisões ficam reunidas para revisão antes de qualquer geração.",
     "generating-poses": "Exatamente três imagens são derivadas do Master aprovado, uma para cada função.",
     "pose-set-ready": "O conjunto preserva um único personagem nas funções normal, ouvindo e transcrevendo.",
+    "saving-library": "O conjunto está sendo registrado somente na biblioteca privada desta conta.",
+    "code-ready": "O código identifica este conjunto na sua biblioteca. Ele ainda não representa instalação no aplicativo.",
     "recoverable-error": "O Puleiro preserva o que já foi registrado e explica quando a fotografia precisa ser escolhida novamente.",
   }[state];
 

@@ -4,9 +4,12 @@ import { useState } from "react";
 import { PuleiroWordmark } from "@/components/brand/PuleiroWordmark";
 import { usePuleiroAuth } from "@/components/auth/AccountGate";
 
-type HeaderProps = { onUnavailableNavigation: (destination: string) => void };
+type HeaderProps = { onUnavailableNavigation?: (destination: string) => void };
 
-const destinations = ["Explorar", "Meus mascotes"] as const;
+const destinations = [
+  { label: "Explorar", href: "/" },
+  { label: "Meus mascotes", href: "/meus-mascotes" },
+] as const;
 
 export function Header({ onUnavailableNavigation }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -14,14 +17,14 @@ export function Header({ onUnavailableNavigation }: HeaderProps) {
 
   const destinationLinks = destinations.map((destination) => (
     <a
-      key={destination}
-      href="#puleiro-stage"
+      key={destination.label}
+      href={destination.href}
       onClick={() => {
         setMenuOpen(false);
-        onUnavailableNavigation(destination);
+        onUnavailableNavigation?.(destination.label);
       }}
     >
-      {destination}
+      {destination.label}
     </a>
   ));
 

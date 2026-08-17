@@ -210,6 +210,37 @@ test("retoma geração de poses por GET e preserva o Master inteiro", async ({ p
   expect(posePosts).toBe(0);
 });
 
+test("conjunto pronto é guardado uma vez e recebe código da biblioteca", async ({ page }) => {
+  let completionPosts = 0;
+  await page.route("**/api/mascot/jobs/current", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      job: {
+        id: "poses-prontas",
+        attemptId: "attempt-poses-prontas",
+        status: "awaiting_set_approval",
+        message: "As três poses estão prontas.",
+        generationScheduled: true,
+        masters: [{ id: "master_1", imageUrl: "/assets/puleiro-reveal.jpg" }],
+        approvedMasterId: "master_1",
+        poses: ["normal", "listening", "transcribing"].map((role) => ({ id: `pose-${role}`, role, optionId: `${role}_choice`, label: role, imageUrl: "/assets/puleiro-reveal.jpg" })),
+        ...jobIdentity,
+      },
+    }),
+  }));
+  await page.route("**/api/mascot/jobs/poses-prontas/complete", async (route) => {
+    completionPosts += 1;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ item: { id: "library-1", mascotCode: "GRU-ABCD-2345", jobId: "poses-prontas", attemptId: "attempt-poses-prontas", masterId: "master_1", createdAt: "2026-08-17T00:00:00Z", poses: [] } }),
+    });
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Seu GRU está pronto" })).toBeVisible();
+  await expect(page.getByText("GRU-ABCD-2345")).toBeVisible();
+  expect(completionPosts).toBe(1);
+});
+
 test("escolhe uma pose por função sem acionar GPU quando a flag está desligada", async ({ page }) => {
   let posePosts = 0;
   page.on("request", (request) => {

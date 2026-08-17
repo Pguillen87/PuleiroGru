@@ -33,14 +33,38 @@ function safeSupportMessage(message: string, supportCode?: string) {
   return supportCode ? `${message} Código de suporte: ${supportCode}.` : message;
 }
 
-export async function createGenerationJob(photo: File, subjectIdentity: SubjectIdentity, signal: AbortSignal) {
+export async function createGenerationJob(photo: File, subjectIdentity: SubjectIdentity, signal: AbortSignal, startNewAttempt = false) {
   const formData = new FormData();
   formData.set("photo", photo);
   formData.set("subjectCategory", subjectIdentity.category);
   formData.set("subjectLabel", subjectIdentity.label);
   if (subjectIdentity.species) formData.set("subjectSpecies", subjectIdentity.species);
-  const response = await fetch("/api/mascot/jobs", { method: "POST", body: formData, signal });
+  const response = await fetch("/api/mascot/jobs", {
+    method: "POST",
+    headers: startNewAttempt ? { "X-Puleiro-New-Attempt": "true" } : undefined,
+    body: formData,
+    signal,
+  });
   return await readResponse(response) as GenerationJob;
+}
+
+export async function finalizeMascot(jobId: string, signal: AbortSignal) {
+  const response = await fetch(`/api/mascot/jobs/${encodeURIComponent(jobId)}/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    signal,
+  });
+  const body = await response.json().catch(() => ({})) as { item?: import("./types").MascotLibraryItem; message?: string; code?: string; supportCode?: string };
+  if (!response.ok || !body.item) {
+    throw new GenerationRequestError(
+      safeSupportMessage(body.message ?? "Não foi possível guardar este mascote agora.", body.supportCode),
+      response.status >= 500,
+      body.code,
+      body.supportCode,
+    );
+  }
+  return body.item;
 }
 
 export async function startPoseGeneration(jobId: string, poseChoices: PoseChoices, signal: AbortSignal) {

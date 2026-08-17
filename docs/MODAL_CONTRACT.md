@@ -20,12 +20,14 @@ O BFF valida o usuário com Supabase `auth.getUser()`. O claim `sub` recebe some
 | GET | `/api/mascot/jobs/:jobId/master/:masterId` | proxy privado owner-scoped |
 | POST | `/api/mascot/jobs/:jobId/masters/:masterId/approve` | aprova sem gerar poses |
 | POST | `/api/mascot/jobs/:jobId/pose-generations` | envia uma escolha para Normal, Ouvindo e Transcrevendo; bloqueado por flag até validação |
+| POST | `/api/mascot/jobs/:jobId/complete` | valida o conjunto final e salva idempotentemente na biblioteca privada |
+| GET | `/api/mascot/library` | lista somente os mascotes da conta autenticada |
 
 Sessão ausente ou expirada retorna `401 SESSION_EXPIRED`. O BFF não expõe autorização de GPU nesta rodada.
 
 ## Persistência Supabase
 
-`mascot_attempts` relaciona `auth.users.id`, `attempt_id`, `modal_job_id`, status e Master escolhido. A constraint `unique(user_id, attempt_id)` impede duplicação; RLS limita SELECT/INSERT/UPDATE ao próprio `auth.uid()`. O fluxo comum usa a anon key com a sessão, nunca a service role.
+`mascot_attempts` relaciona `auth.users.id`, `attempt_id`, `modal_job_id`, status e Master escolhido. A constraint `unique(user_id, attempt_id)` impede duplicação; RLS limita SELECT/INSERT/UPDATE ao próprio `auth.uid()`. `mascot_library_items` guarda, por conta, a referência do conjunto final, o Master e um código não técnico único. `unique(user_id, modal_job_id)` torna a emissão idempotente. O fluxo comum usa a anon key com a sessão, nunca a service role.
 
 ## BFF → Modal v2
 
@@ -55,7 +57,7 @@ O Master aprovado é a única referência visual das três imagens. A foto origi
 
 O contrato operacional assíncrono, os IDs distribuídos, o diagnóstico do incidente de 503 e o procedimento de suporte estão em [`POSE_OPERATION_DIAGNOSTIC.md`](./POSE_OPERATION_DIAGNOSTIC.md). Um aceite de poses retorna `202`; replay preserva a primeira `operationId` e não reserva outro worker.
 
-Quando o conjunto termina, o status público inclui referências para exatamente três resultados. O Browser baixa cada imagem por `GET /api/mascot/jobs/:jobId/pose/:role`; o BFF valida sessão, attemptId e ownership e então usa o endpoint privado v2 correspondente. URLs internas e caminhos do Volume nunca chegam ao navegador.
+Quando o conjunto termina, o status público inclui referências para exatamente três resultados. O Modal normaliza a saída em canvas opaco editorial e não aceita a grade de transparência como fundo final. O Browser baixa cada imagem por `GET /api/mascot/jobs/:jobId/pose/:role`; o BFF valida sessão, attemptId e ownership e então usa o endpoint privado v2 correspondente. Depois do salvamento, a biblioteca usa rotas privadas por item, sem depender do cookie da tentativa. URLs internas e caminhos do Volume nunca chegam ao navegador.
 
 ## Compatibilidade
 

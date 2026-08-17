@@ -23,7 +23,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "Novos registros estão temporariamente pausados.", code: "REGISTRATION_DISABLED" }, { status: 409 });
     }
 
-    const attemptId = await getOrCreateAttemptId();
+    const newAttempt = request.headers.get("x-puleiro-new-attempt") === "true";
+    const attemptId = newAttempt ? crypto.randomUUID() : await getOrCreateAttemptId();
     trace = createTraceContext(attemptId, true);
     const provider = getMascotGenerationProvider();
     const supabase = identity.mode === "supabase-session" ? await createClient() : null;

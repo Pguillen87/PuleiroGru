@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PuleiroState } from "@/lib/puleiro-state";
 import { REDUCED_REVEAL_DURATION_MS, REVEAL_DURATION_MS } from "@/lib/puleiro-state";
-import { approveMaster, createGenerationJob, pollGenerationJob, resumeGenerationJob, startMasterGeneration, startPoseGeneration } from "./client";
+import { approveMaster, createGenerationJob, finalizeMascot, pollGenerationJob, resumeGenerationJob, startMasterGeneration, startPoseGeneration } from "./client";
 import { DEFAULT_POSE_CHOICES, POSE_ROLE_ORDER } from "./pose-catalog";
-import type { GenerationJob, PoseChoices, PoseRole, SubjectIdentity } from "./types";
+import type { GenerationJob, MascotLibraryItem, PoseChoices, PoseRole, SubjectIdentity } from "./types";
 
 export type FlowConfig = {
   maxUploadBytes: number;
@@ -28,10 +28,34 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   const [statusMessage, setStatusMessage] = useState("Preparando o nascimento…");
   const [errorMessage, setErrorMessage] = useState("");
   const [revealComplete, setRevealComplete] = useState(false);
+  const [libraryItem, setLibraryItem] = useState<MascotLibraryItem>();
   const controller = useRef<AbortController | undefined>(undefined);
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const poseOperationInFlight = useRef(false);
+  const newAttemptForPhoto = useRef(false);
+  const librarySaveInFlight = useRef(false);
+  const libraryAutoSaveAttempted = useRef(false);
   const activeMaster = job?.masters[masterIndex];
+
+  const finishLibrary = useCallback(async (completedJob: GenerationJob) => {
+    if (librarySaveInFlight.current) return;
+    librarySaveInFlight.current = true;
+    const current = new AbortController();
+    controller.current = current;
+    setErrorMessage("");
+    setState("saving-library");
+    try {
+      const saved = await finalizeMascot(completedJob.id, current.signal);
+      setLibraryItem(saved);
+      setState("code-ready");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setErrorMessage(error instanceof Error ? error.message : "Não foi possível guardar este mascote agora.");
+      setState("pose-set-ready");
+    } finally {
+      librarySaveInFlight.current = false;
+    }
+  }, []);
 
   useEffect(() => {
     const current = new AbortController();
@@ -63,10 +87,19 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     if (photoUrl) URL.revokeObjectURL(photoUrl);
   }, [photoUrl]);
 
+  useEffect(() => {
+    if (state !== "pose-set-ready" || !job || libraryItem || librarySaveInFlight.current || libraryAutoSaveAttempted.current) return;
+    libraryAutoSaveAttempted.current = true;
+    void finishLibrary(job);
+  }, [finishLibrary, job, libraryItem, state]);
+
   const selectPhoto = useCallback((file: File) => {
     setPhoto(file);
     setPhotoUrl(URL.createObjectURL(file));
     setErrorMessage("");
+    setLibraryItem(undefined);
+    newAttemptForPhoto.current = true;
+    libraryAutoSaveAttempted.current = false;
     setState("photo-preview");
   }, []);
 
@@ -78,6 +111,9 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setMasterIndex(0);
     setSubjectIdentity(undefined);
     setPoseChoices(DEFAULT_POSE_CHOICES);
+    setLibraryItem(undefined);
+    newAttemptForPhoto.current = true;
+    libraryAutoSaveAttempted.current = false;
     setState("photo-selection");
   }, []);
 
@@ -115,7 +151,8 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setRevealComplete(false);
     setState("uploading");
     try {
-      const created = await createGenerationJob(photo, identity, current.signal);
+      const created = await createGenerationJob(photo, identity, current.signal, newAttemptForPhoto.current);
+      newAttemptForPhoto.current = false;
       setState("creating-job");
       const scheduled = config.masterGenerationEnabled
         && (created.status === "registered" || created.status === "awaiting_generation_authorization")
@@ -266,9 +303,15 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     subjectIdentity,
     poseChoices,
     poses: job?.poses ?? [],
+    libraryItem,
+    retryLibrarySave: () => {
+      if (!job) return;
+      libraryAutoSaveAttempted.current = true;
+      void finishLibrary(job);
+    },
     selectPose,
     continuePoseSelection,
     backPoseSelection,
     generatePoseSet,
-  }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorMessage, generatePoseSet, job, masterIndex, nextMaster, photoUrl, poseChoices, revealComplete, selectPhoto, selectPose, startGeneration, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
+  }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorMessage, finishLibrary, generatePoseSet, job, libraryItem, masterIndex, nextMaster, photoUrl, poseChoices, revealComplete, selectPhoto, selectPose, startGeneration, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
 }

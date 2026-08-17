@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { pollGenerationJob } from "@/lib/mascot-generation/client";
+import { createGenerationJob, pollGenerationJob } from "@/lib/mascot-generation/client";
 import type { GenerationJob } from "@/lib/mascot-generation/types";
 
 const job: GenerationJob = {
@@ -62,5 +62,14 @@ describe("retomada durante consulta instável", () => {
         supportCode: "ABC123",
         message: expect.stringContaining("ABC123"),
       });
+  });
+
+  it("uma nova foto declara uma tentativa nova sem alterar a retomada padrão", async () => {
+    const response = new Response(JSON.stringify({ job }), { status: 201, headers: { "content-type": "application/json" } });
+    const fetchMock = vi.fn().mockResolvedValue(response);
+    vi.stubGlobal("fetch", fetchMock);
+    const photo = new File(["image"], "nova.jpg", { type: "image/jpeg" });
+    await createGenerationJob(photo, job.subjectIdentity, new AbortController().signal, true);
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({ "X-Puleiro-New-Attempt": "true" });
   });
 });

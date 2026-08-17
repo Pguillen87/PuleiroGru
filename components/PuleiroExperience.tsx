@@ -13,6 +13,7 @@ import { PuleiroStage } from "@/components/stage/PuleiroStage";
 import { PoseSelectionReviewStage, PoseSelectionStage } from "@/components/stage/PoseSelectionStage";
 import { SubjectConfirmationStage } from "@/components/stage/SubjectConfirmationStage";
 import { PoseSetReadyStage } from "@/components/stage/PoseSetReadyStage";
+import { MascotCodeStage } from "@/components/stage/MascotCodeStage";
 import { useMascotGenerationFlow, type FlowConfig } from "@/lib/mascot-generation/useMascotGenerationFlow";
 import { AccountGate } from "@/components/auth/AccountGate";
 import { StageButton } from "@/components/actions/StageButton";
@@ -63,14 +64,16 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
     "pose-selection-review": <PoseSelectionReviewStage choices={flow.poseChoices} enabled={config.poseGenerationEnabled} errorMessage={flow.errorMessage} onGenerate={flow.generatePoseSet} onBack={() => flow.backPoseSelection("review")} />,
     "generating-poses": <PreparingStage title="Experimentando os três jeitos" message={flow.statusMessage} detail="O mascote mestre continua sendo a referência de identidade." />,
     "pose-set-ready": flow.poses.length === 3
-      ? <PoseSetReadyStage poses={flow.poses} />
+      ? <PoseSetReadyStage poses={flow.poses} errorMessage={flow.errorMessage} onRetrySave={flow.errorMessage ? flow.retryLibrarySave : undefined} />
       : <PreparingStage title="Conferindo os três jeitos" message={flow.statusMessage} detail="As imagens estão sendo validadas antes de aparecerem no palco." />,
+    "saving-library": <PreparingStage title="Guardando seu mascote" message="Preparando o bilhete de saída do Puleiro…" detail="O conjunto ficará salvo na sua biblioteca privada." />,
+    "code-ready": flow.libraryItem ? <MascotCodeStage item={flow.libraryItem} /> : <PreparingStage title="Guardando seu mascote" message="Preparando o código do seu mascote…" />,
     "recoverable-error": <ErrorStage message={flow.errorMessage} onRetry={flow.startGeneration} onChange={flow.changePhoto} />,
   }[flow.state];
 
   const artwork = flow.state === "photo-preview" && flow.photoUrl
     ? { src: flow.photoUrl, alt: "Prévia da fotografia do pet escolhida para criar o mascote." }
-    : flow.masterUrl && ["master-ready", "master-approved", "master-rejected", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "generating-poses", "pose-set-ready"].includes(flow.state)
+    : flow.masterUrl && ["master-ready", "master-approved", "master-rejected", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "generating-poses", "pose-set-ready", "saving-library", "code-ready"].includes(flow.state)
       ? { src: flow.masterUrl, alt: "Mascote mestre criado a partir da fotografia enviada." }
       : undefined;
 

@@ -70,6 +70,14 @@ const images: Record<PuleiroState, { src: string; alt: string }> = {
     src: "/assets/puleiro-reveal.jpg",
     alt: "Mascote com seu conjunto de três poses concluído.",
   },
+  "saving-library": {
+    src: "/assets/puleiro-reveal.jpg",
+    alt: "Mascote concluído no celeiro enquanto sua biblioteca privada é preparada.",
+  },
+  "code-ready": {
+    src: "/assets/puleiro-reveal.jpg",
+    alt: "Mascote concluído no palco do Puleiro, pronto para sua biblioteca privada.",
+  },
   "recoverable-error": {
     src: "/assets/puleiro-preparing-canonical.jpg",
     alt: "Ovo seguro no ninho enquanto o Puleiro aguarda uma nova tentativa.",
@@ -87,7 +95,7 @@ type PuleiroStageProps = {
 export function PuleiroStage({ state, children, artwork, revealing = false, onArtworkError }: PuleiroStageProps) {
   const image = artwork ?? images[state];
   const preparing = ["uploading", "creating-job", "preparing", "registered-safe", "generating-poses"].includes(state);
-  const revealed = ["master-ready", "master-approved", "master-rejected", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "pose-set-ready"].includes(state);
+  const revealed = ["master-ready", "master-approved", "master-rejected", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "pose-set-ready", "saving-library", "code-ready"].includes(state);
 
   return (
     <section

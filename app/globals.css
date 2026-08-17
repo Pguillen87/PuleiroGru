@@ -858,8 +858,8 @@ main {
 
 .library-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
-  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 10.5rem));
+  gap: var(--space-3);
   padding: 0;
   list-style: none;
   align-items: stretch;
@@ -869,7 +869,7 @@ main {
   min-width: 0;
   display: flex;
   content-visibility: auto;
-  contain-intrinsic-size: auto 34rem;
+  contain-intrinsic-size: auto 27rem;
 }
 
 .library-item {
@@ -895,13 +895,14 @@ main {
   overflow: hidden;
   background: var(--color-egg);
   cursor: pointer;
+  height: 10rem;
 }
 
 .library-item__preview img {
   width: 100%;
-  aspect-ratio: 4 / 5;
+  height: 100%;
   display: block;
-  object-fit: contain;
+  object-fit: cover;
   background: var(--color-egg);
   transition: transform 180ms ease-out;
 }
@@ -958,8 +959,8 @@ main {
 .library-item__body {
   display: grid;
   grid-template-rows: auto auto 1fr auto;
-  gap: var(--space-1);
-  padding: var(--space-3);
+  gap: 0.2rem;
+  padding: var(--space-2);
 }
 
 .library-item__heading {
@@ -971,14 +972,14 @@ main {
 .library-item__body > p {
   margin: 0;
   color: var(--color-text-secondary);
-  font-size: 0.875rem;
+  font-size: 0.75rem;
 }
 
 .library-item__heading strong {
   font-family: var(--font-display), Arial, sans-serif;
-  font-size: 1.2rem;
+  font-size: 1rem;
   letter-spacing: 0.02em;
-  min-height: 2.4em;
+  min-height: 2.2em;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -986,9 +987,15 @@ main {
 .library-item__actions {
   display: grid;
   grid-template-columns: 1fr;
-  gap: var(--space-2);
+  gap: 0.35rem;
   margin-top: var(--space-2);
   align-self: end;
+}
+
+.library-item__actions button {
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.875rem;
+  line-height: 1.1;
 }
 
 .library-load-more {

@@ -20,6 +20,7 @@ export function PersonalMascotLibrary() {
   const [total, setTotal] = useState(0);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -77,6 +78,11 @@ export function PersonalMascotLibrary() {
         {visibleItems.map((item, index) => <li key={item.id}><LibraryItem
           item={item}
           priority={index < 4}
+          selected={selectedItemId === item.id}
+          onSelect={(selectedItem) => {
+            setSelectedItemId(selectedItem.id);
+            setMessage(`Mascote ${selectedItem.mascotCode} selecionado. Você pode copiar o código ou marcar como favorito.`);
+          }}
           onFavoriteUpdate={(itemId, isFavorite) => {
             setItems((current) => current.map((entry) => entry.id === itemId ? { ...entry, isFavorite } : entry));
             if (filter === "favorites" && !isFavorite) setTotal((current) => Math.max(0, current - 1));
@@ -106,9 +112,11 @@ function LibraryControls({ filter, query, sort, onFilter, onQuery, onSort }: {
   </section>;
 }
 
-function LibraryItem({ item, priority, onFavoriteUpdate }: {
+function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
   item: MascotLibraryItem;
   priority: boolean;
+  selected: boolean;
+  onSelect: (item: MascotLibraryItem) => void;
   onFavoriteUpdate: (itemId: string, isFavorite: boolean) => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -137,17 +145,26 @@ function LibraryItem({ item, priority, onFavoriteUpdate }: {
     finally { setSaving(false); }
   }
 
-  return <article className="library-item">
-    {/* eslint-disable-next-line @next/next/no-img-element */}
-    <img
-      src={imageUrl}
-      alt="Pose normal do mascote salvo."
-      loading={priority ? "eager" : "lazy"}
-      fetchPriority={priority ? "high" : "auto"}
-      decoding="async"
-      width="320"
-      height="400"
-    />
+  return <article className="library-item" data-selected={selected || undefined}>
+    <button
+      type="button"
+      className="library-item__preview"
+      aria-pressed={selected}
+      aria-label={`Selecionar mascote ${item.mascotCode}`}
+      onClick={() => onSelect(item)}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={imageUrl}
+        alt=""
+        loading={priority ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : "auto"}
+        decoding="async"
+        width="320"
+        height="400"
+      />
+      <span aria-hidden="true" className="library-item__preview-label">Ver conjunto</span>
+    </button>
     <button
       type="button"
       className="library-item__favorite"

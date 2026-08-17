@@ -25,6 +25,23 @@ describe("prepareMascotDisplayAsset", () => {
     expect(result.contentType).toBe("image/jpeg");
     expect(Buffer.from(result.bytes)).toEqual(source);
   });
+
+  it("gera uma miniatura WebP limitada para a biblioteca", async () => {
+    const source = await sharp({
+      create: { width: 1200, height: 1600, channels: 3, background: "#efe1bd" },
+    }).png().toBuffer();
+
+    const result = await prepareMascotDisplayAsset(
+      { bytes: new Uint8Array(source), contentType: "image/png" },
+      "thumbnail",
+    );
+    const metadata = await sharp(result.bytes).metadata();
+
+    expect(result.contentType).toBe("image/webp");
+    expect(metadata.width).toBeLessThanOrEqual(320);
+    expect(metadata.height).toBeLessThanOrEqual(400);
+    expect(result.bytes.byteLength).toBeLessThan(source.byteLength);
+  });
 });
 
 function checkerboard(width: number, height: number) {

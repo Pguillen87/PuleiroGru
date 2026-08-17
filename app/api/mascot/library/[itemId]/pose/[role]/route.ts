@@ -25,10 +25,15 @@ export async function GET(request: Request, context: { params: Promise<{ itemId:
       role as PoseRole,
       jobIdentity(identity.uid, item.attemptId),
     );
-    const image = sourceImage ? await prepareMascotDisplayAsset(sourceImage) : null;
+    const variant = new URL(request.url).searchParams.get("variant") === "thumb" ? "thumbnail" : "full";
+    const image = sourceImage ? await prepareMascotDisplayAsset(sourceImage, variant) : null;
     if (!image) return new NextResponse(null, { status: 404 });
     return new NextResponse(Buffer.from(image.bytes), {
-      headers: { "Content-Type": image.contentType, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" },
+      headers: {
+        "Content-Type": image.contentType,
+        "Cache-Control": "private, max-age=86400, stale-while-revalidate=604800",
+        "X-Content-Type-Options": "nosniff",
+      },
     });
   } catch (error) {
     return integrationErrorResponse(error, "LIBRARY_ASSET_READ_FAILED", "Imagem indisponível.");

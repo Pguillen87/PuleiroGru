@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Header } from "@/components/navigation/Header";
 import type { MascotLibraryItem } from "@/lib/mascot-generation/types";
@@ -9,6 +9,7 @@ type SortOption = "newest" | "oldest" | "code";
 type FilterOption = "all" | "favorites";
 
 const sortLabels: Record<SortOption, string> = { newest: "Mais recentes", oldest: "Mais antigos", code: "Código do mascote" };
+const PAGE_SIZE = 24;
 
 export function PersonalMascotLibrary() {
   const [items, setItems] = useState<MascotLibraryItem[]>([]);
@@ -16,9 +17,48 @@ export function PersonalMascotLibrary() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortOption>("newest");
   const [filter, setFilter] = useState<FilterOption>("all");
+  const [total, setTotal] = useState(0);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  useEffect(() => { void loadLibrary(setItems, setMessage); }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void loadLibrary({ query, filter, sort, signal: controller.signal }).then((page) => {
+        if (!page) return;
+        if (page.error) {
+          setItems([]);
+          setTotal(0);
+          setNextOffset(null);
+          setMessage(page.error);
+          return;
+        }
+        setItems(page.items);
+        setTotal(page.total);
+        setNextOffset(page.nextOffset);
+        setMessage(page.items.length
+          ? "Organize, favorite e copie o código de qualquer mascote."
+          : query || filter === "favorites"
+            ? "Nenhum mascote corresponde a esta busca."
+            : "Seu primeiro mascote aparecerá aqui depois que o conjunto estiver concluído.");
+      });
+    }, query ? 250 : 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [filter, query, sort]);
   const visibleItems = useMemo(() => selectLibraryItems(items, query, filter, sort), [filter, items, query, sort]);
+
+  async function loadMore() {
+    if (nextOffset === null || loadingMore) return;
+    setLoadingMore(true);
+    const page = await loadLibrary({ query, filter, sort, offset: nextOffset });
+    if (page?.error) setMessage(page.error);
+    else if (page) {
+      setItems((current) => [...current, ...page.items.filter((item) => !current.some((entry) => entry.id === item.id))]);
+      setTotal(page.total);
+      setNextOffset(page.nextOffset);
+    }
+    setLoadingMore(false);
+  }
 
   return <div className="site-shell">
     <Header />
@@ -29,13 +69,23 @@ export function PersonalMascotLibrary() {
           <h1 id="library-title">Meus mascotes</h1>
           <p>Seus mascotes criados ficam aqui. Os favoritos que você salvar do Puleiro também aparecerão nesta coleção.</p>
         </div>
-        <p className="library-count" aria-live="polite">{items.length} {items.length === 1 ? "mascote" : "mascotes"}</p>
+        <p className="library-count" aria-live="polite">{total} {total === 1 ? "mascote" : "mascotes"}</p>
       </section>
       <LibraryControls filter={filter} query={query} sort={sort} onFilter={setFilter} onQuery={setQuery} onSort={setSort} />
       <p className="library-status" role="status" aria-live="polite">{message}</p>
       {visibleItems.length > 0 ? <ul className="library-grid" aria-label="Mascotes salvos">
-        {visibleItems.map((item) => <li key={item.id}><LibraryItem item={item} onChange={setItems} /></li>)}
-      </ul> : <LibraryEmptyState hasItems={items.length > 0} />}
+        {visibleItems.map((item, index) => <li key={item.id}><LibraryItem
+          item={item}
+          priority={index < 4}
+          onFavoriteUpdate={(itemId, isFavorite) => {
+            setItems((current) => current.map((entry) => entry.id === itemId ? { ...entry, isFavorite } : entry));
+            if (filter === "favorites" && !isFavorite) setTotal((current) => Math.max(0, current - 1));
+          }}
+        /></li>)}
+      </ul> : <LibraryEmptyState hasItems={total > 0 || Boolean(query) || filter === "favorites"} />}
+      {nextOffset !== null && <button className="library-load-more" type="button" disabled={loadingMore} onClick={() => void loadMore()}>
+        {loadingMore ? "Carregando mascotes…" : "Carregar mais mascotes"}
+      </button>}
     </main>
   </div>;
 }
@@ -56,7 +106,11 @@ function LibraryControls({ filter, query, sort, onFilter, onQuery, onSort }: {
   </section>;
 }
 
-function LibraryItem({ item, onChange }: { item: MascotLibraryItem; onChange: Dispatch<SetStateAction<MascotLibraryItem[]>> }) {
+function LibraryItem({ item, priority, onFavoriteUpdate }: {
+  item: MascotLibraryItem;
+  priority: boolean;
+  onFavoriteUpdate: (itemId: string, isFavorite: boolean) => void;
+}) {
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -77,7 +131,7 @@ function LibraryItem({ item, onChange }: { item: MascotLibraryItem; onChange: Di
       const response = await fetch(`/api/mascot/library/${encodeURIComponent(item.id)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ isFavorite: !item.isFavorite }) });
       if (!response.ok) throw new Error("Não foi possível atualizar o favorito.");
       const body = await response.json() as { item: MascotLibraryItem };
-      onChange((current) => current.map((entry) => entry.id === item.id ? { ...entry, isFavorite: body.item.isFavorite } : entry));
+      onFavoriteUpdate(item.id, body.item.isFavorite);
       setActionError("");
     } catch { setActionError("Não foi possível atualizar o favorito agora."); }
     finally { setSaving(false); }
@@ -85,7 +139,15 @@ function LibraryItem({ item, onChange }: { item: MascotLibraryItem; onChange: Di
 
   return <article className="library-item">
     {/* eslint-disable-next-line @next/next/no-img-element */}
-    <img src={imageUrl} alt="Pose normal do mascote salvo." />
+    <img
+      src={imageUrl}
+      alt="Pose normal do mascote salvo."
+      loading={priority ? "eager" : "lazy"}
+      fetchPriority={priority ? "high" : "auto"}
+      decoding="async"
+      width="320"
+      height="400"
+    />
     <button
       type="button"
       className="library-item__favorite"
@@ -114,14 +176,26 @@ function LibraryEmptyState({ hasItems }: { hasItems: boolean }) {
   </section>;
 }
 
-async function loadLibrary(setItems: Dispatch<SetStateAction<MascotLibraryItem[]>>, setMessage: Dispatch<SetStateAction<string>>) {
+type LibraryPage = { items: MascotLibraryItem[]; total: number; nextOffset: number | null; error?: string };
+
+async function loadLibrary({ query, filter, sort, offset = 0, signal }: {
+  query: string; filter: FilterOption; sort: SortOption; offset?: number; signal?: AbortSignal;
+}): Promise<LibraryPage | null> {
   try {
-    const response = await fetch("/api/mascot/library", { cache: "no-store" });
-    const body = await response.json().catch(() => ({})) as { items?: MascotLibraryItem[]; message?: string };
+    const parameters = new URLSearchParams({ offset: String(offset), limit: String(PAGE_SIZE), query, filter, sort });
+    const response = await fetch(`/api/mascot/library?${parameters}`, { cache: "no-store", signal });
+    const body = await response.json().catch(() => ({})) as Partial<LibraryPage> & { message?: string };
     if (!response.ok) throw new Error(body.message ?? "Não foi possível abrir sua biblioteca.");
-    setItems(body.items ?? []);
-    setMessage(body.items?.length ? "Organize, favorite e copie o código de qualquer mascote." : "Seu primeiro mascote aparecerá aqui depois que o conjunto estiver concluído.");
-  } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível abrir sua biblioteca."); }
+    return { items: body.items ?? [], total: body.total ?? 0, nextOffset: body.nextOffset ?? null };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return null;
+    return {
+      items: [],
+      total: 0,
+      nextOffset: null,
+      error: error instanceof Error ? error.message : "Não foi possível abrir sua biblioteca.",
+    };
+  }
 }
 
 function selectLibraryItems(items: MascotLibraryItem[], query: string, filter: FilterOption, sort: SortOption) {

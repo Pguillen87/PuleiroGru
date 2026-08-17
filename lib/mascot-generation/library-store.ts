@@ -15,6 +15,16 @@ type LibraryRow = {
   is_favorite: boolean;
 };
 
+export type LibrarySort = "newest" | "oldest" | "code";
+
+export type LibraryPageOptions = {
+  offset: number;
+  limit: number;
+  query?: string;
+  favoritesOnly?: boolean;
+  sort?: LibrarySort;
+};
+
 export class MascotLibraryStoreError extends Error {
   constructor(message = "Não foi possível guardar este mascote na biblioteca.") {
     super(message);
@@ -75,11 +85,19 @@ export async function setLibraryItemFavorite(
   return data ? toLibraryItem(data) : null;
 }
 
-export async function listLibraryItems(client: SupabaseClient, userId: string) {
-  const { data, error } = await client.from("mascot_library_items")
-    .select("*").eq("user_id", userId).order("created_at", { ascending: false }).returns<LibraryRow[]>();
+export async function listLibraryItems(client: SupabaseClient, userId: string, options?: LibraryPageOptions) {
+  let request = client.from("mascot_library_items")
+    .select("*", { count: "exact" })
+    .eq("user_id", userId);
+  if (options?.favoritesOnly) request = request.eq("is_favorite", true);
+  if (options?.query) request = request.ilike("mascot_code", `%${options.query}%`);
+  const sort = options?.sort ?? "newest";
+  request = request.order(sort === "code" ? "mascot_code" : "created_at", { ascending: sort === "oldest" || sort === "code" });
+  if (options) request = request.range(options.offset, options.offset + options.limit - 1);
+  const { data, error, count } = await request.returns<LibraryRow[]>();
   if (error) throw new MascotLibraryStoreError();
-  return (data ?? []).map(toLibraryItem);
+  const items = (data ?? []).map(toLibraryItem);
+  return { items, total: count ?? items.length };
 }
 
 function toLibraryItem(row: LibraryRow): MascotLibraryItem {

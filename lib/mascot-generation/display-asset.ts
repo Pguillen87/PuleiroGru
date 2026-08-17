@@ -1,24 +1,70 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import sharp from "sharp";
 import type { MasterImage } from "./types";
 
 const TECHNICAL_BORDER_THRESHOLD = 0.55;
 const MIN_TECHNICAL_CHANNEL = 145;
 const MAX_CHANNEL_SPREAD = 34;
+const MAX_CACHE_ENTRIES = 64;
+const MAX_CACHE_BYTES = 32 * 1024 * 1024;
+const displayAssetCache = new Map<string, MasterImage>();
+const pendingAssets = new Map<string, Promise<MasterImage>>();
+let displayAssetCacheBytes = 0;
 
-export async function prepareMascotDisplayAsset(image: MasterImage): Promise<MasterImage> {
+export type DisplayAssetVariant = "full" | "thumbnail";
+
+export async function prepareMascotDisplayAsset(image: MasterImage, variant: DisplayAssetVariant = "full"): Promise<MasterImage> {
+  const cacheKey = `${variant}:${createHash("sha256").update(image.bytes).digest("hex")}`;
+  const cached = displayAssetCache.get(cacheKey);
+  if (cached) {
+    displayAssetCache.delete(cacheKey);
+    displayAssetCache.set(cacheKey, cached);
+    return cached;
+  }
+  const pending = pendingAssets.get(cacheKey);
+  if (pending) return pending;
+  const preparation = buildDisplayAsset(image, variant).then((asset) => {
+    const previous = displayAssetCache.get(cacheKey);
+    if (previous) displayAssetCacheBytes -= previous.bytes.byteLength;
+    displayAssetCache.set(cacheKey, asset);
+    displayAssetCacheBytes += asset.bytes.byteLength;
+    while (displayAssetCache.size > MAX_CACHE_ENTRIES || displayAssetCacheBytes > MAX_CACHE_BYTES) {
+      const oldest = displayAssetCache.keys().next().value;
+      if (oldest) {
+        const removed = displayAssetCache.get(oldest);
+        if (removed) displayAssetCacheBytes -= removed.bytes.byteLength;
+        displayAssetCache.delete(oldest);
+      }
+      else break;
+    }
+    return asset;
+  }).finally(() => pendingAssets.delete(cacheKey));
+  pendingAssets.set(cacheKey, preparation);
+  return preparation;
+}
+
+async function buildDisplayAsset(image: MasterImage, variant: DisplayAssetVariant): Promise<MasterImage> {
   const decoded = await sharp(image.bytes, { failOn: "error" })
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
   const { width, height, channels } = decoded.info;
-  if (channels !== 4 || !hasTechnicalBorder(decoded.data, width, height)) return image;
+  const hasTechnicalBackground = channels === 4 && hasTechnicalBorder(decoded.data, width, height);
+  if (!hasTechnicalBackground && variant === "full") return image;
 
-  const cleaned = removeConnectedTechnicalBackground(decoded.data, width, height);
-  const bytes = await sharp(cleaned, { raw: { width, height, channels: 4 } })
-    .png({ compressionLevel: 9 })
-    .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 } })
-    .toBuffer();
+  const normalized = hasTechnicalBackground
+    ? sharp(removeConnectedTechnicalBackground(decoded.data, width, height), { raw: { width, height, channels: 4 } })
+      .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    : sharp(image.bytes, { failOn: "error" });
+  if (variant === "thumbnail") {
+    const bytes = await normalized
+      .resize({ width: 320, height: 400, fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 82, alphaQuality: 90, effort: 4 })
+      .toBuffer();
+    return { bytes: new Uint8Array(bytes), contentType: "image/webp" };
+  }
+  const bytes = await normalized.png({ compressionLevel: 9 }).toBuffer();
   return { bytes: new Uint8Array(bytes), contentType: "image/png" };
 }
 

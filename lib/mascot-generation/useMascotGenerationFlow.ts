@@ -334,9 +334,11 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setMasterImageVersion((current) => current + 1);
   }, []);
 
-  const masterUrl = activeMaster?.imageUrl
-    ? `${activeMaster.imageUrl}${activeMaster.imageUrl.includes("?") ? "&" : "?"}preview=${masterImageVersion}`
-    : "";
+  const masterUrl = !activeMaster?.imageUrl
+    ? ""
+    : masterImageVersion === 0
+      ? activeMaster.imageUrl
+      : `${activeMaster.imageUrl}${activeMaster.imageUrl.includes("?") ? "&" : "?"}preview=${masterImageVersion}`;
 
   return useMemo(() => ({
     state,

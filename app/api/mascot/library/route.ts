@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { listLibraryItems } from "@/lib/mascot-generation/library-store";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 
@@ -25,15 +26,20 @@ export async function GET(request: Request) {
       sort,
     });
     const nextOffset = offset + page.items.length < page.total ? offset + page.items.length : null;
-    return NextResponse.json({ items: page.items.map(presentLibraryItem), total: page.total, nextOffset });
+    const admin = createAdminClient();
+    const publicIds = admin && page.items.length
+      ? new Set((await admin.from("mascot_public_mascots").select("source_item_id").in("source_item_id", page.items.map((item) => item.id))).data?.map((row: { source_item_id: string }) => row.source_item_id) ?? [])
+      : new Set<string>();
+    return NextResponse.json({ items: page.items.map((item) => presentLibraryItem(item, publicIds.has(item.id))), total: page.total, nextOffset });
   } catch (error) {
     return integrationErrorResponse(error, "LIBRARY_READ_FAILED", "Não foi possível abrir sua biblioteca agora.");
   }
 }
 
-function presentLibraryItem(item: Awaited<ReturnType<typeof listLibraryItems>>["items"][number]) {
+function presentLibraryItem(item: Awaited<ReturnType<typeof listLibraryItems>>["items"][number], isPublic: boolean) {
   return {
     ...item,
+    isPublic,
     poses: item.poses.map((pose) => ({
       ...pose,
       imageUrl: `/api/mascot/library/${encodeURIComponent(item.id)}/pose/${encodeURIComponent(pose.role)}?variant=thumb&v=5`,

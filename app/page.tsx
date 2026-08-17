@@ -1,6 +1,5 @@
-import { PuleiroExperience } from "@/components/PuleiroExperience";
-import { publicGenerationConfig } from "@/lib/mascot-generation/config";
+import { PuleiroHub } from "@/components/dashboard/PuleiroHub";
 
 export default function Home() {
-  return <PuleiroExperience config={publicGenerationConfig()} />;
+  return <PuleiroHub />;
 }

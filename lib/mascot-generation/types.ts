@@ -51,6 +51,35 @@ export interface MascotLibraryItem {
   poses: GeneratedPose[];
   createdAt: string;
   isFavorite: boolean;
+  isPublic?: boolean;
+}
+
+export interface CommunityMascot {
+  id: string;
+  mascotCode: string;
+  poses: GeneratedPose[];
+  publishedAt: string;
+  favoriteCount: number;
+  saveCount: number;
+  isFavorited: boolean;
+  isSaved: boolean;
+}
+
+export type GenerationMetricStage = "master" | "poses";
+export type GenerationMetricStatus = "requested" | "completed" | "failed" | "canceled";
+
+export interface GenerationMetric {
+  id: string;
+  attemptId: string;
+  jobId: string;
+  stage: GenerationMetricStage;
+  status: GenerationMetricStatus;
+  startedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+  estimatedCostUsd?: number;
+  actualCostUsd?: number;
+  costSource?: "modal_reservation" | "modal_billing";
 }
 
 export interface GenerationJob {

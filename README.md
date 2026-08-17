@@ -32,6 +32,14 @@ Variáveis públicas: URL e anon key do Supabase. `SUPABASE_SERVICE_ROLE_KEY` é
 
 Ao concluir, o BFF salva o conjunto idempotentemente em uma biblioteca privada e emite um código `GRU-XXXX-XXXX`. Esse código ainda não é um código de instalação Android: pacote e manifest continuam em fase posterior. O Modal normaliza cada pose em canvas editorial opaco antes de ela aparecer como resultado final.
 
+## Caminhos do Puleiro
+
+- `/` é a **Central do Puleiro**: criar, biblioteca pessoal, comunidade e caderno de criação;
+- `/criar` mantém o fluxo de nascimento;
+- `/meus-mascotes` mostra criações próprias e personagens públicos que a pessoa favoritou ou salvou;
+- `/explorar` é a comunidade. Um mascote só entra nela após publicação explícita e reversível do proprietário;
+- `/relatorios` registra durações das etapas iniciadas e concluídas. Custo só aparece quando o Modal reportar uma reserva ou cobrança verificável — o Puleiro não inventa preço.
+
 ## Banco e RLS
 
 As migrations em `supabase/migrations` criam `mascot_attempts` e `mascot_library_items`, restringem acesso com RLS e limitam SELECT/INSERT/UPDATE a `auth.uid() = user_id`. A aplicação ao projeto remoto deve ocorrer com Supabase CLI autenticada por Personal Access Token ou conexão de banco autorizada, seguida de `RUN_REAL_STAGING_TESTS=true npm run test:integration`. A anon key e a service role não concedem permissão de DDL.

@@ -40,8 +40,16 @@ test("duplo envio e refresh retomam o mesmo job sem novo registro", async ({ req
   expect((await resumed.json()).job.id).toBe(firstJob.id);
 });
 
-test("percorre o fluxo explícito sem ações prematuras", async ({ page }) => {
+test("a Central do Puleiro encaminha para os três caminhos principais", async ({ page }) => {
   await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Todo mascote começa por aqui." })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Criar meu mascote" })).toHaveAttribute("href", "/criar");
+  await expect(page.getByRole("link", { name: /Explorar comunidade/ })).toHaveAttribute("href", "/explorar");
+  await expect(page.getByRole("link", { name: /Minha biblioteca/ })).toHaveAttribute("href", "/meus-mascotes");
+});
+
+test("percorre o fluxo explícito sem ações prematuras", async ({ page }) => {
+  await page.goto("/criar");
   await expect(page.getByRole("heading", { level: 1, name: "Puleiro do GRU" })).toBeVisible();
   await selectPhoto(page);
   await expect(page.getByRole("heading", { name: "Esta é a foto certa?" })).toBeVisible();
@@ -60,7 +68,7 @@ test("percorre o fluxo explícito sem ações prematuras", async ({ page }) => {
 
 for (const mimeType of ["image/jpeg", "image/png", "image/webp"]) {
   test(`aceita e mostra prévia de ${mimeType}`, async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/criar");
     await selectPhoto(page, mimeType);
     await expect(page.locator(".stage__art img")).toHaveAttribute("src", /^blob:/);
     await expect(page.getByRole("button", { name: "Usar esta foto" })).toBeVisible();
@@ -68,7 +76,7 @@ for (const mimeType of ["image/jpeg", "image/png", "image/webp"]) {
 }
 
 test("rejeita somente um arquivo que não é imagem", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/criar");
   await page.getByRole("button", { name: "Criar meu mascote" }).click();
   await page.locator("#pet-photo").setInputFiles({ name: "pet.txt", mimeType: "text/plain", buffer: Buffer.from("não é imagem") });
   await expect(page.locator(".field-error")).toContainText("JPEG, PNG ou WebP");
@@ -81,7 +89,7 @@ test("comprime automaticamente uma imagem válida acima do limite de transporte"
     .toBuffer();
   expect(largePng.byteLength).toBeGreaterThan(10 * 1024 * 1024);
 
-  await page.goto("/");
+  await page.goto("/criar");
   await page.getByRole("button", { name: "Criar meu mascote" }).click();
   await page.locator("#pet-photo").setInputFiles({ name: "foto-grande.png", mimeType: "image/png", buffer: largePng });
   await expect(page.getByRole("heading", { name: "Esta é a foto certa?" })).toBeVisible();
@@ -89,7 +97,7 @@ test("comprime automaticamente uma imagem válida acima do limite de transporte"
 });
 
 test("permite remover e substituir antes do envio", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/criar");
   await selectPhoto(page);
   await page.getByRole("button", { name: "Remover foto" }).click();
   await expect(page.getByRole("heading", { name: "Quem vai nascer no Puleiro?" })).toBeVisible();
@@ -132,7 +140,7 @@ test("falha do job preserva foto e oferece retry", async ({ page }) => {
     contentType: "application/json",
     body: JSON.stringify({ job: { id: "falha", attemptId: "attempt-falha", status: "failed", message: "O ovo não abriu.", generationScheduled: false, masters: [], retryable: true, ...jobIdentity } }),
   }));
-  await page.goto("/");
+  await page.goto("/criar");
   await selectPhoto(page);
   await page.getByRole("button", { name: "Usar esta foto" }).click();
   await page.getByRole("radio", { name: /Pessoa/ }).check();
@@ -151,7 +159,7 @@ test("uma foto inválida não oferece retry para o mesmo arquivo", async ({ page
       message: "Não foi possível abrir esta imagem.",
     }),
   }));
-  await page.goto("/");
+  await page.goto("/criar");
   await selectPhoto(page);
   await page.getByRole("button", { name: "Usar esta foto" }).click();
   await page.getByRole("radio", { name: /Pessoa/ }).check();
@@ -175,7 +183,7 @@ test("timeout encerra polling sem criar novo POST automaticamente", async ({ pag
     contentType: "application/json",
     body: JSON.stringify({ job: { id: "lento", attemptId: "attempt-lento", status: "generating_masters", message: "Criando…", generationScheduled: true, masters: [], ...jobIdentity } }),
   }));
-  await page.goto("/");
+  await page.goto("/criar");
   await selectPhoto(page);
   await page.getByRole("button", { name: "Usar esta foto" }).click();
   await page.getByRole("radio", { name: /Pessoa/ }).check();
@@ -185,7 +193,7 @@ test("timeout encerra polling sem criar novo POST automaticamente", async ({ pag
 });
 
 test("ver outra opção percorre os Masters existentes sem novo job", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/criar");
   await completeFlow(page);
   await page.getByRole("button", { name: "Ver outra opção" }).click();
   await expect(page.getByText(/opção 2 de 3/)).toBeVisible();
@@ -195,7 +203,7 @@ test("ajusta uma foto pequena e permite continuar", async ({ page }) => {
   const buffer = await sharp({
     create: { width: 255, height: 300, channels: 3, background: { r: 116, g: 131, b: 70 } },
   }).jpeg().toBuffer();
-  await page.goto("/");
+  await page.goto("/criar");
   await page.getByRole("button", { name: "Criar meu mascote" }).click();
   await page.locator("#pet-photo").setInputFiles({ name: "pequena.jpg", mimeType: "image/jpeg", buffer });
   await expect(page.getByRole("heading", { name: "Esta é a foto certa?" })).toBeVisible();
@@ -218,7 +226,7 @@ test("retoma job já aprovado sem acusar ausência de Masters", async ({ page })
       },
     }),
   }));
-  await page.goto("/");
+  await page.goto("/criar");
   await expect(page.getByRole("heading", { name: "Como ele fica quando está pronto?" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Este nascimento precisa de outra tentativa" })).toHaveCount(0);
   await expect(page.locator(".stage__art img")).toHaveAttribute("src", "/api/mascot/jobs/aprovado/master/master_3");
@@ -245,7 +253,7 @@ test("retoma geração de poses por GET e preserva o Master inteiro", async ({ p
     }),
   }));
 
-  await page.goto("/");
+  await page.goto("/criar");
   await expect(page.getByRole("heading", { name: "Experimentando os três jeitos" })).toBeVisible();
   await expect(page.getByRole("progressbar", { name: "Operação de poses confirmada" })).toHaveAttribute("aria-valuenow", "25");
   await expect(page.locator(".pose-workshop-motion li")).toHaveText(["01 Normal", "02 Ouvindo", "03 Transcrevendo"]);
@@ -272,7 +280,7 @@ test("mostra somente progresso de nascimento confirmado pelo backend", async ({ 
     }),
   }));
 
-  await page.goto("/");
+  await page.goto("/criar");
   await expect(page.getByRole("progressbar", { name: "Mascote mestre em criação" })).toHaveAttribute("aria-valuenow", "75");
   await expect(page.locator(".stage-progress-seal")).toHaveText("75%");
   await expect(page.locator(".egg-crack")).toHaveCount(2);
@@ -303,7 +311,7 @@ test("conjunto pronto é guardado uma vez e recebe código da biblioteca", async
       body: JSON.stringify({ item: { id: "library-1", mascotCode: "GRU-ABCD-2345", jobId: "poses-prontas", attemptId: "attempt-poses-prontas", masterId: "master_1", createdAt: "2026-08-17T00:00:00Z", poses: [] } }),
     });
   });
-  await page.goto("/");
+  await page.goto("/criar");
   await expect(page.getByRole("heading", { name: "Seu GRU está pronto" })).toBeVisible();
   await expect(page.getByText("GRU-ABCD-2345")).toBeVisible();
   expect(completionPosts).toBe(1);
@@ -331,7 +339,7 @@ test("uma nova foto não é substituída pela retomada de um mascote já conclu�
       }),
     });
   });
-  await page.goto("/");
+  await page.goto("/criar");
   await page.getByRole("button", { name: "Criar meu mascote" }).click();
   await page.locator("#pet-photo").setInputFiles({ name: "novo.jpg", mimeType: "image/jpeg", buffer: sourcePhoto });
   await expect(page.getByRole("heading", { name: "Esta é a foto certa?" })).toBeVisible();
@@ -345,7 +353,7 @@ test("escolhe uma pose por função sem acionar GPU quando a flag está desligad
   page.on("request", (request) => {
     if (request.method() === "POST" && request.url().includes("/pose-generations")) posePosts += 1;
   });
-  await page.goto("/");
+  await page.goto("/criar");
   await completeFlow(page);
   await page.getByRole("button", { name: "Gostei deste" }).click();
   await expect(page.locator(".pose-choice-grid .pose-reference-preview")).toHaveCount(4);
@@ -364,7 +372,7 @@ test("escolhe uma pose por função sem acionar GPU quando a flag está desligad
 test("movimento reduzido preserva conteúdo e remove loops", async ({ browser }) => {
   const context = await browser.newContext({ reducedMotion: "reduce" });
   const page = await context.newPage();
-  await page.goto("/");
+  await page.goto("/criar");
   await completeFlow(page);
   expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe("auto");
@@ -374,7 +382,7 @@ test("movimento reduzido preserva conteúdo e remove loops", async ({ browser })
 
 test("teclado, nomes acessíveis e contraste básico", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await page.goto("/criar");
   const button = page.getByRole("button", { name: "Criar meu mascote" });
   await button.focus();
   expect(await button.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe("none");
@@ -385,7 +393,7 @@ test("teclado, nomes acessíveis e contraste básico", async ({ page }) => {
 
 test("touch targets mantêm pelo menos 48 px na prévia móvel", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
-  await page.goto("/");
+  await page.goto("/criar");
   await selectPhoto(page);
   for (const control of await page.locator(".site-shell button:visible, .site-shell a:visible").all()) {
     const box = await control.boundingBox();
@@ -402,7 +410,7 @@ for (const orientation of ["vertical", "horizontal"] as const) {
       create: { ...dimensions, channels: 3, background: { r: 116, g: 131, b: 70 } },
     }).jpeg().toBuffer();
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/");
+  await page.goto("/criar");
     await page.getByRole("button", { name: "Criar meu mascote" }).click();
     await page.locator("#pet-photo").setInputFiles({ name: `${orientation}.jpg`, mimeType: "image/jpeg", buffer });
     const art = await page.locator(".stage__art").boundingBox();
@@ -417,7 +425,7 @@ for (const orientation of ["vertical", "horizontal"] as const) {
 for (const width of [360, 390, 430, 768, 1024, 1440]) {
   test(`reflow sem rolagem horizontal em ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width < 768 ? 800 : 900 });
-    await page.goto("/");
+  await page.goto("/criar");
     await page.getByRole("button", { name: "Criar meu mascote" }).click();
     const size = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
     expect(size.scroll).toBeLessThanOrEqual(size.client);
@@ -426,7 +434,7 @@ for (const width of [360, 390, 430, 768, 1024, 1440]) {
 
 test("zoom de 200% mantém uma única composição responsiva", async ({ page }) => {
   await page.setViewportSize({ width: 720, height: 900 });
-  await page.goto("/");
+  await page.goto("/criar");
   await page.getByRole("button", { name: "Criar meu mascote" }).click();
   const stage = page.locator("#puleiro-stage");
   const note = page.locator(".editorial-note");

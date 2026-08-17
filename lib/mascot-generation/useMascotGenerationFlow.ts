@@ -31,6 +31,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   const [errorCode, setErrorCode] = useState("");
   const [revealComplete, setRevealComplete] = useState(false);
   const [libraryItem, setLibraryItem] = useState<MascotLibraryItem>();
+  const [generationStartedAt, setGenerationStartedAt] = useState<number>();
   const controller = useRef<AbortController | undefined>(undefined);
   const resumeController = useRef<AbortController | undefined>(undefined);
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -39,7 +40,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   const librarySaveInFlight = useRef(false);
   const libraryAutoSaveAttempted = useRef(false);
   const activeMaster = job?.masters[masterIndex];
-  const progress = generationProgress(state, job);
+  const progress = generationProgress(state, job, generationStartedAt);
 
   const finishLibrary = useCallback(async (completedJob: GenerationJob) => {
     if (librarySaveInFlight.current) return;
@@ -178,6 +179,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setErrorCode("");
     setJob(undefined);
     setRevealComplete(false);
+    setGenerationStartedAt(Date.now());
     setState("uploading");
     try {
       const created = await createGenerationJob(photo, identity, current.signal, newAttemptForPhoto.current);
@@ -216,6 +218,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setErrorMessage("");
     setErrorCode("");
     setRevealComplete(false);
+    setGenerationStartedAt(Date.now());
     setState("preparing");
     try {
       const scheduled = await startMasterGeneration(job.id, current.signal);
@@ -281,6 +284,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     const current = new AbortController();
     controller.current = current;
     setErrorMessage("");
+    setGenerationStartedAt(Date.now());
     setState("generating-poses");
     let operationAccepted = false;
     try {
@@ -359,15 +363,15 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorCode, errorMessage, finishLibrary, generatePoseSet, job, libraryItem, masterIndex, nextMaster, photoUrl, poseChoices, progress, revealComplete, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
 }
 
-function generationProgress(state: PuleiroState, job?: GenerationJob): GenerationProgressModel | undefined {
-  if (state === "uploading") return { kind: "birth", percent: 0, label: "Preparando a fotografia" };
-  if (state === "creating-job") return { kind: "birth", percent: 50, label: "Fotografia recebida com segurança" };
+function generationProgress(state: PuleiroState, job?: GenerationJob, startedAt?: number): GenerationProgressModel | undefined {
+  if (state === "uploading") return { kind: "birth", percent: 0, label: "Preparando a fotografia", startedAt };
+  if (state === "creating-job") return { kind: "birth", percent: 50, label: "Fotografia recebida com segurança", startedAt };
   if (state === "preparing") {
     const workerStarted = job?.status === "generating_masters";
     return {
       kind: "birth",
       percent: workerStarted ? 75 : 50,
-      label: workerStarted ? "Mascote mestre em criação" : "Nascimento registrado",
+      label: workerStarted ? "Mascote mestre em criação" : "Nascimento registrado", startedAt,
     };
   }
   if (state === "generating-poses") {
@@ -375,7 +379,7 @@ function generationProgress(state: PuleiroState, job?: GenerationJob): Generatio
     return {
       kind: "poses",
       percent: completedPoses > 0 ? Math.round((completedPoses / 3) * 100) : 25,
-      label: completedPoses > 0 ? `${completedPoses} de 3 poses verificadas` : "Operação de poses confirmada",
+      label: completedPoses > 0 ? `${completedPoses} de 3 poses verificadas` : "Operação de poses confirmada", startedAt,
     };
   }
   return undefined;

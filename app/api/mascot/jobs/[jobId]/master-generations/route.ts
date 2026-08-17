@@ -6,6 +6,7 @@ import { generationConfig } from "@/lib/mascot-generation/config";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import { saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
 import { createClient } from "@/lib/supabase/server";
+import { recordGenerationRequested } from "@/lib/mascot-generation/telemetry-store";
 import { createTraceContext, traceResponse, type MascotTraceContext } from "@/lib/observability/mascot-trace";
 import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
 
@@ -26,7 +27,11 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     if (!attemptId) return NextResponse.json({ message: "Nascimento não encontrado.", code: "JOB_NOT_FOUND" }, { status: 404 });
     trace = createTraceContext(attemptId, true);
     const job = await getMascotGenerationProvider().startMasterGeneration(jobId, jobIdentity(identity.uid, attemptId, trace));
-    if (identity.mode === "supabase-session") await saveAttemptJob(await createClient(), identity.uid, job);
+    if (identity.mode === "supabase-session") {
+      const client = await createClient();
+      await saveAttemptJob(client, identity.uid, job);
+      await recordGenerationRequested(client, identity.uid, job, "master").catch(() => undefined);
+    }
     const responseTrace = job.operationId ? { ...trace, operationId: job.operationId } : trace;
     return traceResponse(NextResponse.json({ job }, { status: 202 }), responseTrace, job.requestId);
   } catch (error) {

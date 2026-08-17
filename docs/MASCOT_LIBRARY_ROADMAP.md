@@ -6,18 +6,15 @@ Cada item criado pelo usuário fica associado à sua conta Supabase e é protegi
 
 O código atual (`GRU-XXXX-XXXX`) identifica o item privado. Ele **não** é ainda um código de instalação Android: esse contrato depende de pacote, manifesto, checksum e rota de resolução.
 
-## Biblioteca pública — próxima etapa de produto
+## Biblioteca pública — primeira base entregue
 
-A comunidade será uma superfície separada da biblioteca pessoal. Publicar exige consentimento explícito e reversível; criar ou pagar por um mascote não autoriza publicação automática.
+A comunidade é uma superfície separada em `/explorar`. Publicar exige consentimento explícito e reversível; criar ou pagar por um mascote não autoriza publicação automática. A pessoa pode favoritar ou salvar um mascote público, e esses itens também aparecem na biblioteca pessoal.
 
-Antes de implementá-la, criar tabelas separadas para:
+As tabelas separadas preservam perfil público, favoritos e salvamentos. A leitura e as alterações passam pelo BFF; o navegador não recebe URLs privadas de assets nem permissão para enumerar mascotes privados.
 
-- perfil público do mascote e estado de moderação;
-- voto por usuário, com unicidade por mascote e usuário;
-- salvamento de um item público na biblioteca pessoal;
-- métricas agregadas de uso, nunca contadores alteráveis pelo navegador.
+## Próxima etapa de produto
 
-Ranking deve vir de agregados no servidor, com limites, denúncia e moderação. Um mascote privado jamais deve ser enumerável ou copiável por código público.
+Antes de abrir a comunidade amplamente, faltam denúncia, moderação, políticas de remoção, paginação/busca, categorias e agregados de instalação/uso vindos do Android. Ranking de “mais usados” só poderá existir quando a instalação/uso for comprovadamente reportado pelo app; por enquanto, “mais favoritados” é o único ranking disponível.
 
 ## GRU Android
 

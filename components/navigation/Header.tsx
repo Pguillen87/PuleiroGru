@@ -7,7 +7,8 @@ import { usePuleiroAuth } from "@/components/auth/AccountGate";
 type HeaderProps = { onUnavailableNavigation?: (destination: string) => void };
 
 const destinations = [
-  { label: "Explorar", href: "/" },
+  { label: "Criar", href: "/criar" },
+  { label: "Explorar", href: "/explorar" },
   { label: "Meus mascotes", href: "/meus-mascotes" },
 ] as const;
 

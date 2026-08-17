@@ -10,6 +10,7 @@ import type { PoseChoices, PoseRole } from "@/lib/mascot-generation/types";
 import { createTraceContext, mascotLog, traceResponse, type MascotTraceContext } from "@/lib/observability/mascot-trace";
 import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
 import { createClient } from "@/lib/supabase/server";
+import { recordGenerationRequested } from "@/lib/mascot-generation/telemetry-store";
 
 export const runtime = "nodejs";
 const validId = (value: string) => /^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -40,7 +41,9 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     );
     const responseTrace = job.operationId ? { ...trace, operationId: job.operationId } : trace;
     if (identity.mode === "supabase-session") {
-      await saveAttemptJob(await createClient(), identity.uid, job);
+      const client = await createClient();
+      await saveAttemptJob(client, identity.uid, job);
+      await recordGenerationRequested(client, identity.uid, job, "poses").catch(() => undefined);
       mascotLog("pose_attempt_persisted", { ...responseTrace, jobId, result: "persisted" });
     }
     mascotLog(job.idempotentReplay ? "pose_operation_replayed" : "pose_operation_created", {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Header } from "@/components/navigation/Header";
-import type { MascotLibraryItem } from "@/lib/mascot-generation/types";
+import type { CommunityMascot, MascotLibraryItem } from "@/lib/mascot-generation/types";
 
 type SortOption = "newest" | "oldest" | "code";
 type FilterOption = "all" | "favorites";
@@ -19,6 +19,7 @@ export function PersonalMascotLibrary() {
   const [filter, setFilter] = useState<FilterOption>("all");
   const [total, setTotal] = useState(0);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [communityItems, setCommunityItems] = useState<CommunityMascot[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
@@ -46,6 +47,13 @@ export function PersonalMascotLibrary() {
     }, query ? 250 : 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [filter, query, sort]);
+  useEffect(() => {
+    void fetch("/api/mascot/community/saved", { cache: "no-store" })
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({})) as { items?: CommunityMascot[] };
+        if (response.ok) setCommunityItems(body.items ?? []);
+      });
+  }, []);
   const visibleItems = useMemo(() => selectLibraryItems(items, query, filter, sort), [filter, items, query, sort]);
 
   async function loadMore() {
@@ -92,8 +100,33 @@ export function PersonalMascotLibrary() {
       {nextOffset !== null && <button className="library-load-more" type="button" disabled={loadingMore} onClick={() => void loadMore()}>
         {loadingMore ? "Carregando mascotes…" : "Carregar mais mascotes"}
       </button>}
+      {communityItems.length > 0 && <section className="library-community-saves" aria-labelledby="community-saves-title">
+        <div>
+          <span className="state-kicker">Guardados no Puleiro</span>
+          <h2 id="community-saves-title">Favoritos e mascotes salvos</h2>
+          <p>Personagens públicos que você guardou continuam acessíveis nesta conta.</p>
+        </div>
+        <ul className="library-grid" aria-label="Mascotes públicos salvos">
+          {communityItems.map((item) => <li key={item.id}><SavedCommunityItem item={item} /></li>)}
+        </ul>
+      </section>}
     </main>
   </div>;
+}
+
+function SavedCommunityItem({ item }: { item: CommunityMascot }) {
+  const imageUrl = item.poses.find((pose) => pose.role === "normal")?.imageUrl;
+  return <article className="library-item library-item--community">
+    <div className="library-item__preview">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={imageUrl} alt={`Prévia do mascote público ${item.mascotCode}.`} loading="lazy" decoding="async" width="320" height="400" />
+    </div>
+    <div className="library-item__body">
+      <div className="library-item__heading"><span>Mascote do Puleiro</span><strong>{item.mascotCode}</strong></div>
+      <p>{item.isFavorited ? "Favorito" : "Salvo"} · {item.favoriteCount} favoritos</p>
+      <Link href="/explorar" className="library-item__community-link">Ver na comunidade</Link>
+    </div>
+  </article>;
 }
 
 function LibraryControls({ filter, query, sort, onFilter, onQuery, onSort }: {
@@ -121,6 +154,7 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
 }) {
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [published, setPublished] = useState(Boolean(item.isPublic));
   const [actionError, setActionError] = useState("");
   const imageUrl = item.poses.find((pose) => pose.role === "normal")?.imageUrl ?? item.poses[0]?.imageUrl;
 
@@ -142,6 +176,17 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
       onFavoriteUpdate(item.id, body.item.isFavorite);
       setActionError("");
     } catch { setActionError("Não foi possível atualizar o favorito agora."); }
+    finally { setSaving(false); }
+  }
+
+  async function togglePublication() {
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/mascot/library/${encodeURIComponent(item.id)}/publication`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: !published }) });
+      const body = await response.json().catch(() => ({})) as { published?: boolean; message?: string };
+      if (!response.ok || typeof body.published !== "boolean") throw new Error(body.message ?? "Não foi possível atualizar a publicação.");
+      setPublished(body.published); setActionError("");
+    } catch (error) { setActionError(error instanceof Error ? error.message : "Não foi possível atualizar a publicação."); }
     finally { setSaving(false); }
   }
 
@@ -178,6 +223,7 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
       <p>{formatCreatedAt(item.createdAt)}</p>
       <div className="library-item__actions">
         <button type="button" onClick={() => void copyCode()}>{copied ? "Código copiado" : "Copiar código"}</button>
+        <button type="button" onClick={() => void togglePublication()} disabled={saving}>{published ? "Remover da comunidade" : "Publicar no Puleiro"}</button>
         <button type="button" className="library-item__open-gru" disabled title="Disponível quando existir um pacote compatível com o aplicativo GRU.">Abrir no GRU em breve</button>
       </div>
       {actionError && <p className="library-item__error" role="alert">{actionError}</p>}

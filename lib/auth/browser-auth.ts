@@ -39,6 +39,14 @@ export async function requireBrowserIdentity(request: Request) {
   return { uid: data.user.id, mode: "supabase-session" as const };
 }
 
+export async function optionalBrowserIdentity(request: Request) {
+  if (generationConfig.allowDevTestIdentity) return { uid: devIdentity(request), mode: "development" as const };
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) return null;
+  return { uid: data.user.id, mode: "supabase-session" as const };
+}
+
 export function authErrorResponse(error: unknown) {
   if (!(error instanceof RequestAuthError)) return undefined;
   return Response.json({ message: error.message, code: error.code }, { status: error.status });

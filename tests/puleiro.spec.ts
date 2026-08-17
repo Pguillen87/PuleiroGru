@@ -48,6 +48,11 @@ test("a Central do Puleiro encaminha para os três caminhos principais", async (
   await expect(page.getByRole("link", { name: /Minha biblioteca/ })).toHaveAttribute("href", "/meus-mascotes");
 });
 
+test("relatórios não ficam expostos como rota do produto", async ({ request }) => {
+  expect((await request.get("/relatorios")).status()).toBe(404);
+  expect((await request.get("/api/mascot/reports")).status()).toBe(404);
+});
+
 test("percorre o fluxo explícito sem ações prematuras", async ({ page }) => {
   await page.goto("/criar");
   await expect(page.getByRole("heading", { level: 1, name: "Puleiro do GRU" })).toBeVisible();
@@ -442,4 +447,21 @@ test("zoom de 200% mantém uma única composição responsiva", async ({ page })
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
     await page.evaluate(() => document.documentElement.clientWidth),
   );
+});
+
+test("entrada de criação cabe em um viewport desktop sem esconder conteúdo", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/criar");
+  const entrySize = await page.evaluate(() => ({
+    scrollHeight: document.documentElement.scrollHeight,
+    clientHeight: document.documentElement.clientHeight,
+  }));
+  expect(entrySize.scrollHeight).toBeLessThanOrEqual(entrySize.clientHeight);
+  await page.getByRole("button", { name: "Criar meu mascote" }).click();
+  await expect(page.getByRole("heading", { name: "Quem vai nascer no Puleiro?" })).toBeVisible();
+  const pageSize = await page.evaluate(() => ({
+    scrollHeight: document.documentElement.scrollHeight,
+    clientHeight: document.documentElement.clientHeight,
+  }));
+  expect(pageSize.scrollHeight).toBeLessThanOrEqual(pageSize.clientHeight);
 });

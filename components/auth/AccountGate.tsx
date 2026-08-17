@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { StageButton } from "@/components/actions/StageButton";
 import { PuleiroWordmark } from "@/components/brand/PuleiroWordmark";
 import { createClient } from "@/lib/supabase/client";
@@ -10,6 +11,7 @@ import { defaultPersistentSessionPreference, saveSessionPreference, shouldEndSes
 type AccountMode = "login" | "signup" | "recovery";
 type GateStatus = "checking" | "signed-out" | "signed-in";
 export function AccountGate({ required, children }: { required: boolean; children: React.ReactNode }) {
+  const router = useRouter();
   const configured = isSupabaseConfigured();
   const supabase = useMemo(
     () => (required && configured ? createClient() : null),
@@ -82,7 +84,14 @@ export function AccountGate({ required, children }: { required: boolean; childre
   if (status === "checking") return <AccountStatus message={message} />;
   if (status === "signed-out" && !configured) return <AccountStatus message={message} />;
   if (status === "signed-out") {
-    return <AccountForm initialMessage={message} onSignedIn={() => setStatus("signed-in")} />;
+    return <AccountForm
+      initialMessage={message}
+      onSignedIn={() => {
+        setStatus("signed-in");
+        router.replace("/");
+        router.refresh();
+      }}
+    />;
   }
   return children;
 }
@@ -128,7 +137,6 @@ function AccountForm({ initialMessage, onSignedIn }: { initialMessage: string; o
       saveSessionPreference(rememberSession);
       setFeedback("Entrada confirmada.");
       onSignedIn();
-      window.requestAnimationFrame(() => document.querySelector<HTMLElement>("#puleiro-main-title")?.focus());
     } catch (error) {
       setFeedback(authenticationFailureMessage(error));
     } finally {

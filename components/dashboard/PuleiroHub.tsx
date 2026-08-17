@@ -1,20 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { Header } from "@/components/navigation/Header";
 
-type ReportSummary = { totalRuns: number; completedRuns: number };
-
 export function PuleiroHub() {
-  const [summary, setSummary] = useState<ReportSummary>();
-
-  useEffect(() => {
-    void fetch("/api/mascot/reports", { cache: "no-store" })
-      .then(async (response) => response.ok ? response.json() as Promise<{ summary: ReportSummary }> : null)
-      .then((payload) => setSummary(payload?.summary));
-  }, []);
-
   return <div className="site-shell hub-shell">
     <Header />
     <main className="hub-page" aria-labelledby="hub-title">
@@ -30,7 +19,6 @@ export function PuleiroHub() {
       <section className="hub-doors" aria-label="Caminhos do Puleiro">
         <Link href="/meus-mascotes"><strong>Minha biblioteca</strong><span>Seus mascotes, favoritos e códigos.</span></Link>
         <Link href="/explorar"><strong>Explorar comunidade</strong><span>Personagens publicados por seus criadores.</span></Link>
-        <Link href="/relatorios"><strong>Caderno de criação</strong><span>{summary ? `${summary.completedRuns} gerações concluídas registradas.` : "Tempos e custos observados com transparência."}</span></Link>
       </section>
     </main>
   </div>;

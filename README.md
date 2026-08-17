@@ -38,7 +38,7 @@ Ao concluir, o BFF salva o conjunto idempotentemente em uma biblioteca privada e
 - `/criar` mantém o fluxo de nascimento;
 - `/meus-mascotes` mostra criações próprias e personagens públicos que a pessoa favoritou ou salvou;
 - `/explorar` é a comunidade. Um mascote só entra nela após publicação explícita e reversível do proprietário;
-- `/relatorios` registra durações das etapas iniciadas e concluídas. Custo só aparece quando o Modal reportar uma reserva ou cobrança verificável — o Puleiro não inventa preço.
+- As métricas de duração e custo são telemetria privada, owner-scoped e mantida fora da navegação do produto. Custo só pode ser registrado quando o Modal reportar uma reserva ou cobrança verificável — o Puleiro não inventa preço.
 
 ## Banco e RLS
 

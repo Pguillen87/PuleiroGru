@@ -246,6 +246,26 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     }
   }, [applyJob, config, job]);
 
+  const resumeCurrentGeneration = useCallback(async () => {
+    controller.current?.abort();
+    const current = new AbortController();
+    controller.current = current;
+    setErrorMessage("");
+    setErrorCode("");
+    setState("creating-job");
+    try {
+      const resumed = await resumeGenerationJob(current.signal);
+      if (!resumed) throw new GenerationRequestError("O registro ainda está sendo confirmado. Aguarde um instante e retome novamente.", true, "REGISTRATION_CONFIRMATION_PENDING");
+      newAttemptForPhoto.current = false;
+      applyJob(resumed);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setErrorCode(error instanceof GenerationRequestError ? error.code : "REGISTRATION_CONFIRMATION_PENDING");
+      setErrorMessage(error instanceof Error ? error.message : "O registro ainda está sendo confirmado.");
+      setState("recoverable-error");
+    }
+  }, [applyJob]);
+
   const acceptMaster = useCallback(async () => {
     if (!job || !activeMaster) return;
     const current = new AbortController();
@@ -357,6 +377,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     changePhoto,
     startNewMascot,
     startGeneration,
+    resumeCurrentGeneration,
     startRegisteredGeneration,
     reportMasterImageError: () => {
       setErrorMessage("O mascote foi criado, mas a prévia não carregou. Seu nascimento continua salvo; recarregue a imagem.");
@@ -379,7 +400,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     continuePoseSelection,
     backPoseSelection,
     generatePoseSet,
-  }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorCode, errorMessage, finishLibrary, generatePoseSet, job, libraryItem, masterIndex, masterUrl, nextMaster, photoUrl, poseChoices, progress, revealComplete, retryMasterImage, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
+  }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorCode, errorMessage, finishLibrary, generatePoseSet, job, libraryItem, masterIndex, masterUrl, nextMaster, photoUrl, poseChoices, progress, resumeCurrentGeneration, revealComplete, retryMasterImage, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
 }
 
 function generationProgress(state: PuleiroState, job?: GenerationJob, startedAt?: number): GenerationProgressModel | undefined {

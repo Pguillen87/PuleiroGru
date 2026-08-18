@@ -150,7 +150,7 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
         Authorization: `Bearer ${token}`,
       },
       cache: "no-store",
-      signal: AbortSignal.timeout(init.method === "POST" ? 15_000 : 8_000),
+      signal: AbortSignal.timeout(modalRequestTimeoutMs(path, init.method)),
     });
     return response;
   }
@@ -213,6 +213,12 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
       idempotentReplay: job.idempotentReplay,
     };
   }
+}
+
+export function modalRequestTimeoutMs(path: string, method = "GET") {
+  if (method === "POST" && path === "/v2/mascot/jobs") return 35_000;
+  if (method === "POST") return 20_000;
+  return 20_000;
 }
 
 function poseIdempotencyKey(identity: JobIdentity, jobId: string, choices: PoseChoices) {

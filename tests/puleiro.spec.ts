@@ -189,6 +189,56 @@ test("uma foto inválida não oferece retry para o mesmo arquivo", async ({ page
   await expect(page.getByRole("button", { name: "Trocar foto" })).toBeVisible();
 });
 
+test("confirmação incerta retoma o mesmo nascimento sem repetir o POST", async ({ page }) => {
+  let creations = 0;
+  let resumptions = 0;
+  let registrationPending = false;
+  await page.route("**/api/mascot/jobs/current", (route) => {
+    resumptions += 1;
+    if (!registrationPending) {
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ job: null }) });
+    }
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        job: {
+          id: "registro-recuperado",
+          attemptId: "attempt-recuperado",
+          status: "registered",
+          message: "Seu pedido de nascimento ficou guardado com segurança.",
+          generationScheduled: false,
+          masters: [],
+          ...jobIdentity,
+        },
+      }),
+    });
+  });
+  await page.route("**/api/mascot/jobs", (route) => {
+    if (new URL(route.request().url()).pathname !== "/api/mascot/jobs") return route.fallback();
+    creations += 1;
+    registrationPending = true;
+    return route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        code: "REGISTRATION_CONFIRMATION_PENDING",
+        message: "O registro ainda está sendo confirmado.",
+      }),
+    });
+  });
+  await page.goto("/criar");
+  await selectPhoto(page);
+  await page.getByRole("button", { name: "Usar esta foto" }).click();
+  await page.getByRole("radio", { name: /Pessoa/ }).check();
+  await page.getByRole("button", { name: "Confirmar e começar" }).click();
+  await expect(page.getByRole("heading", { name: "Seu nascimento continua registrado" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Tentar novamente" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Retomar nascimento" }).click();
+  await expect(page.getByRole("heading", { name: "Nascimento guardado" })).toBeVisible();
+  expect(creations).toBe(1);
+  expect(resumptions).toBeGreaterThanOrEqual(1);
+});
+
 test("timeout encerra polling sem criar novo POST automaticamente", async ({ page }) => {
   let creations = 0;
   await page.route("**/api/mascot/jobs", (route) => {

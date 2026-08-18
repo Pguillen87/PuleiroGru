@@ -4,8 +4,9 @@ import { attemptCookie, getOrCreateAttemptId, jobIdentity } from "@/lib/mascot-g
 import { findAttempt, reserveAttempt, saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { generationConfig } from "@/lib/mascot-generation/config";
+import { ModalProviderError } from "@/lib/mascot-generation/modal-provider";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
-import type { GenerationJob } from "@/lib/mascot-generation/types";
+import type { GenerationJob, JobIdentity, MascotGenerationProvider } from "@/lib/mascot-generation/types";
 import { ImageValidationError, validateAndSanitizeImage } from "@/lib/mascot-generation/validation";
 import { parseSubjectIdentity, SubjectIdentityError } from "@/lib/mascot-generation/subject-identity";
 import { createClient } from "@/lib/supabase/server";
@@ -34,6 +35,16 @@ export async function POST(request: Request) {
       if (existingJob) return jobResponse(existingJob, attemptId);
     }
 
+    const context = jobIdentity(identity.uid, attemptId, trace);
+    if (existing && !existing.modal_job_id) {
+      const recovered = await recoverRegisteredJob(provider, context);
+      if (recovered) {
+        if (supabase) await saveAttemptJob(supabase, identity.uid, recovered);
+        mascotLog("mascot_registration_reconciled", { ...trace, jobId: recovered.id, result: "recovered", httpStatus: 200 });
+        return traceResponse(jobResponse(recovered, attemptId), trace, recovered.requestId);
+      }
+    }
+
     validateDeclaredLength(request);
     const formData = await request.formData();
     const photo = formData.get("photo");
@@ -43,14 +54,27 @@ export async function POST(request: Request) {
 
     const subjectIdentity = parseSubjectIdentity(formData);
     const image = await validateAndSanitizeImage(photo, generationConfig.maxUploadBytes, generationConfig.maxImageDimension);
-    const context = jobIdentity(identity.uid, attemptId, trace);
     if (supabase) await reserveAttempt(supabase, identity.uid, attemptId);
-    const job = await provider.createMasterJob({
-      ...image,
-      ...context,
-      idempotencyKey: `register:${identity.uid}:${attemptId}`,
-      subjectIdentity,
-    });
+    let job: GenerationJob;
+    try {
+      job = await provider.createMasterJob({
+        ...image,
+        ...context,
+        idempotencyKey: `register:${identity.uid}:${attemptId}`,
+        subjectIdentity,
+      });
+    } catch (error) {
+      if (error instanceof ModalProviderError) throw error;
+      mascotLog("mascot_registration_response_uncertain", {
+        ...trace,
+        result: "reconciling",
+        safeErrorCode: error instanceof Error ? error.name : "UNKNOWN",
+      });
+      const recovered = await recoverRegisteredJob(provider, context);
+      if (!recovered) return registrationPendingResponse(attemptId, trace);
+      job = recovered;
+      mascotLog("mascot_registration_reconciled", { ...trace, jobId: job.id, result: "recovered", httpStatus: 200 });
+    }
     if (supabase) await saveAttemptJob(supabase, identity.uid, job);
     const response = jobResponse(job, attemptId);
     return traceResponse(response, trace, job.requestId);
@@ -71,6 +95,24 @@ export async function POST(request: Request) {
     console.error("mascot_job_create_failed", { error: error instanceof Error ? error.name : "unknown" });
     return integrationErrorResponse(error, "CREATE_JOB_FAILED", "Não conseguimos registrar este nascimento.", trace);
   }
+}
+
+async function recoverRegisteredJob(provider: MascotGenerationProvider, identity: JobIdentity) {
+  try {
+    return await provider.getJobByAttempt(identity);
+  } catch {
+    return null;
+  }
+}
+
+function registrationPendingResponse(attemptId: string, trace: MascotTraceContext) {
+  const response = NextResponse.json({
+    message: "O registro ainda está sendo confirmado. Retome o nascimento sem enviar a foto novamente.",
+    code: "REGISTRATION_CONFIRMATION_PENDING",
+    supportCode: trace.requestId.slice(0, 10).toUpperCase(),
+  }, { status: 503 });
+  response.cookies.set(attemptCookie(attemptId));
+  return traceResponse(response, trace);
 }
 
 function validateDeclaredLength(request: Request) {

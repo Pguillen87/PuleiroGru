@@ -1,5 +1,20 @@
 # Puleiro do GRU — auditoria e plano de integração com o Modal
 
+## Incidente de registro assíncrono — 2026-08-18
+
+**Sintoma:** o Puleiro exibiu `CREATE_JOB_FAILED` depois de enviar uma foto, embora o Modal já tivesse criado o job.
+**Causa comprovada:** o BFF encerrava o `POST /v2/mascot/jobs` após 15 segundos; o caminho frio do Modal persistia o job, mas a resposta HTTP chegava tarde demais. O `modal_job_id` não era salvo no Supabase e a interface sugeria uma nova tentativa.
+
+**Correção aplicada:**
+
+- timeout específico de 35 s para registro e 20 s para leitura/retomada;
+- reconciliação owner-scoped por `attemptId` antes de qualquer novo registro e depois de uma resposta de transporte incerta;
+- cookie de tentativa preservado quando a confirmação ainda está pendente;
+- ação visível `Retomar nascimento`, que consulta o job existente e não faz novo `POST`;
+- teste de navegador que prova um único `POST` no cenário de confirmação incerta.
+
+O encerramento da conexão nunca equivale a cancelamento nem autoriza gerar outro job. A interface deve sempre retomar a mesma tentativa primeiro.
+
 > **Correção arquitetural aprovada em 2026-08-13:** o Puleiro Web usa Supabase Auth SSR e RLS. Qualquer seção histórica abaixo que proponha Firebase Web ou App Check Web está obsoleta. Firebase continua somente no GRU Android e nas rotas Modal v1; Modal v2 recebe JWT curto emitido pelo BFF com `sub = Supabase user.id`.
 
 **Status:** plano para aprovação; nenhuma integração, geração, GPU, secret ou deploy foi alterado.

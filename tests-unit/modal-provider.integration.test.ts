@@ -111,4 +111,11 @@ describe("BFF → Modal v2 local sem GPU", () => {
       poseWorkerCalls: 0,
     });
   });
+
+  it("usa limites de espera próprios para registro e leitura de retomada", async () => {
+    const { modalRequestTimeoutMs } = await import("@/lib/mascot-generation/modal-provider");
+    expect(modalRequestTimeoutMs("/v2/mascot/jobs", "POST")).toBe(35_000);
+    expect(modalRequestTimeoutMs("/v2/mascot/jobs?attempt_id=attempt-local", "GET")).toBe(20_000);
+    expect(modalRequestTimeoutMs("/v2/mascot/jobs/job-local/pose-generations", "POST")).toBe(20_000);
+  });
 });

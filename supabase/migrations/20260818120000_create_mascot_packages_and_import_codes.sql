@@ -27,10 +27,12 @@ alter table public.mascot_import_codes enable row level security;
 revoke all on public.mascot_packages, public.mascot_import_codes from anon;
 grant select on public.mascot_packages, public.mascot_import_codes to authenticated;
 
+drop policy if exists "Users read their own mascot packages" on public.mascot_packages;
 create policy "Users read their own mascot packages"
 on public.mascot_packages for select to authenticated
 using ((select auth.uid()) = user_id);
 
+drop policy if exists "Users read their own mascot import codes" on public.mascot_import_codes;
 create policy "Users read their own mascot import codes"
 on public.mascot_import_codes for select to authenticated
 using ((select auth.uid()) = user_id);

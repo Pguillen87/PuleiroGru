@@ -964,6 +964,31 @@ main {
   color: var(--color-text-secondary);
 }
 
+.library-footer-feedback {
+  position: fixed;
+  z-index: 20;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  left: max(1rem, env(safe-area-inset-left));
+  width: min(100% - 2rem, 34rem);
+  margin: 0 auto;
+  padding: 0.75rem 1rem;
+  border: 1px solid #697c48;
+  background: #f0f4df;
+  box-shadow: 3px 3px 0 rgb(54 67 35 / 24%);
+  color: #33451f;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.library-footer-feedback--error {
+  border-color: #a92830;
+  background: #fff1eb;
+  box-shadow: 3px 3px 0 rgb(128 31 37 / 18%);
+  color: #8c2028;
+}
+
 .library-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
@@ -1192,19 +1217,17 @@ main {
 
 .library-item__name-row {
   position: relative;
-  margin-inline: -0.15rem;
-  padding: 0.28rem 0.35rem 0.3rem 0.7rem;
-  border: 1px solid #c4b38b;
-  background: linear-gradient(90deg, #fffdf4 0%, #f7edce 100%);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 70%);
+  min-height: 2.75rem;
+  padding: 0.1rem 0 0.28rem;
+  border-bottom: 1px solid #cdbb90;
 }
 
 .library-item__name-row::before {
   position: absolute;
-  top: 0.3rem;
-  bottom: 0.3rem;
-  left: 0.28rem;
-  width: 2px;
+  bottom: -1px;
+  left: 0;
+  width: 1.4rem;
+  height: 2px;
   background: #c52631;
   content: "";
 }
@@ -1213,7 +1236,8 @@ main {
   color: #2e271c;
   font-family: var(--font-display), Arial, sans-serif;
   font-size: 1.28rem;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.02em;
+  text-shadow: 0.5px 0.5px 0 rgb(255 255 255 / 80%);
 }
 
 .library-item__rename,
@@ -1231,10 +1255,33 @@ main {
   cursor: pointer;
 }
 
+.library-item__rename {
+  flex-basis: 2.75rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0.5rem;
+  color: #5e5139;
+}
+
+.library-item__rename svg {
+  width: 1rem;
+  height: 1rem;
+}
+
 .library-item__rename:hover,
 .library-item__rename-form button:hover,
 .library-item__more-trigger:hover {
   background: var(--color-egg);
+}
+
+.library-item__rename:hover {
+  background: transparent;
+  color: #bd2731;
+}
+
+.library-item__rename:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
 }
 
 .library-item__rename-form input {
@@ -1262,8 +1309,8 @@ main {
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
@@ -1273,8 +1320,8 @@ main {
   justify-content: space-between;
   gap: 0.45rem;
   min-width: 0;
-  padding: 0.3rem 0;
-  border-top: 1px dashed #b7a77e;
+  padding: 0.18rem 0 0.28rem;
+  border-bottom: 1px dotted #c6b589;
 }
 
 .library-item__date {
@@ -1285,7 +1332,7 @@ main {
   min-width: 0;
   margin: 0;
   color: #685a3f;
-  font-size: 0.6rem;
+  font-size: 0.58rem;
   font-weight: 600;
   letter-spacing: 0;
   line-height: 1.2;

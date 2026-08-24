@@ -8,6 +8,7 @@ import type { CommunityMascot, MascotLibraryItem } from "@/lib/mascot-generation
 
 type SortOption = "newest" | "oldest" | "code";
 type FilterOption = "all" | "favorites";
+type FeedbackTone = "success" | "error";
 
 const sortLabels: Record<SortOption, string> = { newest: "Mais recentes", oldest: "Mais antigos", code: "Código do mascote" };
 const PAGE_SIZE = 24;
@@ -24,6 +25,13 @@ export function PersonalMascotLibrary() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [libraryRevision, setLibraryRevision] = useState(0);
+  const [footerFeedback, setFooterFeedback] = useState<{ message: string; tone: FeedbackTone } | null>(null);
+
+  useEffect(() => {
+    if (!footerFeedback) return;
+    const timer = window.setTimeout(() => setFooterFeedback(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [footerFeedback]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -102,6 +110,7 @@ export function PersonalMascotLibrary() {
             setLibraryRevision((revision) => revision + 1);
             setMessage(nextMessage);
           }}
+          onFeedback={(nextMessage, tone = "success") => setFooterFeedback({ message: nextMessage, tone })}
           onItemUpdate={(updated) => setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))}
           onItemRemove={(itemId) => {
             setItems((current) => current.filter((entry) => entry.id !== itemId));
@@ -123,6 +132,7 @@ export function PersonalMascotLibrary() {
           {communityItems.map((item) => <li key={item.id}><SavedCommunityItem item={item} /></li>)}
         </ul>
       </section>}
+      {footerFeedback && <p className={`library-footer-feedback library-footer-feedback--${footerFeedback.tone}`} role={footerFeedback.tone === "error" ? "alert" : "status"} aria-live="polite">{footerFeedback.message}</p>}
     </main>
   </div>;
 }
@@ -158,7 +168,7 @@ function LibraryControls({ filter, query, sort, onFilter, onQuery, onSort }: {
   </section>;
 }
 
-function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavoriteUpdate, onCollectionRefresh, onItemUpdate, onItemRemove }: {
+function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavoriteUpdate, onCollectionRefresh, onFeedback, onItemUpdate, onItemRemove }: {
   item: MascotLibraryItem;
   priority: boolean;
   catalogNumber: number;
@@ -166,6 +176,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
   onSelect: (item: MascotLibraryItem) => void;
   onFavoriteUpdate: (itemId: string, isFavorite: boolean) => void;
   onCollectionRefresh: (message: string) => void;
+  onFeedback: (message: string, tone?: FeedbackTone) => void;
   onItemUpdate: (item: MascotLibraryItem) => void;
   onItemRemove: (itemId: string) => void;
 }) {
@@ -175,7 +186,6 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
   const [packaging, setPackaging] = useState(false);
   const [packageReady, setPackageReady] = useState(false);
   const [packageSuccessOpen, setPackageSuccessOpen] = useState(false);
-  const [actionError, setActionError] = useState("");
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(item.displayName);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
@@ -214,8 +224,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
       if (!navigator.clipboard) throw new Error();
       await navigator.clipboard.writeText(item.mascotCode);
       setCopied(true);
-      setActionError("");
-    } catch { setActionError("Não foi possível copiar o código neste navegador."); }
+    } catch { onFeedback("Não foi possível copiar o código neste navegador.", "error"); }
   }
 
   async function toggleFavorite() {
@@ -229,15 +238,14 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
       onCollectionRefresh(body.item.isFavorite
         ? `${item.displayName} entrou nos favoritos dourados.`
         : `${item.displayName} saiu dos favoritos.`);
-      setActionError("");
-    } catch { setActionError("Não foi possível atualizar o favorito agora."); }
+    } catch { onFeedback("Não foi possível atualizar o favorito agora.", "error"); }
     finally { setSaving(false); }
   }
 
   async function saveFavoriteRank() {
     const favoriteRank = Number.parseInt(favoriteRankDraft, 10);
     if (!Number.isInteger(favoriteRank) || favoriteRank < 1) {
-      setActionError("Informe uma posição começando em 1.");
+      onFeedback("Informe uma posição começando em 1.", "error");
       return;
     }
     if (favoriteRank === item.favoriteRank) return;
@@ -253,9 +261,8 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
       setFavoriteRankDraft(String(body.item.favoriteRank ?? ""));
       onItemUpdate(body.item);
       onCollectionRefresh(`${item.displayName} agora ocupa a posição dourada ${body.item.favoriteRank}.`);
-      setActionError("");
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Não foi possível reorganizar os favoritos agora.");
+      onFeedback(error instanceof Error ? error.message : "Não foi possível reorganizar os favoritos agora.", "error");
     } finally {
       setSaving(false);
     }
@@ -267,8 +274,10 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
       const response = await fetch(`/api/mascot/library/${encodeURIComponent(item.id)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ displayName }) });
       const body = await response.json().catch(() => ({})) as { item?: MascotLibraryItem; message?: string };
       if (!response.ok || !body.item) throw new Error(body.message ?? "Não foi possível alterar o nome.");
-      onItemUpdate(body.item); setEditingName(false); setActionError("Nome salvo. Prepare o pacote Android novamente para atualizar o GRU.");
-    } catch (error) { setActionError(error instanceof Error ? error.message : "Não foi possível alterar o nome."); }
+      onItemUpdate(body.item);
+      setEditingName(false);
+      onFeedback("Nome salvo. Prepare o pacote Android novamente para atualizar o GRU.");
+    } catch (error) { onFeedback(error instanceof Error ? error.message : "Não foi possível alterar o nome.", "error"); }
     finally { setSaving(false); }
   }
 
@@ -278,7 +287,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
       const response = await fetch(`/api/mascot/library/${encodeURIComponent(item.id)}`, { method: "DELETE", headers: { "content-type": "application/json" }, body: "{}" });
       if (!response.ok) throw new Error("Não foi possível excluir este mascote agora.");
       onItemRemove(item.id);
-    } catch (error) { setActionError(error instanceof Error ? error.message : "Não foi possível excluir este mascote agora."); }
+    } catch (error) { onFeedback(error instanceof Error ? error.message : "Não foi possível excluir este mascote agora.", "error"); }
     finally { setSaving(false); setDeleteDialogOpen(false); }
   }
 
@@ -288,14 +297,13 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
       const response = await fetch(`/api/mascot/library/${encodeURIComponent(item.id)}/publication`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: !published }) });
       const body = await response.json().catch(() => ({})) as { published?: boolean; message?: string };
       if (!response.ok || typeof body.published !== "boolean") throw new Error(body.message ?? "Não foi possível atualizar a publicação.");
-      setPublished(body.published); setActionError("");
-    } catch (error) { setActionError(error instanceof Error ? error.message : "Não foi possível atualizar a publicação."); }
+      setPublished(body.published);
+    } catch (error) { onFeedback(error instanceof Error ? error.message : "Não foi possível atualizar a publicação.", "error"); }
     finally { setSaving(false); }
   }
 
   async function prepareAndroidPackage() {
     setPackaging(true);
-    setActionError("");
     try {
       const response = await fetch(`/api/mascot/library/${encodeURIComponent(item.id)}/package`, {
         method: "POST",
@@ -306,7 +314,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
       setPackageReady(true);
       setPackageSuccessOpen(true);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Não foi possível preparar o pacote agora.");
+      onFeedback(error instanceof Error ? error.message : "Não foi possível preparar o pacote agora.", "error");
     } finally {
       setPackaging(false);
     }
@@ -370,8 +378,8 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
         </div>}
       </div>
       <div className="library-item__identity">
-        <code>{item.mascotCode}</code>
-        <p className="library-item__date">{formatCreatedAt(item.createdAt)}</p>
+        <code title={item.mascotCode}>{item.mascotCode}</code>
+        <time className="library-item__date" dateTime={item.createdAt}>{formatCreatedAt(item.createdAt)}</time>
       </div>
       <div className="library-item__actions">
         <button type="button" onClick={() => void copyCode()}>{copied ? "Código copiado" : "Copiar código"}</button>
@@ -383,7 +391,6 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
           title="Prepara o pacote privado para importação no aplicativo GRU."
         >{packageReady ? "Pacote pronto" : packaging ? "Preparando…" : "Preparar Android"}</button>
       </div>
-      {actionError && <p className="library-item__error" role="alert">{actionError}</p>}
     </div>
     {packageSuccessOpen && <PackageReadyDialog
       mascotCode={item.mascotCode}

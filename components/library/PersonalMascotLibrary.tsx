@@ -273,19 +273,28 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate, onI
         width="320"
         height="400"
       />
-      <span aria-hidden="true" className="library-item__preview-label">Ver conjunto</span>
+      <span aria-hidden="true" className="library-item__preview-label">Ver poses</span>
     </button>
-    <button
-      type="button"
-      className="library-item__favorite"
-      aria-pressed={item.isFavorite}
-      aria-label={item.isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
-      disabled={saving}
-      onClick={() => void toggleFavorite()}
-    ><span aria-hidden="true">★</span></button>
+    <div className="library-item__media-actions">
+      <button
+        type="button"
+        className="library-item__favorite"
+        aria-pressed={item.isFavorite}
+        aria-label={item.isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+        disabled={saving}
+        onClick={() => void toggleFavorite()}
+      ><StarIcon filled={item.isFavorite} /></button>
+      <div className="library-item__more-actions">
+        <button type="button" className="library-item__more-trigger" aria-expanded={moreActionsOpen} aria-controls={`mascot-actions-${item.id}`} aria-label={`Mais ações para ${item.displayName}`} disabled={saving} onClick={() => setMoreActionsOpen((open) => !open)}><MoreIcon /></button>
+        {moreActionsOpen && <div id={`mascot-actions-${item.id}`} className="library-item__more-menu" role="menu">
+          <button type="button" role="menuitem" onClick={() => { setMoreActionsOpen(false); void togglePublication(); }}>{published ? "Remover da comunidade" : "Publicar no Puleiro"}</button>
+          <button type="button" role="menuitem" className="library-item__delete" onClick={() => { setMoreActionsOpen(false); setDeleteDialogOpen(true); }}>Excluir mascote</button>
+        </div>}
+      </div>
+    </div>
     <div className="library-item__body">
       <div className="library-item__heading">
-        <span>Conjunto de três poses</span>
+        <span className="library-item__eyebrow">Conjunto de três poses</span>
         {editingName ? <form className="library-item__rename-form" onSubmit={(event) => { event.preventDefault(); void renameMascot(nameDraft); }}>
           <label className="sr-only" htmlFor={`mascot-name-${item.id}`}>Nome do mascote</label>
           <input id={`mascot-name-${item.id}`} autoFocus value={nameDraft} maxLength={32} onChange={(event) => setNameDraft(event.target.value)} required />
@@ -293,7 +302,7 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate, onI
           <button type="button" aria-label="Cancelar edição do nome" disabled={saving} onClick={() => { setNameDraft(item.displayName); setEditingName(false); }}><span aria-hidden="true">×</span></button>
         </form> : <div className="library-item__name-row">
           <strong>{item.displayName}</strong>
-          <button type="button" className="library-item__rename" aria-label={`Renomear ${item.displayName}`} disabled={saving} onClick={() => { setNameDraft(item.displayName); setEditingName(true); }}><span aria-hidden="true">✎</span></button>
+          <button type="button" className="library-item__rename" aria-label={`Renomear ${item.displayName}`} disabled={saving} onClick={() => { setNameDraft(item.displayName); setEditingName(true); }}><PencilIcon /></button>
         </div>}
         <code>{item.mascotCode}</code>
       </div>
@@ -306,14 +315,7 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate, onI
           disabled={saving || packaging || packageReady}
           onClick={() => void prepareAndroidPackage()}
           title="Prepara o pacote privado para importação no aplicativo GRU."
-        >{packageReady ? "Pacote pronto" : packaging ? "Preparando pacote…" : "Preparar pacote Android"}</button>
-      </div>
-      <div className="library-item__more-actions">
-        <button type="button" className="library-item__more-trigger" aria-expanded={moreActionsOpen} aria-controls={`mascot-actions-${item.id}`} aria-label={`Mais ações para ${item.displayName}`} disabled={saving} onClick={() => setMoreActionsOpen((open) => !open)}><span aria-hidden="true">⋮</span></button>
-        {moreActionsOpen && <div id={`mascot-actions-${item.id}`} className="library-item__more-menu" role="menu">
-          <button type="button" role="menuitem" onClick={() => { setMoreActionsOpen(false); void togglePublication(); }}>{published ? "Remover da comunidade" : "Publicar no Puleiro"}</button>
-          <button type="button" role="menuitem" className="library-item__delete" onClick={() => { setMoreActionsOpen(false); setDeleteDialogOpen(true); }}>Excluir mascote</button>
-        </div>}
+        >{packageReady ? "Pacote pronto" : packaging ? "Preparando…" : "Preparar Android"}</button>
       </div>
       {actionError && <p className="library-item__error" role="alert">{actionError}</p>}
     </div>
@@ -325,6 +327,18 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate, onI
     />}
     {deleteDialogOpen && <MascotDeleteDialog displayName={item.displayName} saving={saving} onClose={() => setDeleteDialogOpen(false)} onDelete={deleteMascot} />}
   </article>;
+}
+
+function StarIcon({ filled }: { filled: boolean }) {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8"><path strokeLinecap="round" strokeLinejoin="round" d="m12 3 2.78 5.63 6.22.9-4.5 4.38 1.06 6.19L12 17.18 6.44 20.1 7.5 13.91 3 9.53l6.22-.9L12 3Z" /></svg>;
+}
+
+function PencilIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><path strokeLinecap="round" strokeLinejoin="round" d="m4 16.7-.7 4 4-.7L19 8.3 15.7 5 4 16.7Z" /><path strokeLinecap="round" d="m14.8 5.9 3.3 3.3" /></svg>;
+}
+
+function MoreIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="12" cy="19" r="1.6" /></svg>;
 }
 
 function PackageReadyDialog({ mascotCode, closeRef, onClose, onCopy }: {

@@ -180,8 +180,11 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
   const [nameDraft, setNameDraft] = useState(item.displayName);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [posesOpen, setPosesOpen] = useState(false);
   const [favoriteRankDraft, setFavoriteRankDraft] = useState(String(item.favoriteRank ?? ""));
   const closeSuccessRef = useRef<HTMLButtonElement>(null);
+  const moreActionsRef = useRef<HTMLDivElement>(null);
+  const closePosesRef = useRef<HTMLButtonElement>(null);
   const imageUrl = item.poses.find((pose) => pose.role === "normal")?.imageUrl ?? item.poses[0]?.imageUrl;
 
   useEffect(() => {
@@ -191,6 +194,20 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [packageSuccessOpen]);
+
+  useEffect(() => {
+    if (!moreActionsOpen) return;
+    const closeOutsideMenu = (event: PointerEvent) => {
+      if (!moreActionsRef.current?.contains(event.target as Node)) setMoreActionsOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setMoreActionsOpen(false); };
+    window.addEventListener("pointerdown", closeOutsideMenu);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOutsideMenu);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [moreActionsOpen]);
 
   async function copyCode() {
     try {
@@ -299,9 +316,8 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
     <button
       type="button"
       className="library-item__preview"
-      aria-pressed={selected}
-      aria-label={`Selecionar mascote ${item.mascotCode}`}
-      onClick={() => onSelect(item)}
+      aria-label={`Ver as três poses de ${item.displayName}`}
+      onClick={() => { onSelect(item); setPosesOpen(true); }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -313,23 +329,9 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
         width="320"
         height="400"
       />
-      <span aria-hidden="true" className="library-item__preview-label">Ver poses</span>
+      <span aria-hidden="true" className="library-item__preview-label">Ver 3 poses</span>
     </button>
-    {item.isFavorite ? <form className="library-item__favorite-rank-chip" onSubmit={(event) => { event.preventDefault(); void saveFavoriteRank(); }}>
-      <label htmlFor={`favorite-rank-${item.id}`}>Dourada</label>
-      <input
-        id={`favorite-rank-${item.id}`}
-        type="number"
-        inputMode="numeric"
-        min={1}
-        max={10_000}
-        value={favoriteRankDraft}
-        disabled={saving}
-        aria-label="Posição entre os favoritos"
-        onChange={(event) => setFavoriteRankDraft(event.target.value)}
-        onBlur={() => void saveFavoriteRank()}
-      />
-    </form> : <span className="library-item__catalog-number" aria-hidden="true">{`Fig. ${String(catalogNumber).padStart(2, "0")}`}</span>}
+    {!item.isFavorite && <span className="library-item__catalog-number" aria-hidden="true">{`Fig. ${String(catalogNumber).padStart(2, "0")}`}</span>}
     <div className="library-item__media-actions">
       <button
         type="button"
@@ -339,11 +341,18 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
         disabled={saving}
         onClick={() => void toggleFavorite()}
       ><StarIcon filled={item.isFavorite} /></button>
-      <div className="library-item__more-actions">
+      <div ref={moreActionsRef} className="library-item__more-actions">
         <button type="button" className="library-item__more-trigger" aria-expanded={moreActionsOpen} aria-controls={`mascot-actions-${item.id}`} aria-label={`Mais ações para ${item.displayName}`} disabled={saving} onClick={() => setMoreActionsOpen((open) => !open)}><MoreIcon /></button>
-        {moreActionsOpen && <div id={`mascot-actions-${item.id}`} className="library-item__more-menu" role="menu">
-          <button type="button" role="menuitem" onClick={() => { setMoreActionsOpen(false); void togglePublication(); }}>{published ? "Remover da comunidade" : "Publicar no Puleiro"}</button>
-          <button type="button" role="menuitem" className="library-item__delete" onClick={() => { setMoreActionsOpen(false); setDeleteDialogOpen(true); }}>Excluir mascote</button>
+        {moreActionsOpen && <div id={`mascot-actions-${item.id}`} className="library-item__more-menu" role="group" aria-label={`Ações para ${item.displayName}`}>
+          {item.isFavorite && <form className="library-item__favorite-position" onSubmit={(event) => { event.preventDefault(); void saveFavoriteRank(); }}>
+            <label htmlFor={`favorite-rank-${item.id}`}>Ordem dourada</label>
+            <div>
+              <input id={`favorite-rank-${item.id}`} type="number" inputMode="numeric" min={1} max={10_000} value={favoriteRankDraft} disabled={saving} onChange={(event) => setFavoriteRankDraft(event.target.value)} />
+              <button type="submit" disabled={saving}>Atualizar</button>
+            </div>
+          </form>}
+          <button type="button" onClick={() => { setMoreActionsOpen(false); void togglePublication(); }}>{published ? "Remover da comunidade" : "Publicar no Puleiro"}</button>
+          <button type="button" className="library-item__delete" onClick={() => { setMoreActionsOpen(false); setDeleteDialogOpen(true); }}>Excluir mascote</button>
         </div>}
       </div>
     </div>
@@ -382,6 +391,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
       onClose={() => setPackageSuccessOpen(false)}
       onCopy={() => void copyCode()}
     />}
+    {posesOpen && <MascotPosesDialog displayName={item.displayName} poses={item.poses} closeRef={closePosesRef} onClose={() => setPosesOpen(false)} />}
     {deleteDialogOpen && <MascotDeleteDialog displayName={item.displayName} saving={saving} onClose={() => setDeleteDialogOpen(false)} onDelete={deleteMascot} />}
   </article>;
 }
@@ -415,6 +425,31 @@ function PackageReadyDialog({ mascotCode, closeRef, onClose, onCopy }: {
         <button type="button" onClick={onCopy}>Copiar código</button>
         <button ref={closeRef} type="button" onClick={onClose}>Continuar</button>
       </div>
+    </section>
+  </div>, document.body);
+}
+
+function MascotPosesDialog({ displayName, poses, closeRef, onClose }: {
+  displayName: string;
+  poses: MascotLibraryItem["poses"];
+  closeRef: React.RefObject<HTMLButtonElement | null>;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    closeRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [closeRef, onClose]);
+
+  return createPortal(<div className="package-success-dialog__backdrop" role="presentation" onMouseDown={onClose}>
+    <section className="mascot-poses-dialog" role="dialog" aria-modal="true" aria-labelledby="mascot-poses-title" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="mascot-poses-dialog__heading"><div><p>Conjunto completo</p><h2 id="mascot-poses-title">{displayName}</h2></div><button ref={closeRef} type="button" onClick={onClose}>Fechar</button></div>
+      <div className="mascot-poses-dialog__grid">{poses.map((pose) => <figure key={pose.id}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={pose.imageUrl} alt={`${pose.label} de ${displayName}.`} />
+        <figcaption>{pose.label}</figcaption>
+      </figure>)}</div>
     </section>
   </div>, document.body);
 }

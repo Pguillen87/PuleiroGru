@@ -71,7 +71,7 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
     "pose-selection-review": <PoseSelectionReviewStage choices={flow.poseChoices} enabled={config.poseGenerationEnabled} errorMessage={flow.errorMessage} onGenerate={flow.generatePoseSet} onBack={() => flow.backPoseSelection("review")} />,
     "generating-poses": <PreparingStage title="Experimentando os três jeitos" message={flow.statusMessage} detail="O mascote mestre continua sendo a referência de identidade." progress={flow.progress} />,
     "pose-set-ready": flow.poses.length === 3
-      ? <PoseSetReadyStage poses={flow.poses} errorMessage={flow.errorMessage} onRetrySave={flow.errorMessage ? flow.retryLibrarySave : undefined} />
+      ? <PoseSetReadyStage poses={flow.poses} errorMessage={flow.errorMessage} onSave={flow.saveLibrary} />
       : <PreparingStage title="Conferindo os três jeitos" message={flow.statusMessage} detail="As imagens estão sendo validadas antes de aparecerem no palco." />,
     "saving-library": <PreparingStage title="Guardando seu mascote" message="Preparando o bilhete de saída do Puleiro…" detail="O conjunto ficará salvo na sua biblioteca privada." />,
     "code-ready": flow.libraryItem ? <MascotCodeStage item={flow.libraryItem} onCreateAnother={flow.startNewMascot} /> : <PreparingStage title="Guardando seu mascote" message="Preparando o código do seu mascote…" />,

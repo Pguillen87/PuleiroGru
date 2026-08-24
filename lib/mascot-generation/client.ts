@@ -48,11 +48,11 @@ export async function createGenerationJob(photo: File, subjectIdentity: SubjectI
   return await readResponse(response) as GenerationJob;
 }
 
-export async function finalizeMascot(jobId: string, signal: AbortSignal) {
+export async function finalizeMascot(jobId: string, displayName: string, signal: AbortSignal) {
   const response = await fetch(`/api/mascot/jobs/${encodeURIComponent(jobId)}/complete`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: "{}",
+    body: JSON.stringify({ displayName }),
     signal,
   });
   const body = await response.json().catch(() => ({})) as { item?: import("./types").MascotLibraryItem; message?: string; code?: string; supportCode?: string };

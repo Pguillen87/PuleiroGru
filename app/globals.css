@@ -1029,6 +1029,13 @@ main {
   overflow-wrap: anywhere;
 }
 
+.library-item__heading code {
+  color: var(--color-text-secondary);
+  font-family: var(--font-functional), Arial, sans-serif;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
 .library-item__actions {
   display: grid;
   grid-template-columns: 1fr;

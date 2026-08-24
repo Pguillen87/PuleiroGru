@@ -4,7 +4,8 @@ import sharp from "sharp";
 import type { MasterImage } from "./types";
 
 const TECHNICAL_BORDER_THRESHOLD = 0.55;
-const MIN_TECHNICAL_CHANNEL = 145;
+const MIN_TECHNICAL_CHANNEL = 20;
+const MAX_TECHNICAL_CHANNEL = 245;
 const MAX_CHANNEL_SPREAD = 34;
 const FLAT_BACKGROUND_THRESHOLD = 0.82;
 const FLAT_BACKGROUND_TOLERANCE = 24;
@@ -88,17 +89,25 @@ async function buildDisplayAsset(image: MasterImage, variant: DisplayAssetVarian
 function hasTechnicalBorder(data: Buffer, width: number, height: number) {
   let technical = 0;
   let inspected = 0;
+  const luminance: number[] = [];
+  const collect = (x: number, y: number) => {
+    const offset = pixelOffset(x, y, width);
+    technical += Number(isTechnicalPixel(data, offset));
+    inspected += 1;
+    luminance.push((data[offset] + data[offset + 1] + data[offset + 2]) / 3);
+  };
   for (let x = 0; x < width; x += 1) {
-    technical += Number(isTechnicalPixel(data, pixelOffset(x, 0, width)));
-    technical += Number(isTechnicalPixel(data, pixelOffset(x, height - 1, width)));
-    inspected += 2;
+    collect(x, 0);
+    collect(x, height - 1);
   }
   for (let y = 1; y < height - 1; y += 1) {
-    technical += Number(isTechnicalPixel(data, pixelOffset(0, y, width)));
-    technical += Number(isTechnicalPixel(data, pixelOffset(width - 1, y, width)));
-    inspected += 2;
+    collect(0, y);
+    collect(width - 1, y);
   }
-  return inspected > 0 && technical / inspected >= TECHNICAL_BORDER_THRESHOLD;
+  const transitions = luminance.slice(1).filter((value, index) => Math.abs(value - luminance[index]) >= 12).length;
+  return inspected > 0
+    && technical / inspected >= TECHNICAL_BORDER_THRESHOLD
+    && transitions >= Math.max(8, Math.floor(inspected * 0.03));
 }
 
 function removeConnectedBackground(source: Buffer, width: number, height: number, isBackgroundPixel: (data: Buffer, offset: number) => boolean) {
@@ -180,6 +189,7 @@ function isTechnicalPixel(data: Buffer, offset: number) {
   const green = data[offset + 1];
   const blue = data[offset + 2];
   return Math.min(red, green, blue) >= MIN_TECHNICAL_CHANNEL
+    && Math.max(red, green, blue) <= MAX_TECHNICAL_CHANNEL
     && Math.max(red, green, blue) - Math.min(red, green, blue) <= MAX_CHANNEL_SPREAD;
 }
 

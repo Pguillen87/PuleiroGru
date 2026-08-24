@@ -89,7 +89,7 @@ export function PersonalMascotLibrary() {
           selected={selectedItemId === item.id}
           onSelect={(selectedItem) => {
             setSelectedItemId(selectedItem.id);
-            setMessage(`Mascote ${selectedItem.mascotCode} selecionado. Você pode copiar o código ou marcar como favorito.`);
+            setMessage(`${selectedItem.displayName} selecionado. Você pode copiar o código ou marcar como favorito.`);
           }}
           onFavoriteUpdate={(itemId, isFavorite) => {
             setItems((current) => current.map((entry) => entry.id === itemId ? { ...entry, isFavorite } : entry));
@@ -250,7 +250,7 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
       onClick={() => void toggleFavorite()}
     ><span aria-hidden="true">★</span></button>
     <div className="library-item__body">
-      <div className="library-item__heading"><span>Conjunto de três poses</span><strong>{item.mascotCode}</strong></div>
+      <div className="library-item__heading"><span>Conjunto de três poses</span><strong>{item.displayName}</strong><code>{item.mascotCode}</code></div>
       <p>{formatCreatedAt(item.createdAt)}</p>
       <div className="library-item__actions">
         <button type="button" onClick={() => void copyCode()}>{copied ? "Código copiado" : "Copiar código"}</button>

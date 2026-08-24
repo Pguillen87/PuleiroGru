@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { findLibraryItem } from "./library-store";
 import { getMascotGenerationProvider } from "./provider";
 import { jobIdentity } from "./attempt";
+import { prepareMascotDisplayAsset } from "./display-asset";
 import type { MascotLibraryItem, PoseRole } from "./types";
 
 const BUCKET = "mascot-packages";
@@ -35,11 +36,19 @@ export async function publishMascotPackage(client: SupabaseClient, userId: strin
   const item = await findLibraryItem(client, userId, itemId);
   if (!item) throw new MascotPackageError("MASCOT_NOT_FOUND", "Mascote não encontrado.");
   const existing = await findPackage(admin, userId, item.id);
-  if (existing) return { item, package: existing };
+  if (existing && packageMatchesCurrentOutput(existing, item.displayName)) return { item, package: existing };
 
-  const version = "1.0.0";
+  const version = nextPackageVersion(existing?.package_version);
   const assets = await downloadAndStoreAssets(admin, userId, item, version);
-  const manifest = { schemaVersion: 1, mascotId: item.id, packageVersion: version, displayName: "Mascote do GRU", visibility: "PRIVATE", assets };
+  const manifest = { schemaVersion: 1, assetPipelineVersion: 2, mascotId: item.id, packageVersion: version, displayName: item.displayName, visibility: "PRIVATE", assets };
+  if (existing) {
+    const { data: refreshed, error } = await admin.from("mascot_packages")
+      .update({ package_version: version, manifest, status: "ready" })
+      .eq("id", existing.id).eq("user_id", userId)
+      .select("id, package_version, manifest, status").single();
+    if (error || !refreshed) throw new MascotPackageError("PACKAGE_REGISTRATION_FAILED", "Não foi possível atualizar o pacote.");
+    return { item, package: refreshed };
+  }
   const { data: packageRow, error } = await admin.from("mascot_packages").insert({
     library_item_id: item.id, user_id: userId, package_version: version, manifest, status: "ready",
   }).select("id, package_version, manifest, status").single();
@@ -72,16 +81,28 @@ async function downloadAndStoreAssets(admin: SupabaseClient, userId: string, ite
   for (const role of ROLES) {
     const source = await provider.getPoseImage?.(item.jobId, role, identity);
     if (!source) throw new MascotPackageError("POSE_ASSET_NOT_FOUND", `A pose ${role} não está disponível.`);
-    const normalized = await sharp(source.bytes).rotate().toBuffer({ resolveWithObject: true });
-    const hash = createHash("sha256").update(normalized.data).digest("hex");
-    const metadata = await sharp(normalized.data).metadata();
-    const extension = source.contentType === "image/png" ? "png" : source.contentType === "image/webp" ? "webp" : "jpg";
+    const normalized = await prepareMascotDisplayAsset(source, "full");
+    const hash = createHash("sha256").update(normalized.bytes).digest("hex");
+    const metadata = await sharp(normalized.bytes).metadata();
+    const extension = "png";
     const storagePath = `${userId}/${item.id}/${version}/${role}.${extension}`;
-    const upload = await admin.storage.from(BUCKET).upload(storagePath, normalized.data, { contentType: source.contentType, upsert: false });
+    const upload = await admin.storage.from(BUCKET).upload(storagePath, normalized.bytes, { contentType: normalized.contentType, upsert: false });
     if (upload.error && !upload.error.message.toLowerCase().includes("already exists")) throw new MascotPackageError("PACKAGE_ASSET_UPLOAD_FAILED", "Não foi possível guardar um asset.");
-    assets.push({ poseId: `${item.id}-${role}`, role: role.toUpperCase() as Uppercase<PoseRole>, storagePath, sha256: hash, expectedBytes: normalized.data.length, mimeType: source.contentType, width: metadata.width ?? 0, height: metadata.height ?? 0 });
+    assets.push({ poseId: `${item.id}-${role}`, role: role.toUpperCase() as Uppercase<PoseRole>, storagePath, sha256: hash, expectedBytes: normalized.bytes.length, mimeType: normalized.contentType, width: metadata.width ?? 0, height: metadata.height ?? 0 });
   }
   return assets;
+}
+
+function packageMatchesCurrentOutput(existing: { package_version: string; manifest: unknown }, displayName: string) {
+  const manifest = existing.manifest as { assetPipelineVersion?: number; displayName?: string };
+  return manifest.assetPipelineVersion === 2 && manifest.displayName === displayName;
+}
+
+function nextPackageVersion(existingVersion?: string) {
+  if (!existingVersion) return "1.0.0";
+  const parts = existingVersion.split(".").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isInteger(part) || part < 0)) return "1.0.1";
+  return `${parts[0]}.${parts[1]}.${parts[2] + 1}`;
 }
 
 function hashCode(code: string) { return createHash("sha256").update(code.trim().toUpperCase()).digest("hex"); }

@@ -43,7 +43,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   const activeMaster = job?.masters[masterIndex];
   const progress = generationProgress(state, job, generationStartedAt);
 
-  const finishLibrary = useCallback(async (completedJob: GenerationJob) => {
+  const finishLibrary = useCallback(async (completedJob: GenerationJob, displayName: string) => {
     if (librarySaveInFlight.current) return;
     librarySaveInFlight.current = true;
     const current = new AbortController();
@@ -52,7 +52,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setErrorCode("");
     setState("saving-library");
     try {
-      const saved = await finalizeMascot(completedJob.id, current.signal);
+      const saved = await finalizeMascot(completedJob.id, displayName, current.signal);
       setLibraryItem(saved);
       setState("code-ready");
     } catch (error) {
@@ -96,11 +96,11 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     if (photoUrl) URL.revokeObjectURL(photoUrl);
   }, [photoUrl]);
 
-  useEffect(() => {
-    if (state !== "pose-set-ready" || !job || libraryItem || librarySaveInFlight.current || libraryAutoSaveAttempted.current) return;
+  const saveLibrary = useCallback((displayName: string) => {
+    if (!job || libraryItem) return;
     libraryAutoSaveAttempted.current = true;
-    void finishLibrary(job);
-  }, [finishLibrary, job, libraryItem, state]);
+    void finishLibrary(job, displayName);
+  }, [finishLibrary, job, libraryItem]);
 
   const selectPhoto = useCallback((file: File) => {
     stopResume(resumeController);
@@ -391,16 +391,12 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     poseChoices,
     poses: job?.poses ?? [],
     libraryItem,
-    retryLibrarySave: () => {
-      if (!job) return;
-      libraryAutoSaveAttempted.current = true;
-      void finishLibrary(job);
-    },
+    saveLibrary,
     selectPose,
     continuePoseSelection,
     backPoseSelection,
     generatePoseSet,
-  }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorCode, errorMessage, finishLibrary, generatePoseSet, job, libraryItem, masterIndex, masterUrl, nextMaster, photoUrl, poseChoices, progress, resumeCurrentGeneration, revealComplete, retryMasterImage, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
+  }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorCode, errorMessage, generatePoseSet, job, libraryItem, masterIndex, masterUrl, nextMaster, photoUrl, poseChoices, progress, resumeCurrentGeneration, revealComplete, retryMasterImage, saveLibrary, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
 }
 
 function generationProgress(state: PuleiroState, job?: GenerationJob, startedAt?: number): GenerationProgressModel | undefined {

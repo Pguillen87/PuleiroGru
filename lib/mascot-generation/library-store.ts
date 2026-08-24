@@ -5,6 +5,7 @@ import type { GeneratedPose, MascotLibraryItem } from "./types";
 
 type LibraryRow = {
   id: string;
+  display_name: string;
   user_id: string;
   attempt_id: string;
   modal_job_id: string;
@@ -44,6 +45,7 @@ export async function saveLibraryItem(
       attempt_id: item.attemptId,
       modal_job_id: item.jobId,
       master_id: item.masterId,
+      display_name: normalizeDisplayName(item.displayName),
       mascot_code: createMascotCode(),
       pose_snapshot: item.poses,
     }).select("*").single<LibraryRow>();
@@ -103,6 +105,7 @@ export async function listLibraryItems(client: SupabaseClient, userId: string, o
 function toLibraryItem(row: LibraryRow): MascotLibraryItem {
   return {
     id: row.id,
+    displayName: row.display_name,
     mascotCode: row.mascot_code,
     jobId: row.modal_job_id,
     attemptId: row.attempt_id,
@@ -111,6 +114,12 @@ function toLibraryItem(row: LibraryRow): MascotLibraryItem {
     createdAt: row.created_at,
     isFavorite: row.is_favorite,
   };
+}
+
+function normalizeDisplayName(value: string) {
+  const normalized = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 32);
+  if (normalized.length < 2) throw new MascotLibraryStoreError("Informe um nome de 2 a 32 caracteres para o mascote.");
+  return normalized;
 }
 
 function createMascotCode() {

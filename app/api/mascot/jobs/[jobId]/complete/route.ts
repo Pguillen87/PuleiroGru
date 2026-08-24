@@ -18,6 +18,11 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
   if (!validId(jobId)) return NextResponse.json({ message: "Identificador inválido." }, { status: 400 });
   try {
     requireTrustedMutationRequest(request, { contentTypes: ["application/json"] });
+    const body = await request.json().catch(() => null) as { displayName?: unknown } | null;
+    const displayName = typeof body?.displayName === "string" ? body.displayName : "";
+    if (displayName.trim().length < 2 || displayName.trim().length > 32) {
+      return NextResponse.json({ message: "Informe um nome de 2 a 32 caracteres para o mascote." }, { status: 400 });
+    }
     const [identity, attemptId] = await Promise.all([requireBrowserIdentity(request), getAttemptId()]);
     if (!attemptId) return NextResponse.json({ message: "Nascimento não encontrado." }, { status: 404 });
     if (identity.mode !== "supabase-session") {
@@ -29,6 +34,7 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     }
     const supabase = await createClient();
     const item = await saveLibraryItem(supabase, identity.uid, {
+      displayName,
       jobId: job.id,
       attemptId: job.attemptId,
       masterId: job.approvedMasterId,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { deleteLibraryItem, setLibraryItemDisplayName, setLibraryItemFavorite } from "@/lib/mascot-generation/library-store";
+import { refreshPackageDisplayName } from "@/lib/mascot-generation/package-store";
 import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
 import { createClient } from "@/lib/supabase/server";
 
@@ -20,15 +21,18 @@ export async function PATCH(request: Request, context: { params: Promise<{ itemI
       return NextResponse.json({ message: "Entre em sua conta para atualizar a biblioteca." }, { status: 401 });
     }
     const client = await createClient();
+    const displayName = typeof body?.displayName === "string" ? body.displayName : null;
+    const isRenaming = displayName !== null;
     const item = typeof body?.isFavorite === "boolean"
       ? await setLibraryItemFavorite(client, identity.uid, itemId, body.isFavorite)
-      : typeof body?.displayName === "string"
-        ? await setLibraryItemDisplayName(client, identity.uid, itemId, body.displayName)
+      : isRenaming
+        ? await setLibraryItemDisplayName(client, identity.uid, itemId, displayName)
         : null;
     if (typeof body?.isFavorite !== "boolean" && typeof body?.displayName !== "string") {
       return NextResponse.json({ message: "Atualização inválida." }, { status: 400 });
     }
     if (!item) return NextResponse.json({ message: "Mascote não encontrado." }, { status: 404 });
+    if (isRenaming) await refreshPackageDisplayName(identity.uid, item.id, item.displayName);
     return NextResponse.json({ item });
   } catch (error) {
     return integrationErrorResponse(error, "LIBRARY_UPDATE_FAILED", "Não foi possível atualizar este mascote agora.");

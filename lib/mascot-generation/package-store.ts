@@ -59,6 +59,22 @@ export async function publishMascotPackage(client: SupabaseClient, userId: strin
   return { item, package: packageRow };
 }
 
+/** Keeps an already-issued import code aligned with a later mascot rename. */
+export async function refreshPackageDisplayName(userId: string, itemId: string, displayName: string) {
+  const admin = createAdminClient();
+  if (!admin) throw new MascotPackageError("PACKAGE_STORAGE_UNAVAILABLE", "Armazenamento de pacotes não configurado.");
+  const existing = await findPackage(admin, userId, itemId);
+  if (!existing) return;
+  const currentManifest = existing.manifest as Record<string, unknown>;
+  if (currentManifest.displayName === displayName) return;
+  const packageVersion = nextPackageVersion(existing.package_version);
+  const manifest = { ...currentManifest, packageVersion, displayName };
+  const { error } = await admin.from("mascot_packages")
+    .update({ package_version: packageVersion, manifest, status: "ready" })
+    .eq("id", existing.id).eq("user_id", userId);
+  if (error) throw new MascotPackageError("PACKAGE_REGISTRATION_FAILED", "Não foi possível atualizar o pacote com o novo nome.");
+}
+
 export async function resolveMascotImportCode(admin: SupabaseClient, code: string) {
   const { data: codeRow, error } = await admin.from("mascot_import_codes")
     .select("package_id, expires_at, revoked_at").eq("code_hash", hashCode(code)).maybeSingle();

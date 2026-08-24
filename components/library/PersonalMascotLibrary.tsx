@@ -155,6 +155,8 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [published, setPublished] = useState(Boolean(item.isPublic));
+  const [packaging, setPackaging] = useState(false);
+  const [packageReady, setPackageReady] = useState(false);
   const [actionError, setActionError] = useState("");
   const imageUrl = item.poses.find((pose) => pose.role === "normal")?.imageUrl ?? item.poses[0]?.imageUrl;
 
@@ -188,6 +190,25 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
       setPublished(body.published); setActionError("");
     } catch (error) { setActionError(error instanceof Error ? error.message : "Não foi possível atualizar a publicação."); }
     finally { setSaving(false); }
+  }
+
+  async function prepareAndroidPackage() {
+    setPackaging(true);
+    setActionError("");
+    try {
+      const response = await fetch(`/api/mascot/library/${encodeURIComponent(item.id)}/package`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      });
+      const body = await response.json().catch(() => ({})) as { code?: string; message?: string };
+      if (!response.ok || !body.code) throw new Error(body.message ?? "Não foi possível preparar o pacote agora.");
+      setPackageReady(true);
+      setActionError("Pacote pronto. O código já pode ser usado para importar este mascote no GRU.");
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Não foi possível preparar o pacote agora.");
+    } finally {
+      setPackaging(false);
+    }
   }
 
   return <article className="library-item" data-selected={selected || undefined}>
@@ -224,7 +245,13 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
       <div className="library-item__actions">
         <button type="button" onClick={() => void copyCode()}>{copied ? "Código copiado" : "Copiar código"}</button>
         <button type="button" onClick={() => void togglePublication()} disabled={saving}>{published ? "Remover da comunidade" : "Publicar no Puleiro"}</button>
-        <button type="button" className="library-item__open-gru" disabled title="Disponível quando existir um pacote compatível com o aplicativo GRU.">Abrir no GRU em breve</button>
+        <button
+          type="button"
+          className="library-item__open-gru"
+          disabled={saving || packaging || packageReady}
+          onClick={() => void prepareAndroidPackage()}
+          title="Prepara o pacote privado para importação no aplicativo GRU."
+        >{packageReady ? "Pacote pronto" : packaging ? "Preparando pacote…" : "Preparar pacote Android"}</button>
       </div>
       {actionError && <p className="library-item__error" role="alert">{actionError}</p>}
     </div>

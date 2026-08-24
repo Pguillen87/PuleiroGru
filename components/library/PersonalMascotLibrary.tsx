@@ -339,7 +339,9 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
       />
       <span aria-hidden="true" className="library-item__preview-label">Ver 3 poses</span>
     </button>
-    {!item.isFavorite && <span className="library-item__catalog-number" aria-hidden="true">{`Fig. ${String(catalogNumber).padStart(2, "0")}`}</span>}
+    {item.isFavorite
+      ? <span className="library-item__favorite-rank" aria-label={`Figurinha dourada número ${item.favoriteRank ?? 1}`}>Dourada <strong>#{item.favoriteRank ?? 1}</strong></span>
+      : <span className="library-item__catalog-number" aria-hidden="true">{`Fig. ${String(catalogNumber).padStart(2, "0")}`}</span>}
     <div className="library-item__media-actions">
       <button
         type="button"
@@ -353,11 +355,9 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
         <button type="button" className="library-item__more-trigger" aria-expanded={moreActionsOpen} aria-controls={`mascot-actions-${item.id}`} aria-label={`Mais ações para ${item.displayName}`} disabled={saving} onClick={() => setMoreActionsOpen((open) => !open)}><MoreIcon /></button>
         {moreActionsOpen && <div id={`mascot-actions-${item.id}`} className="library-item__more-menu" role="group" aria-label={`Ações para ${item.displayName}`}>
           {item.isFavorite && <form className="library-item__favorite-position" onSubmit={(event) => { event.preventDefault(); void saveFavoriteRank(); }}>
-            <label htmlFor={`favorite-rank-${item.id}`}>Ordem dourada</label>
-            <div>
-              <input id={`favorite-rank-${item.id}`} type="number" inputMode="numeric" min={1} max={10_000} value={favoriteRankDraft} disabled={saving} onChange={(event) => setFavoriteRankDraft(event.target.value)} />
-              <button type="submit" disabled={saving}>Atualizar</button>
-            </div>
+            <label className="sr-only" htmlFor={`favorite-rank-${item.id}`}>Posição entre as figurinhas douradas</label>
+            <input id={`favorite-rank-${item.id}`} type="number" inputMode="numeric" min={1} max={10_000} value={favoriteRankDraft} disabled={saving} onChange={(event) => setFavoriteRankDraft(event.target.value)} />
+            <button type="submit" aria-label="Salvar posição dourada" title="Salvar posição dourada" disabled={saving}><CheckIcon /></button>
           </form>}
           <button type="button" onClick={() => { setMoreActionsOpen(false); void togglePublication(); }}>{published ? "Remover da comunidade" : "Publicar no Puleiro"}</button>
           <button type="button" className="library-item__delete" onClick={() => { setMoreActionsOpen(false); setDeleteDialogOpen(true); }}>Excluir mascote</button>
@@ -370,8 +370,8 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
         {editingName ? <form className="library-item__rename-form" onSubmit={(event) => { event.preventDefault(); void renameMascot(nameDraft); }}>
           <label className="sr-only" htmlFor={`mascot-name-${item.id}`}>Nome do mascote</label>
           <input id={`mascot-name-${item.id}`} autoFocus value={nameDraft} maxLength={32} onChange={(event) => setNameDraft(event.target.value)} required />
-          <button type="submit" aria-label="Salvar nome" disabled={saving || nameDraft.trim().length < 2}><span aria-hidden="true">✓</span></button>
-          <button type="button" aria-label="Cancelar edição do nome" disabled={saving} onClick={() => { setNameDraft(item.displayName); setEditingName(false); }}><span aria-hidden="true">×</span></button>
+          <button className="library-item__rename-confirm" type="submit" aria-label="Salvar nome" title="Salvar nome" disabled={saving || nameDraft.trim().length < 2}><CheckIcon /></button>
+          <button className="library-item__rename-cancel" type="button" aria-label="Cancelar edição do nome" title="Cancelar edição" disabled={saving} onClick={() => { setNameDraft(item.displayName); setEditingName(false); }}><CloseIcon /></button>
         </form> : <div className="library-item__name-row">
           <strong>{item.displayName}</strong>
           <button type="button" className="library-item__rename" aria-label={`Renomear ${item.displayName}`} disabled={saving} onClick={() => { setNameDraft(item.displayName); setEditingName(true); }}><PencilIcon /></button>
@@ -379,7 +379,6 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
       </div>
       <div className="library-item__identity">
         <code title={item.mascotCode}>{item.mascotCode}</code>
-        <time className="library-item__date" dateTime={item.createdAt}>{formatCreatedAt(item.createdAt)}</time>
       </div>
       <div className="library-item__actions">
         <button type="button" onClick={() => void copyCode()}>{copied ? "Código copiado" : "Copiar código"}</button>
@@ -391,6 +390,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
           title="Prepara o pacote privado para importação no aplicativo GRU."
         >{packageReady ? "Pacote pronto" : packaging ? "Preparando…" : "Preparar Android"}</button>
       </div>
+      <time className="library-item__date" dateTime={item.createdAt}>{formatCreatedAt(item.createdAt)}</time>
     </div>
     {packageSuccessOpen && <PackageReadyDialog
       mascotCode={item.mascotCode}
@@ -434,6 +434,14 @@ function PackageReadyDialog({ mascotCode, closeRef, onClose, onCopy }: {
       </div>
     </section>
   </div>, document.body);
+}
+
+function CheckIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="m5 12 4.2 4.2L19 6.5" /></svg>;
+}
+
+function CloseIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" d="m7 7 10 10M17 7 7 17" /></svg>;
 }
 
 function MascotPosesDialog({ displayName, poses, closeRef, onClose }: {

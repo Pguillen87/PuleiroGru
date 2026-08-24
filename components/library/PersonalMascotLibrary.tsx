@@ -335,7 +335,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
     </div>
     <div className="library-item__body">
       <div className="library-item__heading">
-        <span className="library-item__eyebrow">Coleção Puleiro · 3 poses</span>
+        <span className="library-item__eyebrow">Conjunto · 3 poses</span>
         {editingName ? <form className="library-item__rename-form" onSubmit={(event) => { event.preventDefault(); void renameMascot(nameDraft); }}>
           <label className="sr-only" htmlFor={`mascot-name-${item.id}`}>Nome do mascote</label>
           <input id={`mascot-name-${item.id}`} autoFocus value={nameDraft} maxLength={32} onChange={(event) => setNameDraft(event.target.value)} required />
@@ -345,9 +345,11 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
           <strong>{item.displayName}</strong>
           <button type="button" className="library-item__rename" aria-label={`Renomear ${item.displayName}`} disabled={saving} onClick={() => { setNameDraft(item.displayName); setEditingName(true); }}><PencilIcon /></button>
         </div>}
-        <code>{item.mascotCode}</code>
       </div>
-      <p className="library-item__date">Colecionado em {formatCreatedAt(item.createdAt)}</p>
+      <div className="library-item__identity">
+        <code>{item.mascotCode}</code>
+        <p className="library-item__date">{formatCreatedAt(item.createdAt)}</p>
+      </div>
       {item.isFavorite && <form className="library-item__favorite-position" onSubmit={(event) => { event.preventDefault(); void saveFavoriteRank(); }}>
         <label htmlFor={`favorite-rank-${item.id}`}>Ordem dourada</label>
         <input

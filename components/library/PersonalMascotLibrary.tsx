@@ -87,6 +87,7 @@ export function PersonalMascotLibrary() {
         {visibleItems.map((item, index) => <li key={item.id}><LibraryItem
           item={item}
           priority={index < 4}
+          catalogNumber={index + 1}
           selected={selectedItemId === item.id}
           onSelect={(selectedItem) => {
             setSelectedItemId(selectedItem.id);
@@ -152,9 +153,10 @@ function LibraryControls({ filter, query, sort, onFilter, onQuery, onSort }: {
   </section>;
 }
 
-function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate, onItemUpdate, onItemRemove }: {
+function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavoriteUpdate, onItemUpdate, onItemRemove }: {
   item: MascotLibraryItem;
   priority: boolean;
+  catalogNumber: number;
   selected: boolean;
   onSelect: (item: MascotLibraryItem) => void;
   onFavoriteUpdate: (itemId: string, isFavorite: boolean) => void;
@@ -255,7 +257,7 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate, onI
     }
   }
 
-  return <article className="library-item" data-selected={selected || undefined}>
+  return <article className="library-item" data-selected={selected || undefined} data-favorite={item.isFavorite || undefined}>
     <button
       type="button"
       className="library-item__preview"
@@ -275,6 +277,7 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate, onI
       />
       <span aria-hidden="true" className="library-item__preview-label">Ver poses</span>
     </button>
+    <span className="library-item__catalog-number" aria-hidden="true">{item.isFavorite ? "Dourada" : `Fig. ${String(catalogNumber).padStart(2, "0")}`}</span>
     <div className="library-item__media-actions">
       <button
         type="button"

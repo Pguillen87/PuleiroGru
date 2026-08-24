@@ -297,7 +297,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
     </div>
     <div className="library-item__body">
       <div className="library-item__heading">
-        <span className="library-item__eyebrow">Conjunto de três poses</span>
+        <span className="library-item__eyebrow">Coleção Puleiro · 3 poses</span>
         {editingName ? <form className="library-item__rename-form" onSubmit={(event) => { event.preventDefault(); void renameMascot(nameDraft); }}>
           <label className="sr-only" htmlFor={`mascot-name-${item.id}`}>Nome do mascote</label>
           <input id={`mascot-name-${item.id}`} autoFocus value={nameDraft} maxLength={32} onChange={(event) => setNameDraft(event.target.value)} required />
@@ -309,7 +309,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
         </div>}
         <code>{item.mascotCode}</code>
       </div>
-      <p>{formatCreatedAt(item.createdAt)}</p>
+      <p className="library-item__date">Colecionado em {formatCreatedAt(item.createdAt)}</p>
       <div className="library-item__actions">
         <button type="button" onClick={() => void copyCode()}>{copied ? "Código copiado" : "Copiar código"}</button>
         <button

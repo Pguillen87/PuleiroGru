@@ -14,6 +14,7 @@ type LibraryRow = {
   pose_snapshot: GeneratedPose[];
   created_at: string;
   is_favorite: boolean;
+  favorite_rank: number | null;
 };
 
 export type LibrarySort = "newest" | "oldest" | "code";
@@ -77,13 +78,28 @@ export async function setLibraryItemFavorite(
   itemId: string,
   isFavorite: boolean,
 ) {
-  const { data, error } = await client.from("mascot_library_items")
-    .update({ is_favorite: isFavorite })
-    .eq("user_id", userId)
-    .eq("id", itemId)
-    .select("*")
-    .maybeSingle<LibraryRow>();
+  const { data, error } = await client.rpc("set_mascot_library_item_favorite", {
+    p_item_id: itemId,
+    p_is_favorite: isFavorite,
+  }).maybeSingle<LibraryRow>();
   if (error) throw new MascotLibraryStoreError();
+  return data ? toLibraryItem(data) : null;
+}
+
+export async function setLibraryItemFavoriteRank(
+  client: SupabaseClient,
+  userId: string,
+  itemId: string,
+  favoriteRank: number,
+) {
+  if (!Number.isInteger(favoriteRank) || favoriteRank < 1 || favoriteRank > 10_000) {
+    throw new MascotLibraryStoreError("Informe uma posição válida para este favorito.");
+  }
+  const { data, error } = await client.rpc("set_mascot_library_item_favorite_rank", {
+    p_item_id: itemId,
+    p_favorite_rank: favoriteRank,
+  }).maybeSingle<LibraryRow>();
+  if (error) throw new MascotLibraryStoreError("Não foi possível reorganizar os favoritos agora.");
   return data ? toLibraryItem(data) : null;
 }
 
@@ -121,7 +137,10 @@ export async function listLibraryItems(client: SupabaseClient, userId: string, o
   if (options?.favoritesOnly) request = request.eq("is_favorite", true);
   if (options?.query) request = request.ilike("mascot_code", `%${options.query}%`);
   const sort = options?.sort ?? "newest";
-  request = request.order(sort === "code" ? "mascot_code" : "created_at", { ascending: sort === "oldest" || sort === "code" });
+  request = request
+    .order("is_favorite", { ascending: false })
+    .order("favorite_rank", { ascending: true, nullsFirst: false })
+    .order(sort === "code" ? "mascot_code" : "created_at", { ascending: sort === "oldest" || sort === "code" });
   if (options) request = request.range(options.offset, options.offset + options.limit - 1);
   const { data, error, count } = await request.returns<LibraryRow[]>();
   if (error) throw new MascotLibraryStoreError();
@@ -140,6 +159,7 @@ function toLibraryItem(row: LibraryRow): MascotLibraryItem {
     poses: row.pose_snapshot,
     createdAt: row.created_at,
     isFavorite: row.is_favorite,
+    favoriteRank: row.favorite_rank ?? undefined,
   };
 }
 

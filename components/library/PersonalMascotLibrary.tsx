@@ -23,6 +23,7 @@ export function PersonalMascotLibrary() {
   const [communityItems, setCommunityItems] = useState<CommunityMascot[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [libraryRevision, setLibraryRevision] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -47,7 +48,7 @@ export function PersonalMascotLibrary() {
       });
     }, query ? 250 : 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [filter, query, sort]);
+  }, [filter, libraryRevision, query, sort]);
   useEffect(() => {
     void fetch("/api/mascot/community/saved", { cache: "no-store" })
       .then(async (response) => {
@@ -96,6 +97,10 @@ export function PersonalMascotLibrary() {
           onFavoriteUpdate={(itemId, isFavorite) => {
             setItems((current) => current.map((entry) => entry.id === itemId ? { ...entry, isFavorite } : entry));
             if (filter === "favorites" && !isFavorite) setTotal((current) => Math.max(0, current - 1));
+          }}
+          onCollectionRefresh={(nextMessage) => {
+            setLibraryRevision((revision) => revision + 1);
+            setMessage(nextMessage);
           }}
           onItemUpdate={(updated) => setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))}
           onItemRemove={(itemId) => {
@@ -153,13 +158,14 @@ function LibraryControls({ filter, query, sort, onFilter, onQuery, onSort }: {
   </section>;
 }
 
-function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavoriteUpdate, onItemUpdate, onItemRemove }: {
+function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavoriteUpdate, onCollectionRefresh, onItemUpdate, onItemRemove }: {
   item: MascotLibraryItem;
   priority: boolean;
   catalogNumber: number;
   selected: boolean;
   onSelect: (item: MascotLibraryItem) => void;
   onFavoriteUpdate: (itemId: string, isFavorite: boolean) => void;
+  onCollectionRefresh: (message: string) => void;
   onItemUpdate: (item: MascotLibraryItem) => void;
   onItemRemove: (itemId: string) => void;
 }) {
@@ -174,6 +180,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
   const [nameDraft, setNameDraft] = useState(item.displayName);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [favoriteRankDraft, setFavoriteRankDraft] = useState(String(item.favoriteRank ?? ""));
   const closeSuccessRef = useRef<HTMLButtonElement>(null);
   const imageUrl = item.poses.find((pose) => pose.role === "normal")?.imageUrl ?? item.poses[0]?.imageUrl;
 
@@ -201,9 +208,40 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
       if (!response.ok) throw new Error("Não foi possível atualizar o favorito.");
       const body = await response.json() as { item: MascotLibraryItem };
       onFavoriteUpdate(item.id, body.item.isFavorite);
+      setFavoriteRankDraft(body.item.isFavorite ? String(body.item.favoriteRank ?? "") : "");
+      onCollectionRefresh(body.item.isFavorite
+        ? `${item.displayName} entrou nos favoritos dourados.`
+        : `${item.displayName} saiu dos favoritos.`);
       setActionError("");
     } catch { setActionError("Não foi possível atualizar o favorito agora."); }
     finally { setSaving(false); }
+  }
+
+  async function saveFavoriteRank() {
+    const favoriteRank = Number.parseInt(favoriteRankDraft, 10);
+    if (!Number.isInteger(favoriteRank) || favoriteRank < 1) {
+      setActionError("Informe uma posição começando em 1.");
+      return;
+    }
+    if (favoriteRank === item.favoriteRank) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/mascot/library/${encodeURIComponent(item.id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ favoriteRank }),
+      });
+      const body = await response.json().catch(() => ({})) as { item?: MascotLibraryItem; message?: string };
+      if (!response.ok || !body.item) throw new Error(body.message ?? "Não foi possível reorganizar os favoritos.");
+      setFavoriteRankDraft(String(body.item.favoriteRank ?? ""));
+      onItemUpdate(body.item);
+      onCollectionRefresh(`${item.displayName} agora ocupa a posição dourada ${body.item.favoriteRank}.`);
+      setActionError("");
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Não foi possível reorganizar os favoritos agora.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function renameMascot(displayName: string) {
@@ -277,7 +315,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
       />
       <span aria-hidden="true" className="library-item__preview-label">Ver poses</span>
     </button>
-    <span className="library-item__catalog-number" aria-hidden="true">{item.isFavorite ? "Dourada" : `Fig. ${String(catalogNumber).padStart(2, "0")}`}</span>
+    <span className="library-item__catalog-number" aria-hidden="true">{item.isFavorite ? `Dourada #${item.favoriteRank ?? "—"}` : `Fig. ${String(catalogNumber).padStart(2, "0")}`}</span>
     <div className="library-item__media-actions">
       <button
         type="button"
@@ -310,6 +348,21 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
         <code>{item.mascotCode}</code>
       </div>
       <p className="library-item__date">Colecionado em {formatCreatedAt(item.createdAt)}</p>
+      {item.isFavorite && <form className="library-item__favorite-position" onSubmit={(event) => { event.preventDefault(); void saveFavoriteRank(); }}>
+        <label htmlFor={`favorite-rank-${item.id}`}>Ordem dourada</label>
+        <input
+          id={`favorite-rank-${item.id}`}
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={10_000}
+          value={favoriteRankDraft}
+          disabled={saving}
+          onChange={(event) => setFavoriteRankDraft(event.target.value)}
+          onBlur={() => void saveFavoriteRank()}
+        />
+        <button type="submit" disabled={saving}>Salvar</button>
+      </form>}
       <div className="library-item__actions">
         <button type="button" onClick={() => void copyCode()}>{copied ? "Código copiado" : "Copiar código"}</button>
         <button
@@ -408,6 +461,8 @@ async function loadLibrary({ query, filter, sort, offset = 0, signal }: {
 function selectLibraryItems(items: MascotLibraryItem[], query: string, filter: FilterOption, sort: SortOption) {
   const normalizedQuery = query.trim().toUpperCase();
   return items.filter((item) => (filter !== "favorites" || item.isFavorite) && (!normalizedQuery || item.mascotCode.includes(normalizedQuery))).toSorted((a, b) => {
+    if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
+    if (a.isFavorite && b.isFavorite && a.favoriteRank !== b.favoriteRank) return (a.favoriteRank ?? Number.MAX_SAFE_INTEGER) - (b.favoriteRank ?? Number.MAX_SAFE_INTEGER);
     if (sort === "code") return a.mascotCode.localeCompare(b.mascotCode, "pt-BR");
     const newestFirst = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     return sort === "newest" ? newestFirst : -newestFirst;

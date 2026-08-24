@@ -52,6 +52,7 @@ export interface MascotLibraryItem {
   poses: GeneratedPose[];
   createdAt: string;
   isFavorite: boolean;
+  favoriteRank?: number;
   isPublic?: boolean;
 }
 

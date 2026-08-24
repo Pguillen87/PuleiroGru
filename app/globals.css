@@ -1576,7 +1576,7 @@ main {
 .library-item__favorite-rank {
   position: absolute;
   top: 0.75rem;
-  left: 3.7rem;
+  left: 50%;
   z-index: 4;
   display: inline-flex;
   align-items: center;
@@ -1589,6 +1589,7 @@ main {
   color: #493300;
   font: 800 0.62rem/1 var(--font-functional), Arial, sans-serif;
   text-transform: uppercase;
+  transform: translateX(-50%);
 }
 
 .library-item__favorite-rank strong {

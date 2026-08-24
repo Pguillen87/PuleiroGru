@@ -315,7 +315,21 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
       />
       <span aria-hidden="true" className="library-item__preview-label">Ver poses</span>
     </button>
-    <span className="library-item__catalog-number" aria-hidden="true">{item.isFavorite ? `Dourada #${item.favoriteRank ?? "—"}` : `Fig. ${String(catalogNumber).padStart(2, "0")}`}</span>
+    {item.isFavorite ? <form className="library-item__favorite-rank-chip" onSubmit={(event) => { event.preventDefault(); void saveFavoriteRank(); }}>
+      <label htmlFor={`favorite-rank-${item.id}`}>Dourada</label>
+      <input
+        id={`favorite-rank-${item.id}`}
+        type="number"
+        inputMode="numeric"
+        min={1}
+        max={10_000}
+        value={favoriteRankDraft}
+        disabled={saving}
+        aria-label="Posição entre os favoritos"
+        onChange={(event) => setFavoriteRankDraft(event.target.value)}
+        onBlur={() => void saveFavoriteRank()}
+      />
+    </form> : <span className="library-item__catalog-number" aria-hidden="true">{`Fig. ${String(catalogNumber).padStart(2, "0")}`}</span>}
     <div className="library-item__media-actions">
       <button
         type="button"
@@ -350,21 +364,6 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
         <code>{item.mascotCode}</code>
         <p className="library-item__date">{formatCreatedAt(item.createdAt)}</p>
       </div>
-      {item.isFavorite && <form className="library-item__favorite-position" onSubmit={(event) => { event.preventDefault(); void saveFavoriteRank(); }}>
-        <label htmlFor={`favorite-rank-${item.id}`}>Ordem dourada</label>
-        <input
-          id={`favorite-rank-${item.id}`}
-          type="number"
-          inputMode="numeric"
-          min={1}
-          max={10_000}
-          value={favoriteRankDraft}
-          disabled={saving}
-          onChange={(event) => setFavoriteRankDraft(event.target.value)}
-          onBlur={() => void saveFavoriteRank()}
-        />
-        <button type="submit" disabled={saving}>Salvar</button>
-      </form>}
       <div className="library-item__actions">
         <button type="button" onClick={() => void copyCode()}>{copied ? "Código copiado" : "Copiar código"}</button>
         <button

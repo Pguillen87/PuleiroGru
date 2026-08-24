@@ -1089,6 +1089,8 @@ main {
   grid-column: 1 / -1;
 }
 
+.library-item__delete { border-color: var(--color-editorial-red-dark) !important; color: var(--color-editorial-red-dark) !important; }
+
 .library-item__actions button:disabled {
   border-color: #80796d;
   background: #ece8df;
@@ -1192,6 +1194,10 @@ main {
   outline: 3px solid var(--color-focus);
   outline-offset: 3px;
 }
+
+.library-dialog__field { display: grid; gap: var(--space-1); margin: var(--space-4) 0; text-align: left; font-weight: 750; }
+.library-dialog__field input { min-height: 3rem; border: 2px solid var(--color-leaf); padding: var(--space-2); font: inherit; }
+.library-dialog__danger { background: var(--color-editorial-red-dark) !important; border-color: var(--color-editorial-red-dark) !important; color: #fff !important; }
 
 @media (prefers-reduced-motion: no-preference) {
   .package-success-dialog { animation: package-success-arrival 180ms ease-out both; }

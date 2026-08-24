@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Header } from "@/components/navigation/Header";
 import type { CommunityMascot, MascotLibraryItem } from "@/lib/mascot-generation/types";
@@ -95,6 +96,12 @@ export function PersonalMascotLibrary() {
             setItems((current) => current.map((entry) => entry.id === itemId ? { ...entry, isFavorite } : entry));
             if (filter === "favorites" && !isFavorite) setTotal((current) => Math.max(0, current - 1));
           }}
+          onItemUpdate={(updated) => setItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))}
+          onItemRemove={(itemId) => {
+            setItems((current) => current.filter((entry) => entry.id !== itemId));
+            setTotal((current) => Math.max(0, current - 1));
+            if (selectedItemId === itemId) setSelectedItemId(null);
+          }}
         /></li>)}
       </ul> : <LibraryEmptyState hasItems={total > 0 || Boolean(query) || filter === "favorites"} />}
       {nextOffset !== null && <button className="library-load-more" type="button" disabled={loadingMore} onClick={() => void loadMore()}>
@@ -145,12 +152,14 @@ function LibraryControls({ filter, query, sort, onFilter, onQuery, onSort }: {
   </section>;
 }
 
-function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
+function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate, onItemUpdate, onItemRemove }: {
   item: MascotLibraryItem;
   priority: boolean;
   selected: boolean;
   onSelect: (item: MascotLibraryItem) => void;
   onFavoriteUpdate: (itemId: string, isFavorite: boolean) => void;
+  onItemUpdate: (item: MascotLibraryItem) => void;
+  onItemRemove: (itemId: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -159,6 +168,8 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
   const [packageReady, setPackageReady] = useState(false);
   const [packageSuccessOpen, setPackageSuccessOpen] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [nameDialogOpen, setNameDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const closeSuccessRef = useRef<HTMLButtonElement>(null);
   const imageUrl = item.poses.find((pose) => pose.role === "normal")?.imageUrl ?? item.poses[0]?.imageUrl;
 
@@ -189,6 +200,27 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
       setActionError("");
     } catch { setActionError("Não foi possível atualizar o favorito agora."); }
     finally { setSaving(false); }
+  }
+
+  async function renameMascot(displayName: string) {
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/mascot/library/${encodeURIComponent(item.id)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ displayName }) });
+      const body = await response.json().catch(() => ({})) as { item?: MascotLibraryItem; message?: string };
+      if (!response.ok || !body.item) throw new Error(body.message ?? "Não foi possível alterar o nome.");
+      onItemUpdate(body.item); setNameDialogOpen(false); setActionError("Nome salvo. Prepare o pacote Android novamente para atualizar o GRU.");
+    } catch (error) { setActionError(error instanceof Error ? error.message : "Não foi possível alterar o nome."); }
+    finally { setSaving(false); }
+  }
+
+  async function deleteMascot() {
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/mascot/library/${encodeURIComponent(item.id)}`, { method: "DELETE", headers: { "content-type": "application/json" }, body: "{}" });
+      if (!response.ok) throw new Error("Não foi possível excluir este mascote agora.");
+      onItemRemove(item.id);
+    } catch (error) { setActionError(error instanceof Error ? error.message : "Não foi possível excluir este mascote agora."); }
+    finally { setSaving(false); setDeleteDialogOpen(false); }
   }
 
   async function togglePublication() {
@@ -255,6 +287,7 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
       <div className="library-item__actions">
         <button type="button" onClick={() => void copyCode()}>{copied ? "Código copiado" : "Copiar código"}</button>
         <button type="button" onClick={() => void togglePublication()} disabled={saving}>{published ? "Remover da comunidade" : "Publicar no Puleiro"}</button>
+        <button type="button" onClick={() => setNameDialogOpen(true)} disabled={saving}>Renomear</button>
         <button
           type="button"
           className="library-item__open-gru"
@@ -262,6 +295,7 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
           onClick={() => void prepareAndroidPackage()}
           title="Prepara o pacote privado para importação no aplicativo GRU."
         >{packageReady ? "Pacote pronto" : packaging ? "Preparando pacote…" : "Preparar pacote Android"}</button>
+        <button type="button" className="library-item__delete" onClick={() => setDeleteDialogOpen(true)} disabled={saving}>Excluir mascote</button>
       </div>
       {actionError && <p className="library-item__error" role="alert">{actionError}</p>}
     </div>
@@ -271,6 +305,8 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
       onClose={() => setPackageSuccessOpen(false)}
       onCopy={() => void copyCode()}
     />}
+    {nameDialogOpen && <MascotNameDialog currentName={item.displayName} saving={saving} onClose={() => setNameDialogOpen(false)} onSave={renameMascot} />}
+    {deleteDialogOpen && <MascotDeleteDialog displayName={item.displayName} saving={saving} onClose={() => setDeleteDialogOpen(false)} onDelete={deleteMascot} />}
   </article>;
 }
 
@@ -280,7 +316,7 @@ function PackageReadyDialog({ mascotCode, closeRef, onClose, onCopy }: {
   onClose: () => void;
   onCopy: () => void;
 }) {
-  return <div className="package-success-dialog__backdrop" role="presentation">
+  return createPortal(<div className="package-success-dialog__backdrop" role="presentation">
     <section className="package-success-dialog" role="dialog" aria-modal="true" aria-labelledby="package-success-title" aria-describedby="package-success-description">
       <span className="package-success-dialog__seal" aria-hidden="true">✓</span>
       <p className="package-success-dialog__kicker">Pacote pronto</p>
@@ -292,7 +328,28 @@ function PackageReadyDialog({ mascotCode, closeRef, onClose, onCopy }: {
         <button ref={closeRef} type="button" onClick={onClose}>Continuar</button>
       </div>
     </section>
-  </div>;
+  </div>, document.body);
+}
+
+function MascotNameDialog({ currentName, saving, onClose, onSave }: { currentName: string; saving: boolean; onClose: () => void; onSave: (name: string) => void }) {
+  const [name, setName] = useState(currentName);
+  return createPortal(<div className="package-success-dialog__backdrop" role="presentation">
+    <form className="package-success-dialog" role="dialog" aria-modal="true" aria-labelledby="mascot-name-title" onSubmit={(event) => { event.preventDefault(); onSave(name); }}>
+      <p className="package-success-dialog__kicker">Identidade do mascote</p><h2 id="mascot-name-title">Como ele se chama?</h2>
+      <label className="library-dialog__field"><span>Nome do mascote</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} maxLength={32} required /></label>
+      <div className="package-success-dialog__actions"><button type="button" onClick={onClose}>Cancelar</button><button type="submit" disabled={saving || name.trim().length < 2}>Salvar nome</button></div>
+    </form>
+  </div>, document.body);
+}
+
+function MascotDeleteDialog({ displayName, saving, onClose, onDelete }: { displayName: string; saving: boolean; onClose: () => void; onDelete: () => void }) {
+  return createPortal(<div className="package-success-dialog__backdrop" role="presentation">
+    <section className="package-success-dialog" role="dialog" aria-modal="true" aria-labelledby="mascot-delete-title">
+      <p className="package-success-dialog__kicker">Excluir mascote</p><h2 id="mascot-delete-title">Excluir {displayName}?</h2>
+      <p>Ele sairá da sua biblioteca e o código deixará de funcionar. A cópia já instalada no GRU não será apagada do celular.</p>
+      <div className="package-success-dialog__actions"><button type="button" onClick={onClose}>Cancelar</button><button type="button" className="library-dialog__danger" disabled={saving} onClick={onDelete}>Excluir agora</button></div>
+    </section>
+  </div>, document.body);
 }
 
 function LibraryEmptyState({ hasItems }: { hasItems: boolean }) {

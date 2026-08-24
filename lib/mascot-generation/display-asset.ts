@@ -63,10 +63,13 @@ async function buildDisplayAsset(image: MasterImage, variant: DisplayAssetVarian
   if (!hasTechnicalBackground && variant === "full") return image;
   const flatBackground = !hasTechnicalBackground ? findFlatBorderColor(decoded.data, width, height) : null;
 
-  const normalized = hasTechnicalBackground || flatBackground
-    ? sharp(removeConnectedBackground(decoded.data, width, height, (data, offset) => hasTechnicalBackground
-      ? isTechnicalPixel(data, offset)
-      : isFlatBackgroundPixel(data, offset, flatBackground!)), { raw: { width, height, channels: 4 } })
+  const cleaned = hasTechnicalBackground
+    ? removeCheckerboardBackground(decoded.data, width, height)
+    : flatBackground
+      ? removeConnectedBackground(decoded.data, width, height, (data, offset) => isFlatBackgroundPixel(data, offset, flatBackground))
+      : null;
+  const normalized = cleaned
+    ? sharp(cleaned, { raw: { width, height, channels: 4 } })
       .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 } })
     : sharp(image.bytes, { failOn: "error" });
   if (variant === "thumbnail") {
@@ -84,6 +87,37 @@ async function buildDisplayAsset(image: MasterImage, variant: DisplayAssetVarian
   }
   const bytes = await normalized.png({ compressionLevel: 9 }).toBuffer();
   return { bytes: new Uint8Array(bytes), contentType: "image/png" };
+}
+
+function removeCheckerboardBackground(source: Buffer, width: number, height: number) {
+  const output = Buffer.from(source);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const offset = pixelOffset(x, y, width);
+      if (!isCheckerboardPixel(source, x, y, width, height)) continue;
+      output[offset] = 0;
+      output[offset + 1] = 0;
+      output[offset + 2] = 0;
+      output[offset + 3] = 0;
+    }
+  }
+  return removeConnectedBackground(output, width, height, (data, offset) => data[offset + 3] === 0 || isTechnicalPixel(data, offset));
+}
+
+function isCheckerboardPixel(data: Buffer, x: number, y: number, width: number, height: number) {
+  const offset = pixelOffset(x, y, width);
+  if (!isTechnicalPixel(data, offset)) return false;
+  const luminance = (data[offset] + data[offset + 1] + data[offset + 2]) / 3;
+  const sample = (sampleX: number, sampleY: number) => {
+    if (sampleX < 0 || sampleX >= width || sampleY < 0 || sampleY >= height) return null;
+    const neighbor = pixelOffset(sampleX, sampleY, width);
+    if (!isTechnicalPixel(data, neighbor)) return null;
+    return (data[neighbor] + data[neighbor + 1] + data[neighbor + 2]) / 3;
+  };
+  const near = [sample(x - 4, y), sample(x + 4, y), sample(x, y - 4), sample(x, y + 4)];
+  const far = [sample(x - 8, y), sample(x + 8, y), sample(x, y - 8), sample(x, y + 8)];
+  return near.some((value) => value !== null && Math.abs(value - luminance) >= 12)
+    && far.some((value) => value !== null && Math.abs(value - luminance) < 8);
 }
 
 function hasTechnicalBorder(data: Buffer, width: number, height: number) {

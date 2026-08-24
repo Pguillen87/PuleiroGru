@@ -87,6 +87,33 @@ export async function setLibraryItemFavorite(
   return data ? toLibraryItem(data) : null;
 }
 
+export async function setLibraryItemDisplayName(
+  client: SupabaseClient,
+  userId: string,
+  itemId: string,
+  displayName: string,
+) {
+  const { data, error } = await client.from("mascot_library_items")
+    .update({ display_name: normalizeDisplayName(displayName) })
+    .eq("user_id", userId)
+    .eq("id", itemId)
+    .select("*")
+    .maybeSingle<LibraryRow>();
+  if (error) throw new MascotLibraryStoreError("Não foi possível alterar o nome agora.");
+  return data ? toLibraryItem(data) : null;
+}
+
+export async function deleteLibraryItem(client: SupabaseClient, userId: string, itemId: string) {
+  const { data, error } = await client.from("mascot_library_items")
+    .delete()
+    .eq("user_id", userId)
+    .eq("id", itemId)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new MascotLibraryStoreError("Não foi possível excluir este mascote agora.");
+  return Boolean(data);
+}
+
 export async function listLibraryItems(client: SupabaseClient, userId: string, options?: LibraryPageOptions) {
   let request = client.from("mascot_library_items")
     .select("*", { count: "exact" })

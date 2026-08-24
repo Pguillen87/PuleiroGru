@@ -864,6 +864,7 @@ main {
 
 .library-page {
   width: min(100% - 2rem, var(--max-content));
+  min-width: 0;
   margin: 0 auto;
   padding: clamp(1.25rem, 5vw, 3rem) 0;
 }
@@ -996,6 +997,7 @@ main {
   padding: 0;
   list-style: none;
   align-items: start;
+  min-width: 0;
 }
 
 @media (min-width: 48rem) and (min-height: 40rem) {
@@ -1087,6 +1089,8 @@ main {
   opacity: 1;
   transform: none;
   transition: opacity 160ms ease-out, transform 160ms ease-out;
+  max-width: calc(100% - 1rem);
+  overflow-wrap: anywhere;
 }
 
 .library-item[data-selected="true"] {
@@ -1165,6 +1169,7 @@ main {
     repeating-linear-gradient(0deg, rgb(68 52 24 / 0.035%) 0 1px, transparent 1px 4px),
     #fff9e9;
   box-shadow: 2px 2px 0 rgb(69 53 35 / 28%);
+  min-width: 0;
 }
 
 .library-item__heading {
@@ -1488,6 +1493,9 @@ main {
   line-height: 1.1;
   box-shadow: 2px 2px 0 rgb(69 53 35 / 34%);
   transition: transform 120ms ease-out, box-shadow 120ms ease-out, background-color 120ms ease-out;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .library-item__actions button:first-child::before {
@@ -2464,4 +2472,15 @@ footer span:first-child {
   .curtain {
     display: none;
   }
+}
+
+@media (max-width: 20rem) {
+  .library-page { width: min(100% - 1rem, var(--max-content)); }
+  .library-grid { grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
+  .library-item__preview { height: 11.5rem; margin-inline: 0.3rem; width: calc(100% - 0.6rem); }
+  .library-item__preview-label { right: 0.35rem; bottom: 0.35rem; min-height: 1.55rem; padding-inline: 0.4rem; font-size: 0.65rem; line-height: 1.55rem; }
+  .library-item__body { margin-inline: 0.25rem; padding-inline: 0.55rem; }
+  .library-item__actions { grid-template-columns: 1fr; gap: 0.3rem; }
+  .library-item__actions button { min-height: 2.75rem; }
+  .library-item__identity code { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 }

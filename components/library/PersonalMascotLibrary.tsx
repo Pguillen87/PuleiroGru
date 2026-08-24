@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Header } from "@/components/navigation/Header";
 import type { CommunityMascot, MascotLibraryItem } from "@/lib/mascot-generation/types";
@@ -157,8 +157,18 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
   const [published, setPublished] = useState(Boolean(item.isPublic));
   const [packaging, setPackaging] = useState(false);
   const [packageReady, setPackageReady] = useState(false);
+  const [packageSuccessOpen, setPackageSuccessOpen] = useState(false);
   const [actionError, setActionError] = useState("");
+  const closeSuccessRef = useRef<HTMLButtonElement>(null);
   const imageUrl = item.poses.find((pose) => pose.role === "normal")?.imageUrl ?? item.poses[0]?.imageUrl;
+
+  useEffect(() => {
+    if (!packageSuccessOpen) return;
+    closeSuccessRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setPackageSuccessOpen(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [packageSuccessOpen]);
 
   async function copyCode() {
     try {
@@ -203,7 +213,7 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
       const body = await response.json().catch(() => ({})) as { code?: string; message?: string };
       if (!response.ok || !body.code) throw new Error(body.message ?? "Não foi possível preparar o pacote agora.");
       setPackageReady(true);
-      setActionError("Pacote pronto. O código já pode ser usado para importar este mascote no GRU.");
+      setPackageSuccessOpen(true);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Não foi possível preparar o pacote agora.");
     } finally {
@@ -255,7 +265,34 @@ function LibraryItem({ item, priority, selected, onSelect, onFavoriteUpdate }: {
       </div>
       {actionError && <p className="library-item__error" role="alert">{actionError}</p>}
     </div>
+    {packageSuccessOpen && <PackageReadyDialog
+      mascotCode={item.mascotCode}
+      closeRef={closeSuccessRef}
+      onClose={() => setPackageSuccessOpen(false)}
+      onCopy={() => void copyCode()}
+    />}
   </article>;
+}
+
+function PackageReadyDialog({ mascotCode, closeRef, onClose, onCopy }: {
+  mascotCode: string;
+  closeRef: React.RefObject<HTMLButtonElement | null>;
+  onClose: () => void;
+  onCopy: () => void;
+}) {
+  return <div className="package-success-dialog__backdrop" role="presentation">
+    <section className="package-success-dialog" role="dialog" aria-modal="true" aria-labelledby="package-success-title" aria-describedby="package-success-description">
+      <span className="package-success-dialog__seal" aria-hidden="true">✓</span>
+      <p className="package-success-dialog__kicker">Pacote pronto</p>
+      <h2 id="package-success-title">Seu mascote já pode viajar.</h2>
+      <p id="package-success-description">As três poses foram preparadas e conferidas. Cole este código no app GRU para trazê-lo ao celular.</p>
+      <strong className="package-success-dialog__code">{mascotCode}</strong>
+      <div className="package-success-dialog__actions">
+        <button type="button" onClick={onCopy}>Copiar código</button>
+        <button ref={closeRef} type="button" onClick={onClose}>Continuar</button>
+      </div>
+    </section>
+  </div>;
 }
 
 function LibraryEmptyState({ hasItems }: { hasItems: boolean }) {

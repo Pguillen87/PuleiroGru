@@ -1623,7 +1623,7 @@ main {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: var(--space-4);
+  padding: clamp(0.5rem, 3vw, 1rem);
   background: rgb(24 23 19 / 54%);
 }
 
@@ -1709,9 +1709,11 @@ main {
 }
 
 .mascot-poses-dialog {
-  width: min(100%, 48rem);
-  max-height: min(88dvh, 42rem);
-  overflow: auto;
+  box-sizing: border-box;
+  width: min(calc(100% - 1rem), 48rem);
+  max-height: calc(100dvh - 1rem);
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 2px solid #443d30;
   padding: clamp(1rem, 3vw, 1.5rem);
   background:
@@ -1721,13 +1723,16 @@ main {
 }
 
 .mascot-poses-dialog__heading {
-  display: flex;
-  align-items: start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
   padding-bottom: var(--space-3);
   border-bottom: 2px solid #bd2731;
 }
+
+.mascot-poses-dialog__heading > div { min-width: 0; }
 
 .mascot-poses-dialog__heading p {
   margin: 0 0 0.2rem;
@@ -1739,11 +1744,13 @@ main {
 .mascot-poses-dialog__heading h2 {
   margin: 0;
   font: 800 clamp(1.65rem, 5vw, 2.3rem)/1 var(--font-display), Arial, sans-serif;
+  overflow-wrap: anywhere;
 }
 
 .mascot-poses-dialog__heading button {
   min-width: 3rem;
   min-height: 3rem;
+  max-width: 100%;
   border: 1px solid #443d30;
   padding: 0.35rem 0.65rem;
   background: #f7edce;
@@ -1804,6 +1811,9 @@ main {
 @media (max-width: 28rem) {
   .package-success-dialog__actions { grid-template-columns: 1fr; }
   .mascot-poses-dialog__grid { grid-template-columns: 1fr; }
+  .mascot-poses-dialog { width: min(calc(100% - 0.5rem), 48rem); padding: 1rem; }
+  .mascot-poses-dialog__heading { gap: 0.5rem; }
+  .mascot-poses-dialog__heading button { min-width: 2.75rem; min-height: 2.75rem; padding-inline: 0.45rem; }
 }
 
 .library-empty {

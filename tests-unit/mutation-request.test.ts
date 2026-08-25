@@ -24,12 +24,26 @@ describe("proteção das rotas mutáveis", () => {
       .toThrow(MutationRequestRejected);
   });
 
-  it("falha fechado em produção sem allowlist", () => {
+  it("aceita a própria origem publicada sem allowlist manual", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("PULEIRO_ALLOWED_ORIGINS", "");
-    const request = new Request("https://puleiro.example/api", {
+    const request = new Request("https://pueirodogru.vercel.app/api/mascot/jobs", {
       method: "POST",
-      headers: { origin: "https://puleiro.example", "content-type": "application/json" },
+      headers: {
+        origin: "https://pueirodogru.vercel.app",
+        "content-type": "application/json",
+        "sec-fetch-site": "same-origin",
+      },
+    });
+    expect(() => requireTrustedMutationRequest(request, { contentTypes: ["application/json"] })).not.toThrow();
+  });
+
+  it("continua rejeitando outra origem em produção sem allowlist", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("PULEIRO_ALLOWED_ORIGINS", "");
+    const request = new Request("https://pueirodogru.vercel.app/api/mascot/jobs", {
+      method: "POST",
+      headers: { origin: "https://evil.example", "content-type": "application/json" },
     });
     expect(() => requireTrustedMutationRequest(request, { contentTypes: ["application/json"] }))
       .toThrowError(/origem/i);

@@ -15,9 +15,8 @@ export function requireTrustedMutationRequest(
   { contentTypes }: MutationRequestOptions,
 ) {
   const requestOrigin = new URL(request.url).origin;
-  const allowedOrigins = configuredOrigins(requestOrigin);
   const origin = request.headers.get("origin");
-  if (!origin || !allowedOrigins.has(origin)) {
+  if (!origin || !isAllowedOrigin(origin, requestOrigin)) {
     throw new MutationRequestRejected("ORIGIN_REJECTED", "A origem desta solicitação não é permitida.");
   }
 
@@ -31,12 +30,16 @@ export function requireTrustedMutationRequest(
   }
 }
 
-function configuredOrigins(requestOrigin: string) {
+function isAllowedOrigin(origin: string, requestOrigin: string) {
+  // A mutation made by the Puleiro UI must come from the exact public origin
+  // serving this request. This works for Vercel aliases and a future custom
+  // domain without turning an unset environment variable into a production
+  // outage. Additional origins remain an explicit opt-in.
+  if (origin === requestOrigin) return true;
+
   const configured = (process.env.PULEIRO_ALLOWED_ORIGINS ?? "")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
-  if (configured.length > 0) return new Set(configured);
-  if (process.env.NODE_ENV === "production") return new Set<string>();
-  return new Set([requestOrigin]);
+  return configured.includes(origin);
 }

@@ -17,6 +17,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   let trace: MascotTraceContext | undefined;
+  let registrationStage = "request_validation";
   try {
     requireTrustedMutationRequest(request, { contentTypes: ["multipart/form-data"] });
     const newAttempt = request.headers.get("x-puleiro-new-attempt") === "true";
@@ -49,14 +50,17 @@ export async function POST(request: Request) {
     mascotLog("registration_requested", { ...trace, result: "started" });
     const provider = getMascotGenerationProvider();
     const supabase = identity.mode === "supabase-session" ? await createClient() : null;
+    registrationStage = "attempt_lookup";
     const existing = supabase ? await findAttempt(supabase, identity.uid, attemptId) : null;
     if (existing?.modal_job_id) {
+      registrationStage = "existing_job_lookup";
       const existingJob = await provider.getJob(existing.modal_job_id, jobIdentity(identity.uid, attemptId, trace));
       if (existingJob) return jobResponse(existingJob, attemptId);
     }
 
     const context = jobIdentity(identity.uid, attemptId, trace);
     if (existing && !existing.modal_job_id) {
+      registrationStage = "attempt_reconciliation";
       const recovered = await recoverRegisteredJob(provider, context);
       if (recovered) {
         if (supabase) await saveAttemptJob(supabase, identity.uid, recovered, trace);
@@ -73,10 +77,13 @@ export async function POST(request: Request) {
     }
 
     const subjectIdentity = parseSubjectIdentity(formData);
+    registrationStage = "photo_validation";
     const image = await validateAndSanitizeImage(photo, generationConfig.maxUploadBytes, generationConfig.maxImageDimension);
+    registrationStage = "attempt_reservation";
     if (supabase) await reserveAttempt(supabase, identity.uid, attemptId);
     let job: GenerationJob;
     try {
+      registrationStage = "modal_registration";
       job = await provider.createMasterJob({
         ...image,
         ...context,
@@ -90,11 +97,13 @@ export async function POST(request: Request) {
         result: "reconciling",
         safeErrorCode: error instanceof Error ? error.name : "UNKNOWN",
       });
+      registrationStage = "modal_reconciliation";
       const recovered = await recoverRegisteredJob(provider, context);
       if (!recovered) return registrationPendingResponse(attemptId, trace);
       job = recovered;
       mascotLog("mascot_registration_reconciled", { ...trace, jobId: job.id, result: "recovered", httpStatus: 200 });
     }
+    registrationStage = "attempt_persistence";
     if (supabase) await saveAttemptJob(supabase, identity.uid, job, trace);
     mascotLog("registration_confirmed", { ...trace, jobId: job.id, result: "accepted", httpStatus: 202 });
     const response = jobResponse(job, attemptId);
@@ -113,7 +122,14 @@ export async function POST(request: Request) {
       const response = NextResponse.json({ message: error.message, code: error.code }, { status: 400 });
       return trace ? traceResponse(response, trace) : response;
     }
-    console.error("mascot_job_create_failed", { error: error instanceof Error ? error.name : "unknown" });
+    mascotLog("registration_failed", {
+      ...(trace ?? {}),
+      result: "failure",
+      stage: registrationStage,
+      safeErrorCode: error instanceof ModalProviderError ? error.code : error instanceof Error ? error.name : "UNKNOWN",
+      httpStatus: error instanceof ModalProviderError ? error.status : 503,
+    });
+    console.error("mascot_job_create_failed", { error: error instanceof Error ? error.name : "unknown", stage: registrationStage });
     return integrationErrorResponse(error, "CREATE_JOB_FAILED", "Não conseguimos registrar este nascimento.", trace);
   }
 }

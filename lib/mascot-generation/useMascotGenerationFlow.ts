@@ -192,8 +192,11 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setGenerationStartedAt(Date.now());
     setState("uploading");
     try {
-      const created = await createGenerationJob(photo, identity, current.signal, newAttemptForPhoto.current);
+      // Once a registration request leaves the browser, its server-issued
+      // attempt cookie is the idempotency boundary. A retry must reuse it.
+      const startNewAttempt = newAttemptForPhoto.current;
       newAttemptForPhoto.current = false;
+      const created = await createGenerationJob(photo, identity, current.signal, startNewAttempt);
       setJob(created);
       setState("creating-job");
       const scheduled = config.masterGenerationEnabled
@@ -262,7 +265,16 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setState("creating-job");
     try {
       const resumed = await resumeGenerationJob(current.signal);
-      if (!resumed) throw new GenerationRequestError("O registro ainda está sendo confirmado. Aguarde um instante e retome novamente.", true, "REGISTRATION_CONFIRMATION_PENDING");
+      if (!resumed) {
+        // A request can have reserved an attempt but lost the upstream reply.
+        // Reuse the existing attempt and image in memory; Modal receives the
+        // same idempotency key, so this cannot create a second birth.
+        if (photo && subjectIdentity) {
+          await startGeneration(subjectIdentity);
+          return;
+        }
+        throw new GenerationRequestError("O registro ainda está sendo confirmado. Aguarde um instante e retome novamente.", true, "REGISTRATION_CONFIRMATION_PENDING");
+      }
       newAttemptForPhoto.current = false;
       if (["queued", "generating_masters", "generating_poses"].includes(resumed.status)) {
         setJob(resumed);
@@ -287,7 +299,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
       setErrorMessage(error instanceof Error ? error.message : "O registro ainda está sendo confirmado.");
       setState("recoverable-error");
     }
-  }, [applyJob, config]);
+  }, [applyJob, config, photo, startGeneration, subjectIdentity]);
 
   const acceptMaster = useCallback(async () => {
     if (!job || !activeMaster) return;

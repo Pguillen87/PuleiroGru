@@ -20,7 +20,10 @@ export function integrationErrorResponse(
     }, { status: 403 }), trace);
   }
   if (error instanceof ModalProviderError) {
-    const status = error.status >= 400 && error.status < 500 ? error.status : 503;
+    // The browser is not the caller authenticated by Modal v2. A rejected
+    // BFF-to-Modal credential must never look like the person's session ended.
+    const integrationAuthFailure = error.code === "BFF_TOKEN_INVALID" || error.code === "WEB_V2_DISABLED";
+    const status = integrationAuthFailure ? 503 : error.status >= 400 && error.status < 500 ? error.status : 503;
     const safeMessages: Record<string, string> = {
       GENERATION_DISABLED: "A geração real ainda não foi autorizada.",
       POSE_GENERATION_DISABLED: "A criação de poses ainda não está disponível.",
@@ -30,6 +33,8 @@ export function integrationErrorResponse(
       MASTER_AUTHORIZATION_UNAVAILABLE: "O Puleiro não conseguiu reservar este nascimento agora. Tente novamente em instantes.",
       MASTER_WORKER_ENQUEUE_FAILED: "A oficina de geração não respondeu. Tente novamente em instantes.",
       MASTER_WORKER_RECORD_UNAVAILABLE: "O nascimento foi iniciado, mas ainda não pôde ser confirmado. Aguarde um instante e atualize a página.",
+      BFF_TOKEN_INVALID: "O Puleiro não conseguiu confirmar a conexão segura com a oficina. Tente retomar este nascimento em instantes.",
+      WEB_V2_DISABLED: "A oficina do Puleiro está temporariamente indisponível. Tente retomar este nascimento em instantes.",
       JOB_NOT_FOUND: "Nascimento não encontrado.",
       ATTEMPT_MISMATCH: "Esta tentativa não pertence à sessão atual.",
     };

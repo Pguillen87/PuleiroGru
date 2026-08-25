@@ -16,7 +16,10 @@ export class GenerationRequestError extends Error {
 async function readResponse(response: Response, allowEmpty = false) {
   const body = await response.json().catch(() => ({})) as JobResponse;
   if (!response.ok || (!allowEmpty && !body.job)) {
-    if (response.status === 401 || response.status === 403) {
+    // Authorization failures from the generation workflow (ownership, origin,
+    // or a stale attempt) are not proof that the browser session ended.
+    // Only the BFF's explicit session code may return the person to the gate.
+    if (response.status === 401 && body.code === "SESSION_EXPIRED") {
       globalThis.window?.dispatchEvent(new Event("puleiro:auth-required"));
     }
     throw new GenerationRequestError(

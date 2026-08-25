@@ -6,7 +6,7 @@ import { StageButton } from "@/components/actions/StageButton";
 import { PuleiroWordmark } from "@/components/brand/PuleiroWordmark";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { defaultPersistentSessionPreference, saveSessionPreference, shouldEndSessionAfterBrowserClose } from "@/lib/auth/session-preference";
+import { defaultPersistentSessionPreference, saveSessionPreference } from "@/lib/auth/session-preference";
 
 type AccountMode = "login" | "signup" | "recovery";
 type GateStatus = "checking" | "signed-out" | "signed-in";
@@ -34,14 +34,6 @@ export function AccountGate({ required, children }: { required: boolean; childre
       .getUser()
       .then(async ({ data, error }) => {
         if (!active) return;
-        if (!error && data.user && shouldEndSessionAfterBrowserClose()) {
-          await supabase.auth.signOut();
-          if (active) {
-            setStatus("signed-out");
-            setMessage("Sua sessão neste navegador terminou. Entre novamente para continuar.");
-          }
-          return;
-        }
         if (!error && data.user) defaultPersistentSessionPreference();
         setStatus(!error && data.user ? "signed-in" : "signed-out");
         setMessage(
@@ -98,7 +90,6 @@ export function AccountGate({ required, children }: { required: boolean; childre
       initialMessage={message}
       onSignedIn={() => {
         setStatus("signed-in");
-        router.replace("/");
         router.refresh();
       }}
     />;
@@ -110,10 +101,12 @@ function AccountStatus({ message }: { message: string }) {
   return (
     <main className="account-gate">
       <span className="account-gate__scene" aria-hidden="true" />
-      <PuleiroWordmark />
-      <p className="editorial-kicker">Entrada protegida</p>
-      <h1>Seu lugar no Puleiro</h1>
-      <p role="status" aria-live="polite">{message}</p>
+      <div className="account-gate__content">
+        <PuleiroWordmark />
+        <p className="editorial-kicker">Entrada protegida</p>
+        <h1>Seu lugar no Puleiro</h1>
+        <p role="status" aria-live="polite">{message}</p>
+      </div>
     </main>
   );
 }
@@ -183,27 +176,29 @@ function AccountForm({ initialMessage, onSignedIn }: { initialMessage: string; o
   return (
     <main className="account-gate">
       <span className="account-gate__scene" aria-hidden="true" />
-      <PuleiroWordmark />
-      <p className="editorial-kicker">Entrada protegida</p>
-      <h1 ref={titleRef} tabIndex={-1}>{title}</h1>
-      <p>{modeInstruction(mode)}</p>
-      <form onSubmit={submit}>
-        <label htmlFor="puleiro-email">E-mail</label>
-        <input id="puleiro-email" name="email" type="email" autoComplete="username" autoFocus required />
-        {mode !== "recovery" && <>
-          <label htmlFor="puleiro-password">Senha</label>
-          <input id="puleiro-password" name="password" type="password" minLength={6} autoComplete={mode === "signup" ? "new-password" : "current-password"} required />
-          {mode === "signup" && <p className="account-gate__availability">Use pelo menos 6 caracteres.</p>}
-          <label className="account-gate__remember"><input type="checkbox" checked={rememberSession} onChange={(event) => setRememberSession(event.target.checked)} /> <span>Lembrar meu acesso neste dispositivo</span></label>
-        </>}
-        <StageButton type="submit" disabled={busy}>{busy ? "Aguarde…" : actionLabel(mode)}</StageButton>
-      </form>
-      <p className="account-gate__session-note">O Puleiro não salva sua senha. Marcado, o acesso continua neste aparelho; desmarcado, ele termina ao fechar o navegador.</p>
-      <p role="status" aria-live="polite" aria-atomic="true">{feedback}</p>
-      <div className="account-gate__switches" role="group" aria-label="Opções de acesso">
-        {mode !== "login" && <button type="button" onClick={() => switchMode("login")}>Já tenho conta</button>}
-        {mode !== "signup" && <button type="button" onClick={() => switchMode("signup")}>Criar uma conta</button>}
-        {mode !== "recovery" && <button type="button" onClick={() => switchMode("recovery")}>Esqueci minha senha</button>}
+      <div className="account-gate__content">
+        <PuleiroWordmark />
+        <p className="editorial-kicker">Entrada protegida</p>
+        <h1 ref={titleRef} tabIndex={-1}>{title}</h1>
+        <p>{modeInstruction(mode)}</p>
+        <form onSubmit={submit}>
+          <label htmlFor="puleiro-email">E-mail</label>
+          <input id="puleiro-email" name="email" type="email" autoComplete="username" autoFocus required />
+          {mode !== "recovery" && <>
+            <label htmlFor="puleiro-password">Senha</label>
+            <input id="puleiro-password" name="password" type="password" minLength={6} autoComplete={mode === "signup" ? "new-password" : "current-password"} required />
+            {mode === "signup" && <p className="account-gate__availability">Use pelo menos 6 caracteres.</p>}
+            <label className="account-gate__remember"><input type="checkbox" checked={rememberSession} onChange={(event) => setRememberSession(event.target.checked)} /> <span>Lembrar meu acesso neste dispositivo</span></label>
+          </>}
+          <StageButton type="submit" disabled={busy}>{busy ? "Aguarde…" : actionLabel(mode)}</StageButton>
+        </form>
+        <p className="account-gate__session-note">O Puleiro não salva sua senha. Marcado, o acesso continua neste aparelho; desmarcado, ele termina ao fechar o navegador.</p>
+        <p role="status" aria-live="polite" aria-atomic="true">{feedback}</p>
+        <div className="account-gate__switches" role="group" aria-label="Opções de acesso">
+          {mode !== "login" && <button type="button" onClick={() => switchMode("login")}>Já tenho conta</button>}
+          {mode !== "signup" && <button type="button" onClick={() => switchMode("signup")}>Criar uma conta</button>}
+          {mode !== "recovery" && <button type="button" onClick={() => switchMode("recovery")}>Esqueci minha senha</button>}
+        </div>
       </div>
     </main>
   );

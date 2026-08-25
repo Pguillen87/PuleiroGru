@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createGenerationJob, pollGenerationJob } from "@/lib/mascot-generation/client";
+import { createGenerationJob, pollGenerationJob, startPoseGeneration } from "@/lib/mascot-generation/client";
 import type { GenerationJob } from "@/lib/mascot-generation/types";
 
 const job: GenerationJob = {
@@ -62,6 +62,36 @@ describe("retomada durante consulta instável", () => {
         supportCode: "ABC123",
         message: expect.stringContaining("ABC123"),
       });
+  });
+
+  it("não remove a pessoa da conta por uma falha de autorização que não é sessão", async () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal("window", { dispatchEvent });
+    const response = new Response(JSON.stringify({
+      message: "Esta tentativa não pertence à sessão atual.",
+      code: "ATTEMPT_MISMATCH",
+    }), { status: 403, headers: { "content-type": "application/json" } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+
+    await expect(startPoseGeneration("job-1", job.poseChoices, new AbortController().signal))
+      .rejects.toMatchObject({ code: "ATTEMPT_MISMATCH" });
+
+    expect(dispatchEvent).not.toHaveBeenCalled();
+  });
+
+  it("solicita novo login somente quando o BFF confirma sessão expirada", async () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal("window", { dispatchEvent });
+    const response = new Response(JSON.stringify({
+      message: "Sua sessão terminou.",
+      code: "SESSION_EXPIRED",
+    }), { status: 401, headers: { "content-type": "application/json" } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+
+    await expect(startPoseGeneration("job-1", job.poseChoices, new AbortController().signal))
+      .rejects.toMatchObject({ code: "SESSION_EXPIRED" });
+
+    expect(dispatchEvent).toHaveBeenCalledTimes(1);
   });
 
   it("uma nova foto declara uma tentativa nova sem alterar a retomada padrão", async () => {

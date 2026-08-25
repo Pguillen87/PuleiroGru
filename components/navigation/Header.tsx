@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { PuleiroWordmark } from "@/components/brand/PuleiroWordmark";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { clearSessionPreference, defaultPersistentSessionPreference, shouldEndSessionAfterBrowserClose } from "@/lib/auth/session-preference";
+import { clearSessionPreference, defaultPersistentSessionPreference } from "@/lib/auth/session-preference";
 
 type HeaderProps = { onUnavailableNavigation?: (destination: string) => void };
 
@@ -28,11 +28,6 @@ export function Header({ onUnavailableNavigation }: HeaderProps) {
     let active = true;
     void supabase.auth.getUser().then(async ({ data, error }) => {
       if (!active) return;
-      if (!error && data.user && shouldEndSessionAfterBrowserClose()) {
-        await supabase.auth.signOut();
-        if (active) setSignedIn(false);
-        return;
-      }
       if (!error && data.user) defaultPersistentSessionPreference();
       setSignedIn(!error && Boolean(data.user));
     });

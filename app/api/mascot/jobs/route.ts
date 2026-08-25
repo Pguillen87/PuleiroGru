@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
+import { RequestAuthError, requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { attemptCookie, getOrCreateAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
 import { findAttempt, reserveAttempt, saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
@@ -19,10 +19,23 @@ export async function POST(request: Request) {
   let trace: MascotTraceContext | undefined;
   try {
     requireTrustedMutationRequest(request, { contentTypes: ["multipart/form-data"] });
-    const identity = await requireBrowserIdentity(request);
     const newAttempt = request.headers.get("x-puleiro-new-attempt") === "true";
     const attemptId = newAttempt ? crypto.randomUUID() : await getOrCreateAttemptId();
     trace = createTraceContext(attemptId, true);
+    let identity: Awaited<ReturnType<typeof requireBrowserIdentity>>;
+    try {
+      identity = await requireBrowserIdentity(request);
+    } catch (error) {
+      if (error instanceof RequestAuthError) {
+        mascotLog("registration_auth_rejected", {
+          ...trace,
+          result: "rejected",
+          safeErrorCode: error.code,
+          httpStatus: error.status,
+        });
+      }
+      throw error;
+    }
     if (!generationConfig.registrationEnabled) {
       mascotLog("registration_requested", { ...trace, result: "blocked", safeErrorCode: "REGISTRATION_DISABLED", httpStatus: 503 });
       const response = NextResponse.json({

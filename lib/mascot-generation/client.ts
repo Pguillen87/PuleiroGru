@@ -1,6 +1,6 @@
 import type { GenerationJob, PoseChoices, SubjectIdentity } from "./types";
 
-type JobResponse = { job?: GenerationJob | null; message?: string; code?: string; supportCode?: string };
+type JobResponse = { job?: GenerationJob | null; message?: string; code?: string; supportCode?: string; retryable?: boolean };
 
 export class GenerationRequestError extends Error {
   constructor(
@@ -21,7 +21,7 @@ async function readResponse(response: Response, allowEmpty = false) {
     }
     throw new GenerationRequestError(
       safeSupportMessage(body.message ?? "O Puleiro não respondeu como esperado.", body.supportCode),
-      response.status >= 500,
+      body.retryable ?? response.status >= 500,
       body.code,
       body.supportCode,
     );
@@ -145,5 +145,5 @@ export async function pollGenerationJob(
       networkAttempt += 1;
     }
   }
-  throw new GenerationRequestError("O nascimento continua em andamento. Você pode voltar depois sem pagar novamente.");
+  throw new GenerationRequestError("O nascimento continua em andamento. Você pode voltar depois sem enviar outra foto.", true, "GENERATION_STILL_RUNNING");
 }

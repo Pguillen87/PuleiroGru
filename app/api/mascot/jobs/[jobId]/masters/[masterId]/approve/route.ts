@@ -21,7 +21,7 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     if (!attemptId) return NextResponse.json({ message: "Nascimento não encontrado.", code: "JOB_NOT_FOUND" }, { status: 404 });
     trace = createTraceContext(attemptId, true);
     const job = await getMascotGenerationProvider().approveMaster(jobId, masterId, jobIdentity(identity.uid, attemptId, trace));
-    if (identity.mode === "supabase-session") await saveAttemptJob(await createClient(), identity.uid, job);
+    if (identity.mode === "supabase-session") await saveAttemptJob(await createClient(), identity.uid, job, trace);
     const responseTrace = job.operationId ? { ...trace, operationId: job.operationId } : trace;
     return traceResponse(NextResponse.json({ job }, { status: 200 }), responseTrace, job.requestId);
   } catch (error) {

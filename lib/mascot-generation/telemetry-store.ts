@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GenerationJob, GenerationMetric, GenerationMetricStage, GenerationMetricStatus } from "./types";
+import type { MascotTraceContext } from "@/lib/observability/mascot-trace";
 
 type TelemetryRow = {
   id: string;
@@ -16,7 +17,7 @@ type TelemetryRow = {
   cost_source: GenerationMetric["costSource"] | null;
 };
 
-export async function recordGenerationRequested(client: SupabaseClient, userId: string, job: GenerationJob, stage: GenerationMetricStage) {
+export async function recordGenerationRequested(client: SupabaseClient, userId: string, job: GenerationJob, stage: GenerationMetricStage, trace?: MascotTraceContext) {
   const { error } = await client.from("mascot_generation_telemetry").upsert({
     user_id: userId,
     attempt_id: job.attemptId,
@@ -26,6 +27,7 @@ export async function recordGenerationRequested(client: SupabaseClient, userId: 
     started_at: new Date().toISOString(),
     completed_at: null,
     duration_ms: null,
+    ...(trace ? { puleiro_trace_id: trace.puleiroTraceId, operation_id: trace.operationId ?? null } : {}),
   }, { onConflict: "user_id,modal_job_id,stage", ignoreDuplicates: true });
   if (error) throw new Error("Não foi possível registrar o início da geração.");
 }

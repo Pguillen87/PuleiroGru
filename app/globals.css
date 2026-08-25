@@ -658,12 +658,19 @@ main {
 
 .generation-progress__track > span {
   display: block;
-  width: 100%;
+  width: 28%;
   height: 100%;
   background: var(--color-editorial-red);
-  transform: scaleX(var(--progress-scale));
-  transform-origin: left center;
-  transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: progress-signal 1.8s ease-in-out infinite;
+}
+
+.generation-progress__signal--received { width: 18%; animation: none; }
+.generation-progress__signal--registered { width: 42%; }
+.generation-progress__signal--confirmed { width: 100%; animation: none; }
+
+@keyframes progress-signal {
+  0%, 100% { transform: translateX(0); opacity: 0.65; }
+  50% { transform: translateX(160%); opacity: 1; }
 }
 
 .generation-progress small {
@@ -2053,13 +2060,13 @@ main {
   transform: rotate(58deg);
 }
 
-.incubation-motion--50 .egg-crack--one,
-.incubation-motion--75 .egg-crack {
+.incubation-motion--registered .egg-crack--one,
+.incubation-motion--working .egg-crack {
   opacity: 0.82;
   animation: crack-arrive 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.incubation-motion--50 .egg-crack--two {
+.incubation-motion--registered .egg-crack--two {
   opacity: 0;
 }
 

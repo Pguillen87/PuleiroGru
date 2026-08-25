@@ -24,13 +24,13 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
     if (!job) return NextResponse.json({ message: "Nascimento não encontrado.", code: "JOB_NOT_FOUND" }, { status: 404 });
     if (identity.mode === "supabase-session") {
       const client = await createClient();
-      await saveAttemptJob(client, identity.uid, job);
+      await saveAttemptJob(client, identity.uid, job, trace);
       await reconcileGenerationTelemetry(client, identity.uid, job).catch(() => undefined);
     }
-    mascotLog("pose_status_read", { ...trace, jobId, result: "success", durationMs: Math.round(performance.now() - startedAt), httpStatus: 200 });
+    mascotLog("generation_status_read", { ...trace, jobId, result: "success", durationMs: Math.round(performance.now() - startedAt), httpStatus: 200, stage: job.status });
     return traceResponse(NextResponse.json({ job }, { status: 200 }), trace, job.requestId);
   } catch (error) {
-    mascotLog("pose_status_read", { ...(trace ?? {}), jobId, result: "failure", durationMs: Math.round(performance.now() - startedAt), safeErrorCode: error instanceof Error ? error.name : "UNKNOWN" });
+    mascotLog("generation_status_read", { ...(trace ?? {}), jobId, result: "failure", durationMs: Math.round(performance.now() - startedAt), safeErrorCode: error instanceof Error ? error.name : "UNKNOWN" });
     return integrationErrorResponse(error, "JOB_READ_FAILED", "Não foi possível consultar o nascimento agora.", trace);
   }
 }

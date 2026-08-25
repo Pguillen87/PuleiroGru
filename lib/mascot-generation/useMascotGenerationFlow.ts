@@ -160,7 +160,13 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setJob(result);
     setStatusMessage(result.message);
     if (result.status === "registered" || result.status === "awaiting_generation_authorization") return setState("registered-safe");
-    if (result.status === "failed" || result.status === "canceled") throw new Error(result.message);
+    if (result.status === "failed" || result.status === "canceled") {
+      throw new GenerationRequestError(
+        result.message,
+        result.retryable ?? result.errorCode === "WORKER_LOST",
+        result.errorCode ?? "GENERATION_FAILED",
+      );
+    }
     if (result.status === "master_approved") return setState("choosing-normal");
     if (result.status === "awaiting_set_approval") return setState("pose-set-ready");
     if (result.status !== "awaiting_master_approval") throw new Error("O nascimento retornou em um estado inesperado.");
@@ -208,7 +214,8 @@ export function useMascotGenerationFlow(config: FlowConfig) {
       applyJob(result);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      setErrorCode(error instanceof GenerationRequestError ? error.code : "CREATE_JOB_FAILED");
+      const code = error instanceof GenerationRequestError ? error.code : "CREATE_JOB_FAILED";
+      setErrorCode(code);
       setErrorMessage(error instanceof Error ? error.message : "Não conseguimos concluir este nascimento.");
       setState("recoverable-error");
     }
@@ -257,14 +264,30 @@ export function useMascotGenerationFlow(config: FlowConfig) {
       const resumed = await resumeGenerationJob(current.signal);
       if (!resumed) throw new GenerationRequestError("O registro ainda está sendo confirmado. Aguarde um instante e retome novamente.", true, "REGISTRATION_CONFIRMATION_PENDING");
       newAttemptForPhoto.current = false;
-      applyJob(resumed);
+      if (["queued", "generating_masters", "generating_poses"].includes(resumed.status)) {
+        setJob(resumed);
+        setStatusMessage(resumed.message);
+        setState(resumed.status === "generating_poses" ? "generating-poses" : "preparing");
+        const completed = await pollGenerationJob(resumed, {
+          intervalMs: config.pollIntervalMs,
+          timeoutMs: config.timeoutMs,
+          signal: current.signal,
+          onProgress: (progress) => {
+            setJob(progress);
+            setStatusMessage(progress.message);
+          },
+        });
+        applyJob(completed);
+      } else {
+        applyJob(resumed);
+      }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setErrorCode(error instanceof GenerationRequestError ? error.code : "REGISTRATION_CONFIRMATION_PENDING");
       setErrorMessage(error instanceof Error ? error.message : "O registro ainda está sendo confirmado.");
       setState("recoverable-error");
     }
-  }, [applyJob]);
+  }, [applyJob, config]);
 
   const acceptMaster = useCallback(async () => {
     if (!job || !activeMaster) return;
@@ -400,22 +423,21 @@ export function useMascotGenerationFlow(config: FlowConfig) {
 }
 
 function generationProgress(state: PuleiroState, job?: GenerationJob, startedAt?: number): GenerationProgressModel | undefined {
-  if (state === "uploading") return { kind: "birth", percent: 0, label: "Preparando a fotografia", startedAt };
-  if (state === "creating-job") return { kind: "birth", percent: 50, label: "Fotografia recebida com segurança", startedAt };
+  if (state === "uploading") return { kind: "birth", phase: "received", label: "Foto recebida", startedAt };
+  if (state === "creating-job") return { kind: "birth", phase: "registered", label: "Nascimento registrado", startedAt };
   if (state === "preparing") {
     const workerStarted = job?.status === "generating_masters";
     return {
       kind: "birth",
-      percent: workerStarted ? 75 : 50,
-      label: workerStarted ? "Mascote mestre em criação" : "Nascimento registrado", startedAt,
+      phase: workerStarted ? "working" : "registered",
+      label: workerStarted ? "Criando três opções" : "Nascimento registrado", startedAt,
     };
   }
   if (state === "generating-poses") {
-    const completedPoses = Math.min(job?.poses?.length ?? 0, 3);
     return {
       kind: "poses",
-      percent: completedPoses > 0 ? Math.round((completedPoses / 3) * 100) : 25,
-      label: completedPoses > 0 ? `${completedPoses} de 3 poses verificadas` : "Operação de poses confirmada", startedAt,
+      phase: job?.poses?.length === 3 ? "confirmed" : "working",
+      label: job?.poses?.length === 3 ? "Três poses verificadas" : "Preparando as três poses", startedAt,
     };
   }
   return undefined;

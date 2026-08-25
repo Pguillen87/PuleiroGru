@@ -20,13 +20,20 @@ export async function POST(request: Request) {
   try {
     requireTrustedMutationRequest(request, { contentTypes: ["multipart/form-data"] });
     const identity = await requireBrowserIdentity(request);
-    if (!generationConfig.registrationEnabled) {
-      return NextResponse.json({ message: "Novos registros estão temporariamente pausados.", code: "REGISTRATION_DISABLED" }, { status: 409 });
-    }
-
     const newAttempt = request.headers.get("x-puleiro-new-attempt") === "true";
     const attemptId = newAttempt ? crypto.randomUUID() : await getOrCreateAttemptId();
     trace = createTraceContext(attemptId, true);
+    if (!generationConfig.registrationEnabled) {
+      mascotLog("registration_requested", { ...trace, result: "blocked", safeErrorCode: "REGISTRATION_DISABLED", httpStatus: 503 });
+      const response = NextResponse.json({
+        message: "Novos nascimentos estão temporariamente indisponíveis.",
+        code: "REGISTRATION_DISABLED",
+        retryable: false,
+        supportCode: trace.requestId.slice(0, 10).toUpperCase(),
+      }, { status: 503 });
+      return traceResponse(response, trace);
+    }
+    mascotLog("registration_requested", { ...trace, result: "started" });
     const provider = getMascotGenerationProvider();
     const supabase = identity.mode === "supabase-session" ? await createClient() : null;
     const existing = supabase ? await findAttempt(supabase, identity.uid, attemptId) : null;
@@ -39,7 +46,7 @@ export async function POST(request: Request) {
     if (existing && !existing.modal_job_id) {
       const recovered = await recoverRegisteredJob(provider, context);
       if (recovered) {
-        if (supabase) await saveAttemptJob(supabase, identity.uid, recovered);
+        if (supabase) await saveAttemptJob(supabase, identity.uid, recovered, trace);
         mascotLog("mascot_registration_reconciled", { ...trace, jobId: recovered.id, result: "recovered", httpStatus: 200 });
         return traceResponse(jobResponse(recovered, attemptId), trace, recovered.requestId);
       }
@@ -75,7 +82,8 @@ export async function POST(request: Request) {
       job = recovered;
       mascotLog("mascot_registration_reconciled", { ...trace, jobId: job.id, result: "recovered", httpStatus: 200 });
     }
-    if (supabase) await saveAttemptJob(supabase, identity.uid, job);
+    if (supabase) await saveAttemptJob(supabase, identity.uid, job, trace);
+    mascotLog("registration_confirmed", { ...trace, jobId: job.id, result: "accepted", httpStatus: 202 });
     const response = jobResponse(job, attemptId);
     return traceResponse(response, trace, job.requestId);
   } catch (error) {

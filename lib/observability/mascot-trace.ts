@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 const SAFE_FIELDS = new Set([
   "timestamp", "environment", "service", "event", "result", "durationMs",
   "puleiroTraceId", "attemptId", "operationId", "requestId", "jobId",
-  "masterId", "poseRole", "safeErrorCode", "httpStatus",
+  "masterId", "poseRole", "safeErrorCode", "httpStatus", "stage", "retryable",
 ]);
 
 export type MascotTraceContext = {

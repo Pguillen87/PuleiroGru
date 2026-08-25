@@ -118,10 +118,10 @@ export function PuleiroStage({ state, children, artwork, revealing = false, onAr
         />
         {preparing && <span className="egg-glow" aria-hidden="true" />}
         {progress?.kind === "birth" && (
-          <div className={`incubation-motion incubation-motion--${progress.percent}`} aria-hidden="true">
+          <div className={`incubation-motion incubation-motion--${progress.phase}`} aria-hidden="true">
             <span className="egg-crack egg-crack--one" />
             <span className="egg-crack egg-crack--two" />
-            <span className="stage-progress-seal">{progress.percent}%</span>
+            <span className="stage-progress-seal">em preparo</span>
           </div>
         )}
         {progress?.kind === "poses" && (
@@ -132,7 +132,7 @@ export function PuleiroStage({ state, children, artwork, revealing = false, onAr
               <li><span>02</span> Ouvindo</li>
               <li><span>03</span> Transcrevendo</li>
             </ol>
-            <strong>{progress.percent}%</strong>
+            <strong>3 estados</strong>
           </div>
         )}
         {revealing && (

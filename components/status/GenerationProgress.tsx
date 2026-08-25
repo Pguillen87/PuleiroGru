@@ -1,8 +1,8 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 
 export type GenerationProgressModel = {
   kind: "birth" | "poses";
-  percent: number;
+  phase: "received" | "registered" | "working" | "confirmed";
   label: string;
   startedAt?: number;
 };
@@ -18,23 +18,21 @@ export function GenerationProgress({ progress }: { progress: GenerationProgressM
     <div className="generation-progress">
       <div className="generation-progress__heading">
         <span>{progress.label}</span>
-        <strong>{progress.percent}%</strong>
+        <strong>Ao vivo</strong>
       </div>
       <div
         className="generation-progress__track"
-        role="progressbar"
+        role="status"
         aria-label={progress.label}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={progress.percent}
-        aria-valuetext={`${progress.percent}% dos marcos confirmados${elapsedMs === undefined ? "" : `; ${formatElapsed(elapsedMs)} decorridos`}`}
+        aria-live="polite"
+        aria-atomic="true"
       >
-        <span style={{ "--progress-scale": progress.percent / 100 } as CSSProperties} />
+        <span className={`generation-progress__signal generation-progress__signal--${progress.phase}`} />
       </div>
       <small>
         {elapsedMs === undefined
           ? "Avanço confirmado pelo Puleiro."
-          : `${formatElapsed(elapsedMs)} decorridos · percentual baseado nos marcos confirmados.`}
+          : `${formatElapsed(elapsedMs)} decorridos · estágio confirmado pelo Puleiro.`}
       </small>
     </div>
   );

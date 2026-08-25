@@ -150,7 +150,7 @@ test("API rejeita job inexistente e conteúdo incompatível com o MIME", async (
   expect((await invalid.json()).code).toBe("IMAGE_DECODE_FAILED");
 });
 
-test("falha do job preserva foto e oferece retry", async ({ page }) => {
+test("falha transitória preserva foto e consulta a tentativa existente", async ({ page }) => {
   await page.route("**/api/mascot/jobs", (route) => route.fulfill({
     status: 202,
     contentType: "application/json",
@@ -165,9 +165,9 @@ test("falha do job preserva foto e oferece retry", async ({ page }) => {
   await page.getByRole("button", { name: "Usar esta foto" }).click();
   await page.getByRole("radio", { name: /Pessoa/ }).check();
   await page.getByRole("button", { name: "Confirmar e começar" }).click();
-  await expect(page.getByRole("heading", { name: "Este nascimento precisa de outra tentativa" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Tentar novamente" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Trocar foto" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Este nascimento precisa de atenção" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Consultar nascimento" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Tentar novamente" })).toHaveCount(0);
 });
 
 test("uma foto inválida não oferece retry para o mesmo arquivo", async ({ page }) => {
@@ -184,7 +184,7 @@ test("uma foto inválida não oferece retry para o mesmo arquivo", async ({ page
   await page.getByRole("button", { name: "Usar esta foto" }).click();
   await page.getByRole("radio", { name: /Pessoa/ }).check();
   await page.getByRole("button", { name: "Confirmar e começar" }).click();
-  await expect(page.getByRole("heading", { name: "Este nascimento precisa de outra tentativa" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Este nascimento precisa de atenção" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Tentar novamente" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Trocar foto" })).toBeVisible();
 });
@@ -258,7 +258,8 @@ test("timeout encerra polling sem criar novo POST automaticamente", async ({ pag
   await page.getByRole("button", { name: "Usar esta foto" }).click();
   await page.getByRole("radio", { name: /Pessoa/ }).check();
   await page.getByRole("button", { name: "Confirmar e começar" }).click();
-  await expect(page.getByRole("heading", { name: "Este nascimento precisa de outra tentativa" })).toBeVisible({ timeout: 4_000 });
+  await expect(page.getByRole("heading", { name: "Seu nascimento continua registrado" })).toBeVisible({ timeout: 4_000 });
+  await expect(page.getByRole("button", { name: "Tentar novamente" })).toHaveCount(0);
   await expect.poll(() => creations).toBe(1);
 });
 
@@ -325,7 +326,7 @@ test("retoma geração de poses por GET e preserva o Master inteiro", async ({ p
 
   await page.goto("/criar");
   await expect(page.getByRole("heading", { name: "Experimentando os três jeitos" })).toBeVisible();
-  await expect(page.getByRole("progressbar", { name: "Operação de poses confirmada" })).toHaveAttribute("aria-valuenow", "25");
+  await expect(page.getByRole("status", { name: "Preparando as três poses" })).toBeVisible();
   await expect(page.locator(".pose-workshop-motion li")).toHaveText(["01 Normal", "02 Ouvindo", "03 Transcrevendo"]);
   await expect(page.locator("#puleiro-stage")).toHaveClass(/stage--master-reference/);
   expect(await page.locator(".stage__art img").evaluate((image) => getComputedStyle(image).objectFit)).toBe("contain");
@@ -333,7 +334,7 @@ test("retoma geração de poses por GET e preserva o Master inteiro", async ({ p
   expect(posePosts).toBe(0);
 });
 
-test("mostra somente progresso de nascimento confirmado pelo backend", async ({ page }) => {
+test("mostra somente o estágio de nascimento confirmado pelo backend", async ({ page }) => {
   await page.route("**/api/mascot/jobs/current", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
@@ -351,9 +352,9 @@ test("mostra somente progresso de nascimento confirmado pelo backend", async ({ 
   }));
 
   await page.goto("/criar");
-  await expect(page.getByRole("progressbar", { name: "Mascote mestre em criação" })).toHaveAttribute("aria-valuenow", "75");
-  await expect(page.locator(".generation-progress__heading strong")).toHaveText("75%");
-  await expect(page.locator(".stage-progress-seal")).toHaveText("75%");
+  await expect(page.getByRole("status", { name: "Criando três opções" })).toBeVisible();
+  await expect(page.locator(".generation-progress__heading strong")).toHaveText("Ao vivo");
+  await expect(page.locator(".stage-progress-seal")).toHaveText("em preparo");
   await expect(page.locator(".egg-crack")).toHaveCount(2);
 });
 
@@ -383,6 +384,8 @@ test("conjunto pronto é guardado uma vez e recebe código da biblioteca", async
     });
   });
   await page.goto("/criar");
+  await page.getByRole("textbox", { name: /Nome do mascote/ }).fill("Picapau");
+  await page.getByRole("button", { name: "Guardar Picapau" }).click();
   await expect(page.getByRole("heading", { name: "Seu GRU está pronto" })).toBeVisible();
   await expect(page.getByText("GRU-ABCD-2345")).toBeVisible();
   expect(completionPosts).toBe(1);

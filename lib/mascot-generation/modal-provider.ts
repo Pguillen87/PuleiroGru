@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { generationConfig } from "./config";
+import { assertGenerationConfiguration, generationConfig } from "./config";
 import { createModalAccessToken } from "./modal-auth";
 import type {
   AcceptedImageType,
@@ -40,9 +40,7 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
   private readonly baseUrl: string;
 
   constructor() {
-    if (!generationConfig.modalApiUrl || !generationConfig.modalBffJwtSecret) {
-      throw new Error("Configuração Modal v2 incompleta no servidor.");
-    }
+    assertGenerationConfiguration();
     this.baseUrl = generationConfig.modalApiUrl;
   }
 

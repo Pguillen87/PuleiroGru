@@ -116,7 +116,7 @@ suite("Supabase Auth e RLS reais", () => {
 
   it("registra e retoma no Modal staging com Supabase user.id sem acionar geração", async () => {
     if (!modalUrl || modalSecret.length < 32) throw new Error("Configuração do Modal staging ausente.");
-    const attemptId = `attempt-${randomUUID()}`;
+    const attemptId = randomUUID();
     const token = await modalToken(first.userId, attemptId);
     const idempotencyKey = `register:${first.userId}:${attemptId}`;
     const image = await sharp({
@@ -126,11 +126,13 @@ suite("Supabase Auth e RLS reais", () => {
       image_base64: image.toString("base64"),
       content_type: "image/png",
       attempt_id: attemptId,
+      subject_identity: { category: "person", label: "Pessoa", confirmed: true },
     });
     const headers = {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       "X-Idempotency-Key": idempotencyKey,
+      "X-Correlation-Id": `puleiro_${attemptId.replaceAll("-", "")}`,
     };
 
     const health = await fetch(`${modalUrl}/health`).then((response) => response.json());
@@ -145,25 +147,25 @@ suite("Supabase Auth e RLS reais", () => {
     const replay = await fetch(`${modalUrl}/v2/mascot/jobs`, { method: "POST", headers, body });
     expect((await replay.json()).jobId).toBe(job.jobId);
     const resumed = await fetch(`${modalUrl}/v2/mascot/jobs?attempt_id=${attemptId}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, "X-Correlation-Id": `puleiro_${attemptId.replaceAll("-", "")}` },
     });
     expect(resumed.status).toBe(200);
     expect((await resumed.json()).jobId).toBe(job.jobId);
 
     const master = await fetch(`${modalUrl}/v2/mascot/jobs/${job.jobId}/master-generations`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "X-Idempotency-Key": `master:${attemptId}` },
+      headers: { Authorization: `Bearer ${token}`, "X-Idempotency-Key": `master:${attemptId}`, "X-Correlation-Id": `puleiro_${attemptId.replaceAll("-", "")}` },
     });
     const poses = await fetch(`${modalUrl}/v2/mascot/jobs/${job.jobId}/pose-generations`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "X-Idempotency-Key": `poses:${attemptId}` },
+      headers: { Authorization: `Bearer ${token}`, "X-Idempotency-Key": `poses:${attemptId}`, "X-Correlation-Id": `puleiro_${attemptId.replaceAll("-", "")}` },
     });
     expect(master.status).toBe(409);
     expect(poses.status).toBe(409);
 
     const otherOwnerToken = await modalToken(second.userId, attemptId);
     const forbidden = await fetch(`${modalUrl}/v2/mascot/jobs/${job.jobId}`, {
-      headers: { Authorization: `Bearer ${otherOwnerToken}` },
+      headers: { Authorization: `Bearer ${otherOwnerToken}`, "X-Correlation-Id": `puleiro_${attemptId.replaceAll("-", "")}` },
     });
     expect(forbidden.status).toBe(404);
   });

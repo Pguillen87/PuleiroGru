@@ -30,13 +30,13 @@ export async function GET(request: Request) {
     attemptId ??= await getOrCreateAttemptId();
     trace = createTraceContext(attemptId);
     const job = await getMascotGenerationProvider().getJobByAttempt(jobIdentity(identity.uid, attemptId, trace));
-    if (job && supabase) await saveAttemptJob(supabase, identity.uid, job);
+    if (job && supabase) await saveAttemptJob(supabase, identity.uid, job, trace);
     const response = NextResponse.json({ job }, { status: 200 });
     response.cookies.set(attemptCookie(attemptId));
-    mascotLog("pose_operation_resumed", { ...trace, jobId: job?.id, result: job ? "found" : "empty", httpStatus: 200 });
+    mascotLog("generation_resumed", { ...trace, jobId: job?.id, result: job ? "found" : "empty", httpStatus: 200, stage: job?.status });
     return traceResponse(response, trace, job?.requestId);
   } catch (error) {
-    mascotLog("pose_operation_resume_failed", { ...(trace ?? {}), result: "failure", safeErrorCode: error instanceof Error ? error.name : "UNKNOWN" });
+    mascotLog("generation_resume_failed", { ...(trace ?? {}), result: "failure", safeErrorCode: error instanceof Error ? error.name : "UNKNOWN" });
     return integrationErrorResponse(error, "RESUME_FAILED", "Não foi possível retomar o nascimento agora.", trace);
   }
 }

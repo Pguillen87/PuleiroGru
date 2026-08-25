@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Header } from "@/components/navigation/Header";
 import { EditorialNote, ProgressFolio } from "@/components/editorial/EditorialDetails";
 import { EntryStage } from "@/components/stage/EntryStage";
-import { ErrorStage } from "@/components/stage/ErrorStage";
+import { ErrorStage, type ErrorStageMode } from "@/components/stage/ErrorStage";
 import { MasterDecisionStage } from "@/components/stage/MasterDecisionStage";
 import { PhotoPreviewStage } from "@/components/stage/PhotoPreviewStage";
 import { PhotoSelectionStage } from "@/components/stage/PhotoSelectionStage";
@@ -78,11 +78,10 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
     "recoverable-error": (
       <ErrorStage
         message={flow.errorMessage}
-        canRetry={!isPhotoValidationError(flow.errorCode)}
-        pendingConfirmation={flow.errorCode === "REGISTRATION_CONFIRMATION_PENDING"}
-        onRetry={flow.startGeneration}
+        mode={errorMode(flow.errorCode)}
         onResume={flow.resumeCurrentGeneration}
         onChange={flow.changePhoto}
+        onBack={flow.openSelection}
       />
     ),
   }[flow.state];
@@ -128,4 +127,11 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
 
 function isPhotoValidationError(code: string) {
   return ["INVALID_TYPE", "FILE_TOO_LARGE", "IMAGE_FORMAT_MISMATCH", "IMAGE_DECODE_FAILED"].includes(code);
+}
+
+function errorMode(code: string): ErrorStageMode {
+  if (code === "REGISTRATION_DISABLED") return "service-unavailable";
+  if (["REGISTRATION_CONFIRMATION_PENDING", "GENERATION_STILL_RUNNING", "WORKER_LOST"].includes(code)) return "resume-only";
+  if (isPhotoValidationError(code)) return "photo-only";
+  return "recoverable";
 }

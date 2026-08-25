@@ -18,20 +18,25 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
   const { jobId } = await context.params;
   let trace: MascotTraceContext | undefined;
   if (!validId(jobId)) return NextResponse.json({ message: "Identificador inválido.", code: "INVALID_JOB_ID" }, { status: 400 });
-  if (!generationConfig.masterGenerationEnabled) {
-    return NextResponse.json({ message: "A geração de mascotes está desabilitada neste ambiente.", code: "GENERATION_DISABLED" }, { status: 409 });
-  }
 
   try {
     requireTrustedMutationRequest(request, { contentTypes: ["application/json"] });
     const [identity, attemptId] = await Promise.all([requireBrowserIdentity(request), getAttemptId()]);
     if (!attemptId) return NextResponse.json({ message: "Nascimento não encontrado.", code: "JOB_NOT_FOUND" }, { status: 404 });
     trace = createTraceContext(attemptId, true);
+    if (!generationConfig.masterGenerationEnabled) {
+      mascotLog("master_generation_start_blocked", { ...trace, jobId, result: "blocked", safeErrorCode: "GENERATION_DISABLED", httpStatus: 503 });
+      return traceResponse(NextResponse.json({
+        message: "A geração de mascotes está temporariamente indisponível.",
+        code: "GENERATION_DISABLED",
+        retryable: false,
+      }, { status: 503 }), trace);
+    }
     const job = await getMascotGenerationProvider().startMasterGeneration(jobId, jobIdentity(identity.uid, attemptId, trace));
     if (identity.mode === "supabase-session") {
       const client = await createClient();
-      await saveAttemptJob(client, identity.uid, job);
-      await recordGenerationRequested(client, identity.uid, job, "master").catch(() => undefined);
+      await saveAttemptJob(client, identity.uid, job, trace);
+      await recordGenerationRequested(client, identity.uid, job, "master", trace).catch(() => undefined);
     }
     const responseTrace = job.operationId ? { ...trace, operationId: job.operationId } : trace;
     return traceResponse(NextResponse.json({ job }, { status: 202 }), responseTrace, job.requestId);

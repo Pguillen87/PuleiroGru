@@ -28,6 +28,24 @@ export const generationConfig = {
   allowDevTestIdentity: enabled(process.env.ALLOW_DEV_TEST_IDENTITY, false),
 };
 
+export type GenerationConfigurationIssue = "INVALID_PROVIDER" | "MODAL_API_URL_REQUIRED" | "MODAL_BFF_JWT_SECRET_REQUIRED" | "MODAL_BFF_JWT_SECRET_WEAK";
+
+/** Server-side only: validates a real Modal activation without breaking mock builds. */
+export function generationConfigurationIssues(): GenerationConfigurationIssue[] {
+  const issues: GenerationConfigurationIssue[] = [];
+  if (generationConfig.provider !== "mock" && generationConfig.provider !== "modal") issues.push("INVALID_PROVIDER");
+  if (generationConfig.provider !== "modal") return issues;
+  if (!/^https:\/\//.test(generationConfig.modalApiUrl)) issues.push("MODAL_API_URL_REQUIRED");
+  if (!generationConfig.modalBffJwtSecret) issues.push("MODAL_BFF_JWT_SECRET_REQUIRED");
+  else if (generationConfig.modalBffJwtSecret.length < 32) issues.push("MODAL_BFF_JWT_SECRET_WEAK");
+  return issues;
+}
+
+export function assertGenerationConfiguration() {
+  const issues = generationConfigurationIssues();
+  if (issues.length) throw new Error(`Configuração de geração inválida: ${issues.join(", ")}.`);
+}
+
 export function publicGenerationConfig() {
   return {
     maxUploadBytes: generationConfig.maxUploadBytes,

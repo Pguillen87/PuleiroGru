@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { getAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
-import { generationConfig } from "@/lib/mascot-generation/config";
-import { DEFAULT_POSE_CHOICES, POSE_OPTIONS } from "@/lib/mascot-generation/pose-catalog";
+import { DEFAULT_POSE_CHOICES, POSE_CATALOG_VERSION, POSE_OPTIONS } from "@/lib/mascot-generation/pose-catalog";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import { saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
 import type { PoseChoices, PoseRole } from "@/lib/mascot-generation/types";
@@ -25,25 +24,44 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     const [identity, attemptId] = await Promise.all([requireBrowserIdentity(request), getAttemptId()]);
     if (!attemptId) return NextResponse.json({ message: "Nascimento não encontrado." }, { status: 404 });
     trace = createTraceContext(attemptId, true);
-    if (!generationConfig.poseGenerationEnabled) {
-      return traceResponse(NextResponse.json({ message: "A geração das poses ainda não foi habilitada.", code: "POSE_GENERATION_DISABLED", retryable: false }, { status: 503 }), trace);
-    }
     const body = await request.json().catch(() => ({})) as { poseChoices?: PoseChoices };
     const poseChoices = validatePoseChoices(body.poseChoices);
     if (!poseChoices) {
       return NextResponse.json({ message: "Escolha uma opção válida para cada função.", code: "INVALID_POSE_CHOICES" }, { status: 400 });
     }
+    const provider = getMascotGenerationProvider();
+    const providerIdentity = jobIdentity(identity.uid, attemptId, trace);
+    const [capabilities, currentJob] = await Promise.all([
+      provider.getCapabilities(providerIdentity),
+      provider.getJob(jobId, providerIdentity),
+    ]);
+    const catalogMatches = capabilities.poses.catalogVersion === POSE_CATALOG_VERSION
+      && (Object.keys(poseChoices) as PoseRole[]).every((role) => capabilities.poseCatalog[role]?.includes(poseChoices[role]));
+    if (!capabilities.poses.ready || !catalogMatches) {
+      return traceResponse(NextResponse.json({
+        message: "A oficina de poses ainda não está pronta para este conjunto.",
+        code: catalogMatches ? "POSE_GENERATION_UNAVAILABLE" : "POSE_CATALOG_INCOMPATIBLE",
+        retryable: false,
+      }, { status: 409 }), trace);
+    }
+    if (!currentJob || currentJob.status !== "master_approved" || !currentJob.approvedMasterId) {
+      return traceResponse(NextResponse.json({ message: "Aprove um Master válido antes de gerar as poses.", code: "MASTER_NOT_READY", retryable: false }, { status: 409 }), trace);
+    }
     mascotLog("pose_request_received", { ...trace, jobId });
-    const job = await getMascotGenerationProvider().startPoseGeneration(
+    const job = await provider.startPoseGeneration(
       jobId,
       poseChoices,
-      jobIdentity(identity.uid, attemptId, trace),
+      providerIdentity,
     );
     const responseTrace = job.operationId ? { ...trace, operationId: job.operationId } : trace;
     if (identity.mode === "supabase-session") {
       const client = await createClient();
       await saveAttemptJob(client, identity.uid, job, trace);
-      await recordGenerationRequested(client, identity.uid, job, "poses", trace).catch(() => undefined);
+      try {
+        await recordGenerationRequested(client, identity.uid, job, "poses", trace);
+      } catch (telemetryError) {
+        mascotLog("pose_telemetry_persist_failed", { ...responseTrace, jobId, result: "failure", safeErrorCode: telemetryError instanceof Error ? telemetryError.name : "UNKNOWN" });
+      }
       mascotLog("pose_attempt_persisted", { ...responseTrace, jobId, result: "persisted" });
     }
     mascotLog(job.idempotentReplay ? "pose_operation_replayed" : "pose_operation_created", {

@@ -8,6 +8,8 @@ export type PoseOption = {
   previewPosition: string;
 };
 
+export const POSE_CATALOG_VERSION = "web-poses-v1";
+
 export const POSE_ROLE_ORDER: PoseRole[] = ["normal", "listening", "transcribing"];
 
 export const POSE_ROLE_LABELS: Record<PoseRole, string> = {

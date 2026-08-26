@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PuleiroState } from "@/lib/puleiro-state";
 import { REDUCED_REVEAL_DURATION_MS, REVEAL_DURATION_MS } from "@/lib/puleiro-state";
-import { approveMaster, createGenerationJob, finalizeMascot, GenerationRequestError, pollGenerationJob, resumeGenerationJob, startMasterGeneration, startPoseGeneration } from "./client";
-import { DEFAULT_POSE_CHOICES, POSE_ROLE_ORDER } from "./pose-catalog";
-import type { GenerationJob, MascotLibraryItem, PoseChoices, PoseRole, SubjectIdentity } from "./types";
+import { approveMaster, createGenerationJob, finalizeMascot, GenerationRequestError, getGenerationCapabilities, pollGenerationJob, resumeGenerationJob, startMasterGeneration, startPoseGeneration } from "./client";
+import { DEFAULT_POSE_CHOICES, POSE_CATALOG_VERSION, POSE_OPTIONS, POSE_ROLE_ORDER } from "./pose-catalog";
+import type { GenerationCapabilities, GenerationJob, MascotLibraryItem, PoseChoices, PoseRole, SubjectIdentity } from "./types";
 import type { GenerationProgressModel } from "@/components/status/GenerationProgress";
 
 export type FlowConfig = {
@@ -33,6 +33,8 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   const [revealComplete, setRevealComplete] = useState(false);
   const [libraryItem, setLibraryItem] = useState<MascotLibraryItem>();
   const [generationStartedAt, setGenerationStartedAt] = useState<number>();
+  const [capabilities, setCapabilities] = useState<GenerationCapabilities>();
+  const [capabilitiesLoading, setCapabilitiesLoading] = useState(false);
   const controller = useRef<AbortController | undefined>(undefined);
   const resumeController = useRef<AbortController | undefined>(undefined);
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -42,6 +44,30 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   const libraryAutoSaveAttempted = useRef(false);
   const activeMaster = job?.masters[masterIndex];
   const progress = generationProgress(state, job, generationStartedAt);
+  const poseGenerationReady = Boolean(
+    job?.status === "master_approved"
+    && job.approvedMasterId
+    && capabilities?.poses.ready
+    && capabilities.poses.catalogVersion === POSE_CATALOG_VERSION
+    && (Object.keys(poseChoices) as PoseRole[]).every((role) =>
+      capabilities.poseCatalog[role]?.includes(poseChoices[role])
+      && POSE_OPTIONS.some((option) => option.role === role && option.id === poseChoices[role]),
+    ),
+  );
+
+  useEffect(() => {
+    if (job?.status !== "master_approved") return;
+    const current = new AbortController();
+    setCapabilitiesLoading(true);
+    void getGenerationCapabilities(current.signal)
+      .then(setCapabilities)
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setErrorMessage(error instanceof Error ? error.message : "Não foi possível conferir a oficina de poses.");
+      })
+      .finally(() => setCapabilitiesLoading(false));
+    return () => current.abort();
+  }, [job?.id, job?.status]);
 
   const finishLibrary = useCallback(async (completedJob: GenerationJob, displayName: string) => {
     if (librarySaveInFlight.current) return;
@@ -109,6 +135,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setErrorMessage("");
     setErrorCode("");
     setLibraryItem(undefined);
+    setCapabilities(undefined);
     newAttemptForPhoto.current = true;
     libraryAutoSaveAttempted.current = false;
     setState("photo-preview");
@@ -125,6 +152,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setSubjectIdentity(undefined);
     setPoseChoices(DEFAULT_POSE_CHOICES);
     setLibraryItem(undefined);
+    setCapabilities(undefined);
     newAttemptForPhoto.current = true;
     libraryAutoSaveAttempted.current = false;
     setState("photo-selection");
@@ -276,6 +304,23 @@ export function useMascotGenerationFlow(config: FlowConfig) {
         throw new GenerationRequestError("O registro ainda está sendo confirmado. Aguarde um instante e retome novamente.", true, "REGISTRATION_CONFIRMATION_PENDING");
       }
       newAttemptForPhoto.current = false;
+      if (resumed.status === "failed" && resumed.errorCode === "WORKER_LOST") {
+        const restarted = await startMasterGeneration(resumed.id, current.signal);
+        setJob(restarted);
+        setStatusMessage(restarted.message);
+        setState("preparing");
+        const completed = await pollGenerationJob(restarted, {
+          intervalMs: config.pollIntervalMs,
+          timeoutMs: config.timeoutMs,
+          signal: current.signal,
+          onProgress: (progress) => {
+            setJob(progress);
+            setStatusMessage(progress.message);
+          },
+        });
+        applyJob(completed);
+        return;
+      }
       if (["queued", "generating_masters", "generating_poses"].includes(resumed.status)) {
         setJob(resumed);
         setStatusMessage(resumed.message);
@@ -338,7 +383,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   }, []);
 
   const generatePoseSet = useCallback(async () => {
-    if (!job || !config.poseGenerationEnabled || poseOperationInFlight.current) return;
+    if (!job || !poseGenerationReady || poseOperationInFlight.current) return;
     poseOperationInFlight.current = true;
     const current = new AbortController();
     controller.current = current;
@@ -375,7 +420,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     } finally {
       poseOperationInFlight.current = false;
     }
-  }, [config, job, poseChoices]);
+  }, [config, job, poseChoices, poseGenerationReady]);
 
   const nextMaster = useCallback(() => {
     if (!job?.masters.length) return;
@@ -424,6 +469,13 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     nextMaster,
     subjectIdentity,
     poseChoices,
+    poseGenerationReady,
+    poseCapabilitiesLoading: capabilitiesLoading,
+    poseCapabilityMessage: capabilities?.poses.ready
+      ? "A oficina está pronta para gerar exatamente as três escolhas."
+      : capabilitiesLoading
+        ? "Conferindo a oficina de poses…"
+        : "A oficina de poses ainda não está pronta. Suas escolhas continuam salvas.",
     poses: job?.poses ?? [],
     libraryItem,
     saveLibrary,
@@ -431,7 +483,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     continuePoseSelection,
     backPoseSelection,
     generatePoseSet,
-  }), [acceptMaster, activeMaster, backPoseSelection, changePhoto, confirmPhoto, continuePoseSelection, errorCode, errorMessage, generatePoseSet, job, libraryItem, masterIndex, masterUrl, nextMaster, photoUrl, poseChoices, progress, resumeCurrentGeneration, revealComplete, retryMasterImage, saveLibrary, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
+  }), [acceptMaster, activeMaster, backPoseSelection, capabilities, capabilitiesLoading, changePhoto, confirmPhoto, continuePoseSelection, errorCode, errorMessage, generatePoseSet, job, libraryItem, masterIndex, masterUrl, nextMaster, photoUrl, poseChoices, poseGenerationReady, progress, resumeCurrentGeneration, revealComplete, retryMasterImage, saveLibrary, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
 }
 
 function generationProgress(state: PuleiroState, job?: GenerationJob, startedAt?: number): GenerationProgressModel | undefined {

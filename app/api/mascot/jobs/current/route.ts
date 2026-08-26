@@ -17,14 +17,16 @@ export async function GET(request: Request) {
     let attemptId = cookieAttemptId;
     const supabase = identity.mode === "supabase-session" ? await createClient() : null;
     if (supabase) {
-      const persisted = cookieAttemptId
+      // A browser may retain an obsolete attempt cookie after a failed or
+      // canceled start. Prefer it only while it is still resumable; otherwise
+      // restore the most recently persisted active birth for this owner.
+      const cookieAttempt = cookieAttemptId
         ? await findAttempt(supabase, identity.uid, cookieAttemptId)
+        : null;
+      const persisted = cookieAttempt && isResumableAttemptStatus(cookieAttempt.status)
+        ? cookieAttempt
         : await findLatestResumableAttempt(supabase, identity.uid);
-      attemptId = persisted && isResumableAttemptStatus(persisted.status)
-        ? persisted.attempt_id
-        : persisted
-          ? crypto.randomUUID()
-          : cookieAttemptId;
+      attemptId = persisted?.attempt_id ?? (cookieAttempt ? crypto.randomUUID() : cookieAttemptId);
     }
 
     attemptId ??= await getOrCreateAttemptId();

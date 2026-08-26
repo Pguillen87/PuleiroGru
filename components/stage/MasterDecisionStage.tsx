@@ -16,6 +16,7 @@ export function MasterDecisionStage(props: MasterDecisionStageProps) {
       <span className="state-kicker">Escolha registrada</span>
       <h2 id="state-title">Este é o seu mascote mestre</h2>
       <StatusMessage title="Mascote mestre aprovado" detail="A aprovação não iniciou poses, empacotamento ou qualquer nova geração." />
+      <div className="stage-actions"><StageButton onClick={props.onAccept}>Abrir Jornal do Puleiro</StageButton></div>
     </>
   );
 

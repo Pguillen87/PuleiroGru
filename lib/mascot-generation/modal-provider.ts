@@ -11,6 +11,7 @@ import type {
   JobIdentity,
   MascotGenerationProvider,
   MasterImage,
+  MascotConfiguration,
   PoseChoices,
   PoseRole,
   SubjectIdentity,
@@ -27,6 +28,7 @@ type ModalJob = {
   approvedMasterId?: string;
   subjectIdentity?: SubjectIdentity;
   poseChoices?: PoseChoices;
+  configuration?: MascotConfiguration;
   poses?: Array<{ id: string; role: PoseRole; optionId: string; label: string; sha256?: string; size?: number; templateVersion?: string; qc?: AssetQualityMetrics }>;
   error?: { code?: string; retryable?: boolean };
   operationId?: string;
@@ -110,6 +112,27 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
         ...this.operationHeaders(identity),
         "X-Idempotency-Key": `approve:${identity.ownerId}:${identity.attemptId}:${jobId}:${masterId}`,
       },
+    });
+    return this.toGenerationJob(await this.readJob(response), response);
+  }
+
+  async updateConfiguration(
+    jobId: string,
+    configuration: Partial<MascotConfiguration> & Pick<MascotConfiguration, "configurationRevision">,
+    identity: JobIdentity,
+  ) {
+    const response = await this.request(`/v2/mascot/jobs/${encodeURIComponent(jobId)}/configuration`, identity, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...this.operationHeaders(identity),
+        "X-Idempotency-Key": `configuration:${identity.ownerId}:${identity.attemptId}:${jobId}:${configuration.configurationRevision}`,
+      },
+      body: JSON.stringify({
+        display_name: configuration.displayName,
+        pose_choices: configuration.poseChoices,
+        configuration_revision: configuration.configurationRevision,
+      }),
     });
     return this.toGenerationJob(await this.readJob(response), response);
   }
@@ -208,6 +231,15 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
         normal: "normal_attentive",
         listening: "listening_focus",
         transcribing: "transcribing_fast",
+      },
+      configuration: job.configuration ?? {
+        displayName: "Mascote GRU",
+        poseChoices: job.poseChoices ?? {
+          normal: "normal_attentive",
+          listening: "listening_focus",
+          transcribing: "transcribing_fast",
+        },
+        configurationRevision: 0,
       },
       poses: (job.poses ?? []).map((pose) => ({
         ...pose,

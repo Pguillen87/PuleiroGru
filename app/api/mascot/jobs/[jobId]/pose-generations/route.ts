@@ -47,6 +47,14 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     if (!currentJob || currentJob.status !== "master_approved" || !currentJob.approvedMasterId) {
       return traceResponse(NextResponse.json({ message: "Aprove um Master válido antes de gerar as poses.", code: "MASTER_NOT_READY", retryable: false }, { status: 409 }), trace);
     }
+    if (currentJob.configuration.configurationRevision > 0
+      && JSON.stringify(currentJob.configuration.poseChoices) !== JSON.stringify(poseChoices)) {
+      return traceResponse(NextResponse.json({
+        message: "As escolhas desta geração não correspondem à configuração salva.",
+        code: "POSE_CONFIGURATION_CONFLICT",
+        retryable: false,
+      }, { status: 409 }), trace);
+    }
     mascotLog("pose_request_received", { ...trace, jobId });
     const job = await provider.startPoseGeneration(
       jobId,

@@ -10,6 +10,7 @@ export type PuleiroState =
   | "master-ready"
   | "master-approved"
   | "master-rejected"
+  | "configuring-poses"
   | "choosing-normal"
   | "choosing-listening"
   | "choosing-transcribing"
@@ -35,6 +36,7 @@ export const stageNumber: Record<PuleiroState, string> = {
   "master-ready": "04",
   "master-approved": "04",
   "master-rejected": "04",
+  "configuring-poses": "05",
   "choosing-normal": "05",
   "choosing-listening": "05",
   "choosing-transcribing": "05",

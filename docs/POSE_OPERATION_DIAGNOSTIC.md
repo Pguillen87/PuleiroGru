@@ -37,7 +37,7 @@ A chave lógica inclui owner autenticado, `attemptId`, `jobId`, `masterId` e fin
 
 Eventos de poses: `pose_request_received`, `pose_operation_created`, `pose_operation_replayed`, `pose_queue_reserved`, `pose_worker_spawned`, `pose_worker_started`, `pose_worker_completed`, `pose_worker_failed`, `pose_assets_verified` e `pose_set_ready`.
 
-Campos permitidos: `timestamp`, `environment`, `service`, `event`, `result`, `durationMs`, `puleiroTraceId`, `attemptId`, `operationId`, `requestId`, `jobId`, `masterId`, `poseRole`, `safeErrorCode` e `httpStatus`.
+Campos permitidos: `timestamp`, `environment`, `deploymentEnvironment`, `service`, `event`, `result`, `durationMs`, `puleiroTraceId`, `attemptId`, `operationId`, `requestId`, `jobId`, `masterId`, `poseRole`, `safeErrorCode` e `httpStatus`.
 
 São descartados por allowlist: token, JWT, cookie, service role, UID bruto, foto, Base64, URL privada, nome original, prompt, secret e conteúdo do asset.
 

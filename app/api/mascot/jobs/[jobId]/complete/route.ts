@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { getAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { markAttemptReady } from "@/lib/mascot-generation/attempt-store";
 import { saveLibraryItem } from "@/lib/mascot-generation/library-store";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
-import type { GeneratedPose, PoseRole } from "@/lib/mascot-generation/types";
+import type { GeneratedPose, GenerationJob, PoseRole } from "@/lib/mascot-generation/types";
 import { createClient } from "@/lib/supabase/server";
 import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
+import { reconcileAssetChecks } from "@/lib/mascot-generation/asset-check-store";
 
 export const runtime = "nodejs";
 const validId = (value: string) => /^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -32,7 +34,9 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     if (!job || job.status !== "awaiting_set_approval" || !job.approvedMasterId || !hasCompletePoseSet(job.poses)) {
       return NextResponse.json({ message: "As três poses ainda não estão prontas para guardar.", code: "POSE_SET_NOT_READY" }, { status: 409 });
     }
+    await verifyPoseAssets(job, identity.uid, attemptId);
     const supabase = await createClient();
+    await reconcileAssetChecks(supabase, identity.uid, job);
     const item = await saveLibraryItem(supabase, identity.uid, {
       displayName,
       jobId: job.id,
@@ -47,8 +51,25 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
   }
 }
 
+async function verifyPoseAssets(job: GenerationJob, userId: string, attemptId: string) {
+  const provider = getMascotGenerationProvider();
+  await Promise.all(job.poses.map(async (pose) => {
+    if (!pose.sha256 || !/^[a-f0-9]{64}$/.test(pose.sha256)) {
+      throw new Error("POSE_CHECKSUM_MISSING");
+    }
+    const asset = await provider.getPoseImage?.(job.id, pose.role, jobIdentity(userId, attemptId));
+    if (!asset || (pose.size !== undefined && pose.size !== asset.bytes.byteLength)) {
+      throw new Error("POSE_ASSET_MISMATCH");
+    }
+    const digest = createHash("sha256").update(asset.bytes).digest("hex");
+    if (digest !== pose.sha256) throw new Error("POSE_CHECKSUM_MISMATCH");
+  }));
+}
+
 function hasCompletePoseSet(poses: GeneratedPose[]) {
-  return poses.length === expectedRoles.length && expectedRoles.every((role) => poses.filter((pose) => pose.role === role).length === 1);
+  return poses.length === expectedRoles.length && expectedRoles.every((role) =>
+    poses.filter((pose) => pose.role === role && pose.qc?.status === "passed" && Boolean(pose.sha256)).length === 1,
+  );
 }
 
 function presentLibraryItem(item: Awaited<ReturnType<typeof saveLibraryItem>>) {

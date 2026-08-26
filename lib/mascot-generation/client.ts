@@ -1,4 +1,4 @@
-import type { GenerationJob, PoseChoices, SubjectIdentity } from "./types";
+import type { GenerationCapabilities, GenerationJob, PoseChoices, SubjectIdentity } from "./types";
 
 type JobResponse = { job?: GenerationJob | null; message?: string; code?: string; supportCode?: string; retryable?: boolean };
 
@@ -81,6 +81,22 @@ export async function startPoseGeneration(jobId: string, poseChoices: PoseChoice
     },
   );
   return await readResponse(response) as GenerationJob;
+}
+
+export async function getGenerationCapabilities(signal: AbortSignal): Promise<GenerationCapabilities> {
+  const response = await fetch("/api/mascot/capabilities", { cache: "no-store", signal });
+  const body = await response.json().catch(() => ({})) as {
+    capabilities?: GenerationCapabilities; message?: string; code?: string; supportCode?: string;
+  };
+  if (!response.ok || !body.capabilities) {
+    throw new GenerationRequestError(
+      safeSupportMessage(body.message ?? "Não foi possível conferir a oficina de poses.", body.supportCode),
+      response.status >= 500,
+      body.code ?? "CAPABILITIES_UNAVAILABLE",
+      body.supportCode,
+    );
+  }
+  return body.capabilities;
 }
 
 export async function startMasterGeneration(jobId: string, signal: AbortSignal) {

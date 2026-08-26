@@ -8,9 +8,12 @@ export type GenerationJobStatus =
   | "awaiting_generation_authorization"
   | "queued"
   | "generating_masters"
+  | "validating_masters"
   | "awaiting_master_approval"
+  | "validating_master"
   | "master_approved"
   | "generating_poses"
+  | "validating_poses"
   | "awaiting_set_approval"
   | "packaging"
   | "ready"
@@ -20,6 +23,17 @@ export type GenerationJobStatus =
 export interface MasterCandidate {
   id: string;
   imageUrl: string;
+  qc?: AssetQualityMetrics;
+}
+
+export interface AssetQualityMetrics {
+  status: "passed" | "failed";
+  safe_reasons: string[];
+  alpha_ratio: number;
+  border_opaque_ratio: number;
+  foreground_components: number;
+  width: number;
+  height: number;
 }
 
 export type SubjectCategory = "human" | "animal" | "object" | "other";
@@ -34,12 +48,29 @@ export interface SubjectIdentity {
 export type PoseRole = "normal" | "listening" | "transcribing";
 export type PoseChoices = Record<PoseRole, string>;
 
+export interface GenerationCapabilities {
+  contractVersion: "v2";
+  master: { ready: boolean; modelVersion: string; promptVersion: string; reasons: string[] };
+  poses: {
+    ready: boolean;
+    workerVersion: string;
+    catalogVersion: string;
+    templateVersion: string;
+    reasons: string[];
+  };
+  poseCatalog: Record<PoseRole, string[]>;
+}
+
 export interface GeneratedPose {
   id: string;
   role: PoseRole;
   optionId: string;
   label: string;
   imageUrl: string;
+  sha256?: string;
+  size?: number;
+  templateVersion?: string;
+  qc?: AssetQualityMetrics;
 }
 
 export interface MascotLibraryItem {
@@ -123,6 +154,7 @@ export interface MasterImage {
 }
 
 export interface MascotGenerationProvider {
+  getCapabilities(identity: JobIdentity): Promise<GenerationCapabilities>;
   createMasterJob(input: CreateMasterJobInput): Promise<GenerationJob>;
   startMasterGeneration(jobId: string, identity: JobIdentity): Promise<GenerationJob>;
   getJob(jobId: string, identity: JobIdentity): Promise<GenerationJob | null>;

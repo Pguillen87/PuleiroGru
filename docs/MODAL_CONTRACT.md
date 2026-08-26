@@ -19,6 +19,7 @@ O BFF valida o usuário com Supabase `auth.getUser()`. O claim `sub` recebe some
 | GET | `/api/mascot/jobs/:jobId` | consulta owner-scoped |
 | GET | `/api/mascot/jobs/:jobId/master/:masterId` | proxy privado owner-scoped |
 | POST | `/api/mascot/jobs/:jobId/masters/:masterId/approve` | aprova sem gerar poses |
+| PATCH | `/api/mascot/jobs/:jobId/configuration` | salva nome e escolhas com revisão; não gera poses |
 | POST | `/api/mascot/jobs/:jobId/pose-generations` | envia uma escolha para Normal, Ouvindo e Transcrevendo; bloqueado por flag até validação |
 | POST | `/api/mascot/jobs/:jobId/complete` | valida o conjunto final e salva idempotentemente na biblioteca privada |
 | GET | `/api/mascot/library` | lista somente os mascotes da conta autenticada |
@@ -41,6 +42,8 @@ JWT HS256: `iss=puleiro-bff`, `aud=gru-modal`, `sub=<supabase-user-id>`, `jti=<u
 | GET | `/v2/mascot/jobs/:jobId/masters/:masterId` | NÃO |
 | POST | `/v2/mascot/jobs/:jobId/master-generations` | bloqueada por kill switch |
 | POST | `/v2/mascot/jobs/:jobId/masters/:masterId/approve` | NÃO; apenas aprovação |
+| PATCH | `/v2/mascot/jobs/:jobId/configuration` | NÃO; alteração aditiva owner-scoped e revisionada |
+| GET | `/v2/mascot/capabilities` | NÃO; informa catálogo e motivo seguro de indisponibilidade |
 | POST | `/v2/mascot/jobs/:jobId/pose-generations` | bloqueada por kill switch próprio |
 
 ## Identidade antes da geração
@@ -62,3 +65,9 @@ Quando o conjunto termina, o status público inclui referências para exatamente
 ## Compatibilidade
 
 Rotas Modal v1, Firebase Auth e App Check do Android permanecem inalterados. A separação Supabase aplica-se somente ao Puleiro Web e termina no BFF.
+
+## Pós-Master seguro
+
+O Master bruto continua privado em armazenamento separado. O asset operacional é um derivado PNG com alpha, acompanhado por QC sanitizado de transparência, borda e integridade. Somente um derivado aprovado é servido ao Puleiro; falha de recorte preserva o bruto, não chama GPU novamente e não substitui o personagem aprovado.
+
+`configuration` é um campo adicional de `GET job`. Clientes anteriores podem ignorá-lo. O POST de poses permanece inalterado: se existe configuração persistida, o mesmo payload de escolhas é aceito; escolhas divergentes retornam `409 POSE_CONFIGURATION_CONFLICT` sem agendar GPU.

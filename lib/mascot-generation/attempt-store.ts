@@ -86,6 +86,9 @@ export async function reserveAttempt(client: SupabaseClient, userId: string, att
 
 export async function saveAttemptJob(client: SupabaseClient, userId: string, job: GenerationJob, trace?: MascotTraceContext) {
   const now = new Date().toISOString();
+  // Polling reconciles the same attempt repeatedly. Its start time belongs to
+  // the first durable write, never to the latest status observation.
+  const existing = await findAttempt(client, userId, job.attemptId);
   const { error } = await client.from("mascot_attempts").upsert({
     user_id: userId,
     attempt_id: job.attemptId,
@@ -95,7 +98,7 @@ export async function saveAttemptJob(client: SupabaseClient, userId: string, job
     ...(trace ? { puleiro_trace_id: trace.puleiroTraceId, operation_id: trace.operationId ?? null } : {}),
     current_stage: job.status,
     last_error_code: job.errorCode ?? null,
-    started_at: now,
+    started_at: existing?.started_at ?? now,
     ...(isTerminal(job.status) ? { completed_at: now } : {}),
     updated_at: now,
   }, { onConflict: "user_id,attempt_id" });

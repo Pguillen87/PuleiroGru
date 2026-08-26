@@ -17,6 +17,7 @@ import { MascotCodeStage } from "@/components/stage/MascotCodeStage";
 import { useMascotGenerationFlow, type FlowConfig } from "@/lib/mascot-generation/useMascotGenerationFlow";
 import { AccountGate } from "@/components/auth/AccountGate";
 import { StageButton } from "@/components/actions/StageButton";
+import { MascotConfigurationDialog } from "@/components/stage/MascotConfigurationDialog";
 
 export function PuleiroExperience({ config }: { config: FlowConfig }) {
   return (
@@ -63,8 +64,20 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
     "master-ready": flow.revealComplete
       ? <MasterDecisionStage mode="ready" position={flow.masterPosition} errorMessage={flow.errorMessage} onAccept={flow.acceptMaster} onNext={flow.nextMaster} onReloadImage={flow.retryMasterImage} />
       : <PreparingStage title="O nascimento começou" message="O palco está revelando seu mascote." />,
-    "master-approved": <MasterDecisionStage mode="approved" onAccept={flow.acceptMaster} onNext={flow.nextMaster} />,
+    "master-approved": <MasterDecisionStage mode="approved" onAccept={flow.openPoseConfiguration} onNext={flow.nextMaster} />,
     "master-rejected": <MasterDecisionStage mode="ready" position={flow.masterPosition} onAccept={flow.acceptMaster} onNext={flow.nextMaster} />,
+    "configuring-poses": flow.configuration ? <MascotConfigurationDialog
+      category={flow.subjectIdentity?.category ?? "other"}
+      configuration={flow.configuration}
+      saving={flow.configurationSaving}
+      poseGenerationReady={flow.poseGenerationReady}
+      capabilityMessage={flow.poseCapabilityMessage}
+      errorMessage={flow.errorMessage}
+      onSaveName={flow.saveDisplayName}
+      onSavePose={flow.savePoseChoice}
+      onGenerate={flow.generatePoseSet}
+      onDismiss={flow.closePoseConfiguration}
+    /> : <PreparingStage title="Abrindo o Jornal do Puleiro" message="Recuperando as escolhas salvas…" />,
     "choosing-normal": <PoseSelectionStage role="normal" category={flow.subjectIdentity?.category ?? "other"} selected={flow.poseChoices.normal} onSelect={(option) => flow.selectPose("normal", option)} onContinue={() => flow.continuePoseSelection("normal")} onBack={() => flow.backPoseSelection("normal")} />,
     "choosing-listening": <PoseSelectionStage role="listening" category={flow.subjectIdentity?.category ?? "other"} selected={flow.poseChoices.listening} onSelect={(option) => flow.selectPose("listening", option)} onContinue={() => flow.continuePoseSelection("listening")} onBack={() => flow.backPoseSelection("listening")} />,
     "choosing-transcribing": <PoseSelectionStage role="transcribing" category={flow.subjectIdentity?.category ?? "other"} selected={flow.poseChoices.transcribing} onSelect={(option) => flow.selectPose("transcribing", option)} onContinue={() => flow.continuePoseSelection("transcribing")} onBack={() => flow.backPoseSelection("transcribing")} />,
@@ -86,7 +99,7 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
     ),
   }[flow.state];
 
-  const artwork = flow.masterUrl && ["master-ready", "master-approved", "master-rejected", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "generating-poses", "pose-set-ready", "saving-library", "code-ready"].includes(flow.state)
+  const artwork = flow.masterUrl && ["master-ready", "master-approved", "master-rejected", "configuring-poses", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "generating-poses", "pose-set-ready", "saving-library", "code-ready"].includes(flow.state)
       ? { src: flow.masterUrl, alt: "Mascote mestre criado a partir da fotografia enviada." }
       : undefined;
 

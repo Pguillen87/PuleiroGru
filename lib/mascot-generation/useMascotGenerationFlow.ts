@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PuleiroState } from "@/lib/puleiro-state";
 import { REDUCED_REVEAL_DURATION_MS, REVEAL_DURATION_MS } from "@/lib/puleiro-state";
-import { approveMaster, createGenerationJob, finalizeMascot, GenerationRequestError, getGenerationCapabilities, pollGenerationJob, resumeGenerationJob, startMasterGeneration, startPoseGeneration } from "./client";
+import { approveMaster, createGenerationJob, finalizeMascot, GenerationRequestError, getGenerationCapabilities, pollGenerationJob, resumeGenerationJob, startMasterGeneration, startPoseGeneration, updateMascotConfiguration } from "./client";
 import { DEFAULT_POSE_CHOICES, POSE_CATALOG_VERSION, POSE_OPTIONS, POSE_ROLE_ORDER } from "./pose-catalog";
 import type { GenerationCapabilities, GenerationJob, MascotLibraryItem, PoseChoices, PoseRole, SubjectIdentity } from "./types";
 import type { GenerationProgressModel } from "@/components/status/GenerationProgress";
@@ -35,6 +35,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   const [generationStartedAt, setGenerationStartedAt] = useState<number>();
   const [capabilities, setCapabilities] = useState<GenerationCapabilities>();
   const [capabilitiesLoading, setCapabilitiesLoading] = useState(false);
+  const [configurationSaving, setConfigurationSaving] = useState(false);
   const controller = useRef<AbortController | undefined>(undefined);
   const resumeController = useRef<AbortController | undefined>(undefined);
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -48,6 +49,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     job?.status === "master_approved"
     && job.approvedMasterId
     && capabilities?.poses.ready
+    && validDisplayName(job.configuration.displayName)
     && capabilities.poses.catalogVersion === POSE_CATALOG_VERSION
     && (Object.keys(poseChoices) as PoseRole[]).every((role) =>
       capabilities.poseCatalog[role]?.includes(poseChoices[role])
@@ -58,7 +60,6 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   useEffect(() => {
     if (job?.status !== "master_approved") return;
     const current = new AbortController();
-    setCapabilitiesLoading(true);
     void getGenerationCapabilities(current.signal)
       .then(setCapabilities)
       .catch((error) => {
@@ -103,7 +104,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
       else if (resumed.status === "awaiting_master_approval") {
         setRevealComplete(true);
         setState("master-ready");
-      } else if (resumed.status === "master_approved") setState("choosing-normal");
+      } else if (resumed.status === "master_approved") setState("configuring-poses");
       else if (resumed.status === "generating_poses") setState("generating-poses");
       else if (resumed.status === "awaiting_set_approval") setState("pose-set-ready");
       else if (resumed.status === "failed" || resumed.status === "canceled") setState("recoverable-error");
@@ -195,7 +196,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
         result.errorCode ?? "GENERATION_FAILED",
       );
     }
-    if (result.status === "master_approved") return setState("choosing-normal");
+    if (result.status === "master_approved") return setState("configuring-poses");
     if (result.status === "awaiting_set_approval") return setState("pose-set-ready");
     if (result.status !== "awaiting_master_approval") throw new Error("O nascimento retornou em um estado inesperado.");
     if (result.masters.length === 0) throw new Error("O nascimento terminou, mas as opções ainda não estão disponíveis.");
@@ -355,13 +356,44 @@ export function useMascotGenerationFlow(config: FlowConfig) {
       const approved = await approveMaster(job.id, activeMaster.id, current.signal);
       setJob((existing) => ({ ...approved, masters: approved.masters.length ? approved.masters : existing?.masters ?? [] }));
       setSubjectIdentity(approved.subjectIdentity);
-      setPoseChoices(approved.poseChoices);
-      setState("choosing-normal");
+      setPoseChoices(approved.configuration.poseChoices);
+      setCapabilitiesLoading(true);
+      setState("configuring-poses");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Não foi possível registrar sua escolha.");
       setState("master-ready");
     }
   }, [activeMaster, job]);
+
+  const saveConfiguration = useCallback(async (next: { displayName?: string; poseChoices?: PoseChoices }) => {
+    if (!job || configurationSaving) return false;
+    const current = new AbortController();
+    controller.current = current;
+    setConfigurationSaving(true);
+    setErrorMessage("");
+    try {
+      const updated = await updateMascotConfiguration(job.id, {
+        ...next,
+        configurationRevision: job.configuration.configurationRevision,
+      }, current.signal);
+      setJob(updated);
+      setPoseChoices(updated.configuration.poseChoices);
+      return true;
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Não foi possível salvar a configuração.");
+      return false;
+    } finally {
+      setConfigurationSaving(false);
+    }
+  }, [configurationSaving, job]);
+
+  const saveDisplayName = useCallback((displayName: string) => saveConfiguration({ displayName }), [saveConfiguration]);
+  const savePoseChoice = useCallback((role: PoseRole, optionId: string) => {
+    if (!job) return Promise.resolve(false);
+    return saveConfiguration({ poseChoices: { ...job.configuration.poseChoices, [role]: optionId } });
+  }, [job, saveConfiguration]);
+  const openPoseConfiguration = useCallback(() => setState("configuring-poses"), []);
+  const closePoseConfiguration = useCallback(() => setState("master-approved"), []);
 
   const selectPose = useCallback((role: PoseRole, optionId: string) => {
     setPoseChoices((current) => ({ ...current, [role]: optionId }));
@@ -415,7 +447,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
         setState("generating-poses");
       } else {
         setErrorMessage(message);
-        setState("pose-selection-review");
+        setState("configuring-poses");
       }
     } finally {
       poseOperationInFlight.current = false;
@@ -469,21 +501,39 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     nextMaster,
     subjectIdentity,
     poseChoices,
+    configuration: job?.configuration,
+    configurationSaving,
     poseGenerationReady,
     poseCapabilitiesLoading: capabilitiesLoading,
-    poseCapabilityMessage: capabilities?.poses.ready
-      ? "A oficina está pronta para gerar exatamente as três escolhas."
-      : capabilitiesLoading
-        ? "Conferindo a oficina de poses…"
-        : "A oficina de poses ainda não está pronta. Suas escolhas continuam salvas.",
+    poseCapabilityMessage: capabilityMessage(capabilities, capabilitiesLoading),
     poses: job?.poses ?? [],
     libraryItem,
     saveLibrary,
     selectPose,
+    saveDisplayName,
+    savePoseChoice,
+    openPoseConfiguration,
+    closePoseConfiguration,
     continuePoseSelection,
     backPoseSelection,
     generatePoseSet,
-  }), [acceptMaster, activeMaster, backPoseSelection, capabilities, capabilitiesLoading, changePhoto, confirmPhoto, continuePoseSelection, errorCode, errorMessage, generatePoseSet, job, libraryItem, masterIndex, masterUrl, nextMaster, photoUrl, poseChoices, poseGenerationReady, progress, resumeCurrentGeneration, revealComplete, retryMasterImage, saveLibrary, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
+  }), [acceptMaster, activeMaster, backPoseSelection, capabilities, capabilitiesLoading, changePhoto, closePoseConfiguration, configurationSaving, confirmPhoto, continuePoseSelection, errorCode, errorMessage, generatePoseSet, job, libraryItem, masterIndex, masterUrl, nextMaster, openPoseConfiguration, photoUrl, poseChoices, poseGenerationReady, progress, resumeCurrentGeneration, revealComplete, retryMasterImage, saveDisplayName, saveLibrary, savePoseChoice, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
+}
+
+function validDisplayName(value: string) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  return normalized.length >= 2 && normalized.length <= 32 && /^[\p{L}\p{N} .'-]+$/u.test(normalized);
+}
+
+function capabilityMessage(capabilities: GenerationCapabilities | undefined, loading: boolean) {
+  if (loading) return "Conferindo a oficina de poses…";
+  if (capabilities?.poses.ready) return "A oficina está pronta para gerar exatamente as três escolhas.";
+  const messages: Record<string, string> = {
+    POSE_GENERATION_DISABLED: "A oficina de poses está bloqueada operacionalmente neste ambiente.",
+    GPU_GENERATION_DISABLED: "A GPU da oficina está desligada neste ambiente.",
+    POSE_TEMPLATES_UNAVAILABLE: "Os moldes de pose ainda não estão instalados na oficina.",
+  };
+  return messages[capabilities?.poses.reasons?.[0] ?? ""] ?? "A oficina de poses ainda não está pronta. Suas escolhas continuam salvas.";
 }
 
 function generationProgress(state: PuleiroState, job?: GenerationJob, startedAt?: number): GenerationProgressModel | undefined {

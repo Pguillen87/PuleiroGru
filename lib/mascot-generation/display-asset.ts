@@ -60,14 +60,18 @@ async function buildDisplayAsset(image: MasterImage, variant: DisplayAssetVarian
     .toBuffer({ resolveWithObject: true });
   const { width, height, channels } = decoded.info;
   const hasTechnicalBackground = channels === 4 && hasTechnicalBorder(decoded.data, width, height);
-  if (!hasTechnicalBackground && variant === "full") return image;
   const flatBackground = !hasTechnicalBackground ? findFlatBorderColor(decoded.data, width, height) : null;
+  if (!hasTechnicalBackground && !flatBackground && variant === "full") return image;
 
   const cleaned = hasTechnicalBackground
     ? removeCheckerboardBackground(decoded.data, width, height)
     : flatBackground
       ? removeConnectedBackground(decoded.data, width, height, (data, offset) => isFlatBackgroundPixel(data, offset, flatBackground))
       : null;
+  // A fully flat input has no recoverable foreground. Do not turn it into an
+  // empty visual asset in this read-only display fallback; Modal QC remains
+  // the authority that refuses to promote such a Master operationally.
+  if (cleaned && variant === "full" && !hasOpaquePixel(cleaned)) return image;
   const normalized = cleaned
     ? sharp(cleaned, { raw: { width, height, channels: 4 } })
       .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 } })
@@ -229,4 +233,11 @@ function isTechnicalPixel(data: Buffer, offset: number) {
 
 function pixelOffset(x: number, y: number, width: number) {
   return (y * width + x) * 4;
+}
+
+function hasOpaquePixel(data: Buffer) {
+  for (let offset = 3; offset < data.length; offset += 4) {
+    if (data[offset] > 0) return true;
+  }
+  return false;
 }

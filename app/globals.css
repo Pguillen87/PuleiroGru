@@ -1804,6 +1804,70 @@ main {
 .library-dialog__field input { min-height: 3rem; border: 2px solid var(--color-leaf); padding: var(--space-2); font: inherit; }
 .library-dialog__danger { background: var(--color-editorial-red-dark) !important; border-color: var(--color-editorial-red-dark) !important; color: #fff !important; }
 
+.mascot-journal {
+  box-sizing: border-box;
+  width: min(calc(100% - 2rem), 58rem);
+  max-height: min(90dvh, 52rem);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  color: #251d14;
+  background: #f6ecd4;
+  border: 3px solid #3d3021;
+  box-shadow: 8px 9px 0 rgba(49, 36, 24, .38);
+}
+.mascot-journal::backdrop { background: rgba(28, 20, 14, .67); }
+.mascot-journal__masthead { display: flex; justify-content: space-between; gap: 1rem; align-items: center; padding: .85rem 1.1rem; border-bottom: 2px solid #3d3021; background: #eee0c2; text-align: center; }
+.mascot-journal__masthead p { margin: 0; font: 800 clamp(1.15rem, 3vw, 1.7rem)/1 var(--font-display), Arial, sans-serif; }
+.mascot-journal__masthead strong { color: var(--color-editorial-red); }
+.mascot-journal__masthead span { display: block; margin-top: .2rem; font-size: .7rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.mascot-journal__close { min-width: 3rem; min-height: 3rem; border: 2px solid #3d3021; border-radius: 50%; background: transparent; color: #3d3021; font: 800 1.8rem/1 Arial, sans-serif; cursor: pointer; }
+.mascot-journal__close:hover { background: #ead6b1; }
+.mascot-journal__close:focus-visible, .mascot-journal button:focus-visible, .mascot-journal input:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
+.mascot-journal__body { padding: clamp(1rem, 4vw, 2.1rem); background-image: linear-gradient(rgba(70, 52, 32, .055) 1px, transparent 1px); background-size: 100% 1.7rem; }
+.mascot-journal__body > header { padding-bottom: 1rem; border-bottom: 2px solid #3d3021; text-align: center; }
+.mascot-journal__body h2 { max-width: 17ch; margin: .35rem auto; font: 850 clamp(1.8rem, 5vw, 3rem)/.94 var(--font-display), Arial, sans-serif; }
+.mascot-journal__body > header > p:last-child { max-width: 48ch; margin: .5rem auto 0; }
+.mascot-journal__name { margin: 1.25rem 0; padding: .85rem; border: 2px solid #6a5840; background: rgba(255, 250, 237, .75); }
+.mascot-journal__name > label { display: block; margin-bottom: .4rem; font-weight: 850; text-transform: uppercase; }
+.mascot-journal__name > div { display: flex; gap: .55rem; }
+.mascot-journal__name input { min-width: 0; min-height: 3rem; flex: 1; border: 2px solid #3d3021; padding: .6rem .7rem; font: inherit; background: #fffaf0; }
+.mascot-journal button { min-height: 3rem; border: 2px solid #3d3021; padding: .55rem .85rem; font: 800 .9rem/1 var(--font-body), Arial, sans-serif; cursor: pointer; }
+.mascot-journal__name button, .mascot-journal__pose-summary > button, .mascot-journal__editor p button:last-child { background: #40566a; color: #fff; }
+.mascot-journal button:disabled { cursor: not-allowed; opacity: .52; }
+.mascot-journal__name small { display: block; margin-top: .45rem; color: #5f503b; font-size: .78rem; }
+.mascot-journal__poses { border-top: 2px solid #3d3021; }
+.mascot-journal__pose { border-bottom: 1px solid #6a5840; }
+.mascot-journal__pose-summary { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) auto; gap: .75rem; align-items: center; padding: .75rem 0; }
+.mascot-journal__reference { width: 3.2rem; height: 3.2rem; border: 1px solid #6a5840; }
+.mascot-journal__pose h3, .mascot-journal__pose p { margin: 0; }
+.mascot-journal__pose h3 { font: 850 .85rem/1 var(--font-body), Arial, sans-serif; text-transform: uppercase; }
+.mascot-journal__pose p { margin-top: .22rem; font-size: .88rem; }
+.mascot-journal__editor { margin: 0 0 1rem; border: 2px dashed #8b704a; background: rgba(255, 250, 237, .82); }
+.mascot-journal__editor legend { padding-inline: .35rem; font-weight: 850; }
+.mascot-journal__editor > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .4rem; padding: .45rem; }
+.mascot-journal__editor label { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); gap: .45rem; align-items: center; min-height: 3.1rem; padding: .35rem; border: 1px solid #8b704a; cursor: pointer; }
+.mascot-journal__editor label:has(input:checked) { border: 2px solid var(--color-editorial-red); background: #fff2dc; }
+.mascot-journal__editor input { position: absolute; opacity: 0; }
+.mascot-journal__editor .pose-reference-preview { width: 2.35rem; height: 2.35rem; }
+.mascot-journal__editor p { display: flex; justify-content: flex-end; gap: .5rem; padding: .45rem; }
+.mascot-journal__editor p button:first-child { background: #fffaf0; }
+.mascot-journal__availability { display: grid; gap: .3rem; margin-top: 1rem; padding: .8rem; border: 2px solid #aa7d28; background: #fff0c9; }
+.mascot-journal__availability--ready { border-color: #3f7446; background: #e3f2dc; }
+.mascot-journal__availability span { font-size: .9rem; }
+.mascot-journal__actions { margin-top: 1rem; text-align: center; }
+.mascot-journal__actions .stage-actions { justify-content: center; }
+.mascot-journal__actions > p { max-width: 50ch; margin: .65rem auto 0; font-size: .84rem; }
+
+@media (max-width: 38rem) {
+  .mascot-journal { width: 100%; max-height: 100dvh; min-height: 100dvh; border-width: 0; box-shadow: none; }
+  .mascot-journal__body { padding: 1rem; }
+  .mascot-journal__pose-summary { grid-template-columns: 2.75rem minmax(0, 1fr) auto; gap: .5rem; }
+  .mascot-journal__reference { width: 2.75rem; height: 2.75rem; }
+  .mascot-journal__editor > div { grid-template-columns: 1fr; }
+  .mascot-journal__name > div { display: grid; grid-template-columns: 1fr; }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .package-success-dialog { animation: package-success-arrival 180ms ease-out both; }
 }

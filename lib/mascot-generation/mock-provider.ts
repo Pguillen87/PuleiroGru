@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { generationConfig } from "./config";
-import type { CreateMasterJobInput, GenerationJob, JobIdentity, MascotGenerationProvider, PoseChoices } from "./types";
+import type { CreateMasterJobInput, GenerationJob, JobIdentity, MascotConfiguration, MascotGenerationProvider, PoseChoices } from "./types";
 import { DEFAULT_POSE_CHOICES, POSE_CATALOG_VERSION, POSE_OPTIONS } from "./pose-catalog";
 
 type MockRecord = { createdAt: number; ownerId: string; job: GenerationJob };
@@ -37,6 +37,7 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
       masters: [],
       subjectIdentity: input.subjectIdentity,
       poseChoices: DEFAULT_POSE_CHOICES,
+      configuration: { displayName: "Mascote GRU", poseChoices: DEFAULT_POSE_CHOICES, configurationRevision: 0 },
       poses: [],
     };
     jobs.set(id, { createdAt: Date.now(), ownerId: input.ownerId, job });
@@ -105,6 +106,30 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
     const record = jobs.get(jobId);
     if (record) record.job = approved;
     return approved;
+  }
+
+  async updateConfiguration(
+    jobId: string,
+    configuration: Partial<MascotConfiguration> & Pick<MascotConfiguration, "configurationRevision">,
+    identity: JobIdentity,
+  ) {
+    const job = await this.getJob(jobId, identity);
+    if (!job || job.status !== "master_approved") throw new Error("A configuração só fica disponível após aprovar o Master.");
+    if (configuration.configurationRevision !== job.configuration.configurationRevision) {
+      throw new Error("POSE_CONFIGURATION_CONFLICT");
+    }
+    const next = {
+      ...job,
+      poseChoices: configuration.poseChoices ?? job.poseChoices,
+      configuration: {
+        displayName: configuration.displayName ?? job.configuration.displayName,
+        poseChoices: configuration.poseChoices ?? job.configuration.poseChoices,
+        configurationRevision: job.configuration.configurationRevision + 1,
+      },
+    };
+    const record = jobs.get(jobId);
+    if (record) record.job = next;
+    return next;
   }
 
   async startPoseGeneration(jobId: string, choices: PoseChoices, identity: JobIdentity) {

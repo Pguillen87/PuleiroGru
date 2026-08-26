@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 const SAFE_FIELDS = new Set([
   "timestamp", "environment", "service", "event", "result", "durationMs",
+  "deploymentEnvironment",
   "puleiroTraceId", "attemptId", "operationId", "requestId", "jobId",
   "masterId", "poseRole", "safeErrorCode", "httpStatus", "stage", "retryable",
 ]);
@@ -38,7 +39,8 @@ export function supportCode(context: Pick<MascotTraceContext, "requestId">) {
 export function mascotLog(event: string, fields: Record<string, unknown> = {}) {
   const payload: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV ?? "unknown",
+    environment: observedEnvironment(),
+    deploymentEnvironment: process.env.VERCEL_ENV ?? null,
     service: "puleiro-bff",
     event,
   };
@@ -46,6 +48,13 @@ export function mascotLog(event: string, fields: Record<string, unknown> = {}) {
     if (SAFE_FIELDS.has(key) && isSafeValue(value)) payload[key] = value;
   }
   console.log(JSON.stringify(payload));
+}
+
+export function observedEnvironment() {
+  const vercelEnvironment = process.env.VERCEL_ENV?.trim().toLowerCase();
+  if (vercelEnvironment === "preview") return "staging";
+  if (vercelEnvironment === "production" || vercelEnvironment === "development") return vercelEnvironment;
+  return process.env.NODE_ENV ?? "unknown";
 }
 
 function isSafeValue(value: unknown) {

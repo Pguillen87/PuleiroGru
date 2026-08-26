@@ -1,8 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
-import { createTraceContext, mascotLog, traceResponse } from "@/lib/observability/mascot-trace";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createTraceContext, mascotLog, observedEnvironment, traceResponse } from "@/lib/observability/mascot-trace";
 import { NextResponse } from "next/server";
 
 describe("trace distribuído do Puleiro", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   it("mantém o trace por tentativa e cria request e operação independentes", () => {
     const attemptId = "4ba644dc-51ab-4b79-a4ae-3ef51b9aa3b0";
     const first = createTraceContext(attemptId, true);
@@ -37,5 +39,19 @@ describe("trace distribuído do Puleiro", () => {
     expect(payload).not.toHaveProperty("token");
     expect(payload).not.toHaveProperty("cookie");
     expect(payload).not.toHaveProperty("image");
+  });
+
+  it("identifica Preview da Vercel como staging, sem confundir com produção", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    mascotLog("registration_confirmed");
+
+    expect(observedEnvironment()).toBe("staging");
+    expect(JSON.parse(String(log.mock.calls[0][0]))).toMatchObject({
+      environment: "staging",
+      deploymentEnvironment: "preview",
+    });
   });
 });

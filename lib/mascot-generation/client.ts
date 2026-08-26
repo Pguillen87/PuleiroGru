@@ -1,4 +1,4 @@
-import type { GenerationCapabilities, GenerationJob, PoseChoices, SubjectIdentity } from "./types";
+import type { GenerationCapabilities, GenerationJob, MascotConfiguration, PoseChoices, SubjectIdentity } from "./types";
 
 type JobResponse = { job?: GenerationJob | null; message?: string; code?: string; supportCode?: string; retryable?: boolean };
 
@@ -117,6 +117,20 @@ export async function approveMaster(jobId: string, masterId: string, signal: Abo
     `/api/mascot/jobs/${encodeURIComponent(jobId)}/masters/${encodeURIComponent(masterId)}/approve`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", signal },
   );
+  return await readResponse(response) as GenerationJob;
+}
+
+export async function updateMascotConfiguration(
+  jobId: string,
+  configuration: Partial<MascotConfiguration> & Pick<MascotConfiguration, "configurationRevision">,
+  signal: AbortSignal,
+) {
+  const response = await fetch(`/api/mascot/jobs/${encodeURIComponent(jobId)}/configuration`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(configuration),
+    signal,
+  });
   return await readResponse(response) as GenerationJob;
 }
 

@@ -47,6 +47,10 @@ const images: Record<PuleiroState, { src: string; alt: string }> = {
     src: "/assets/puleiro-reveal.jpg",
     alt: "Mascote mestre aguardando uma nova decisão.",
   },
+  "configuring-poses": {
+    src: "/assets/puleiro-reveal.jpg",
+    alt: "Mascote mestre aprovado enquanto suas configurações editoriais são revisadas.",
+  },
   "choosing-normal": {
     src: "/assets/puleiro-reveal.jpg",
     alt: "Mascote mestre no palco durante a escolha de sua pose normal.",
@@ -97,7 +101,7 @@ type PuleiroStageProps = {
 export function PuleiroStage({ state, children, artwork, revealing = false, onArtworkError, progress }: PuleiroStageProps) {
   const image = artwork ?? images[state];
   const preparing = ["uploading", "creating-job", "preparing", "registered-safe", "generating-poses"].includes(state);
-  const revealed = ["master-ready", "master-approved", "master-rejected", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "pose-set-ready", "saving-library", "code-ready"].includes(state);
+  const revealed = ["master-ready", "master-approved", "master-rejected", "configuring-poses", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "pose-set-ready", "saving-library", "code-ready"].includes(state);
   const compactViewport = ["entry", "photo-selection", "uploading", "creating-job", "preparing", "registered-safe", "master-ready", "master-rejected", "generating-poses", "saving-library", "code-ready"].includes(state);
 
   return (

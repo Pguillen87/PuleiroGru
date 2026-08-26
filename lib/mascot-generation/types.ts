@@ -61,6 +61,12 @@ export interface GenerationCapabilities {
   poseCatalog: Record<PoseRole, string[]>;
 }
 
+export interface MascotConfiguration {
+  displayName: string;
+  poseChoices: PoseChoices;
+  configurationRevision: number;
+}
+
 export interface GeneratedPose {
   id: string;
   role: PoseRole;
@@ -125,6 +131,7 @@ export interface GenerationJob {
   approvedMasterId?: string;
   subjectIdentity: SubjectIdentity;
   poseChoices: PoseChoices;
+  configuration: MascotConfiguration;
   poses: GeneratedPose[];
   errorCode?: string;
   retryable?: boolean;
@@ -160,6 +167,7 @@ export interface MascotGenerationProvider {
   getJob(jobId: string, identity: JobIdentity): Promise<GenerationJob | null>;
   getJobByAttempt(identity: JobIdentity): Promise<GenerationJob | null>;
   approveMaster(jobId: string, masterId: string, identity: JobIdentity): Promise<GenerationJob>;
+  updateConfiguration(jobId: string, configuration: Partial<MascotConfiguration> & Pick<MascotConfiguration, "configurationRevision">, identity: JobIdentity): Promise<GenerationJob>;
   startPoseGeneration(jobId: string, choices: PoseChoices, identity: JobIdentity): Promise<GenerationJob>;
   getMasterImage?(jobId: string, masterId: string, identity: JobIdentity): Promise<MasterImage | null>;
   getPoseImage?(jobId: string, role: PoseRole, identity: JobIdentity): Promise<MasterImage | null>;

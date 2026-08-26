@@ -422,7 +422,7 @@ test("uma nova foto não é substituída pela retomada de um mascote já conclu�
   await expect(page.getByRole("heading", { name: "Seu GRU está pronto" })).toHaveCount(0);
 });
 
-test("escolhe uma pose por função sem acionar GPU quando a flag está desligada", async ({ page }) => {
+test("mantém as poses indisponíveis quando a capacidade do servidor as bloqueia", async ({ page }) => {
   let posePosts = 0;
   page.on("request", (request) => {
     if (request.method() === "POST" && request.url().includes("/pose-generations")) posePosts += 1;
@@ -442,6 +442,55 @@ test("escolhe uma pose por função sem acionar GPU quando a flag está desligad
   await expect(page.getByRole("button", { name: "Gerar as três poses" })).toBeDisabled();
   expect(posePosts).toBe(0);
 });
+
+for (const scenario of [
+  { name: "habilita poses quando o catálogo do servidor está pronto", catalogVersion: "web-poses-v1", ready: true, enabled: true },
+  { name: "bloqueia poses com catálogo incompatível", catalogVersion: "web-poses-v0", ready: true, enabled: false },
+]) {
+  test(scenario.name, async ({ page }) => {
+    await page.route("**/api/mascot/jobs/current", (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        job: {
+          id: "master-pronto",
+          attemptId: "attempt-master-pronto",
+          status: "master_approved",
+          message: "Mascote mestre aprovado.",
+          generationScheduled: true,
+          masters: [{ id: "master_1", imageUrl: "/assets/puleiro-reveal.jpg" }],
+          approvedMasterId: "master_1",
+          ...jobIdentity,
+        },
+      }),
+    }));
+    await page.route("**/api/mascot/capabilities", (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        capabilities: {
+          contractVersion: "v2",
+          master: { ready: true, modelVersion: "mock-v1", promptVersion: "master-v4", reasons: [] },
+          poses: { ready: scenario.ready, workerVersion: "pose-worker-v1", catalogVersion: scenario.catalogVersion, templateVersion: "web-poses-v1", reasons: [] },
+          poseCatalog: {
+            normal: ["normal_attentive", "normal_relaxed", "normal_curious", "normal_firm"],
+            listening: ["listening_focus", "listening_process", "listening_natural", "listening_ready"],
+            transcribing: ["transcribing_notes", "transcribing_fast", "transcribing_thought", "transcribing_active"],
+          },
+        },
+      }),
+    }));
+    await page.goto("/criar");
+    await expect(page.getByRole("heading", { name: "Como ele fica quando está pronto?" })).toBeVisible();
+    await page.getByRole("button", { name: "Continuar" }).click();
+    await page.getByRole("button", { name: "Continuar" }).click();
+    await page.getByRole("button", { name: "Continuar" }).click();
+    const submit = page.getByRole("button", { name: "Gerar as três poses" });
+    if (scenario.enabled) {
+      await expect(submit).toBeEnabled({ timeout: 5_000 });
+    } else {
+      await expect(submit).toBeDisabled({ timeout: 5_000 });
+    }
+  });
+}
 
 test("movimento reduzido preserva conteúdo e remove loops", async ({ browser }) => {
   const context = await browser.newContext({ reducedMotion: "reduce" });

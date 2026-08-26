@@ -6,6 +6,7 @@ import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import { saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
 import { createClient } from "@/lib/supabase/server";
 import { reconcileGenerationTelemetry } from "@/lib/mascot-generation/telemetry-store";
+import { reconcileAssetChecks } from "@/lib/mascot-generation/asset-check-store";
 import { createTraceContext, mascotLog, traceResponse, type MascotTraceContext } from "@/lib/observability/mascot-trace";
 
 export const runtime = "nodejs";
@@ -25,7 +26,16 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
     if (identity.mode === "supabase-session") {
       const client = await createClient();
       await saveAttemptJob(client, identity.uid, job, trace);
-      await reconcileGenerationTelemetry(client, identity.uid, job).catch(() => undefined);
+      const reconciliations = await Promise.allSettled([
+        reconcileGenerationTelemetry(client, identity.uid, job),
+        reconcileAssetChecks(client, identity.uid, job),
+      ]);
+      reconciliations.forEach((result, index) => {
+        if (result.status === "rejected") mascotLog("generation_reconciliation_failed", {
+          ...trace, jobId, result: "failure", stage: index === 0 ? "telemetry" : "asset_checks",
+          safeErrorCode: result.reason instanceof Error ? result.reason.name : "UNKNOWN",
+        });
+      });
     }
     mascotLog("generation_status_read", { ...trace, jobId, result: "success", durationMs: Math.round(performance.now() - startedAt), httpStatus: 200, stage: job.status });
     return traceResponse(NextResponse.json({ job }, { status: 200 }), trace, job.requestId);

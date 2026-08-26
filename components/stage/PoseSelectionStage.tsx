@@ -50,12 +50,14 @@ export function PoseSelectionStage({
 export function PoseSelectionReviewStage({
   choices,
   enabled,
+  capabilityMessage,
   errorMessage,
   onGenerate,
   onBack,
 }: {
   choices: PoseChoices;
   enabled: boolean;
+  capabilityMessage: string;
   errorMessage?: string;
   onGenerate: () => void;
   onBack: () => void;
@@ -67,7 +69,7 @@ export function PoseSelectionReviewStage({
       <h2 id="state-title">Revise os jeitos do seu mascote</h2>
       <StatusMessage
         title="O Master continuará sendo a única referência"
-        detail={enabled ? "Ao confirmar, serão geradas exatamente três imagens." : "As escolhas estão prontas. A geração de poses continua bloqueada neste ambiente."}
+        detail={capabilityMessage}
       />
       <dl className="pose-summary">
         {(Object.keys(choices) as PoseRole[]).map((role) => (
@@ -89,7 +91,7 @@ export function PoseSelectionReviewStage({
         <StageButton onClick={onGenerate} disabled={!enabled}>Gerar as três poses</StageButton>
         <StageButton tone="secondary" onClick={onBack}>Rever escolhas</StageButton>
       </div>
-      {!enabled && <p className="stage-guidance">Nenhuma GPU será acionada enquanto a geração de poses estiver desabilitada.</p>}
+      {!enabled && <p className="stage-guidance">Suas escolhas permanecem salvas; nenhuma geração será iniciada sem capacidade confirmada.</p>}
     </>
   );
 }

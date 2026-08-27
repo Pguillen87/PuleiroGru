@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createTraceContext, mascotLog, traceResponse } from "@/lib/observability/mascot-trace";
+import { createTraceContext, mascotLog, mascotObservabilityEnvironment, traceResponse } from "@/lib/observability/mascot-trace";
 import { NextResponse } from "next/server";
 
 describe("trace distribuído do Puleiro", () => {
@@ -37,5 +37,13 @@ describe("trace distribuído do Puleiro", () => {
     expect(payload).not.toHaveProperty("token");
     expect(payload).not.toHaveProperty("cookie");
     expect(payload).not.toHaveProperty("image");
+  });
+
+  it("identifica Preview como staging, sem depender de NODE_ENV", () => {
+    vi.stubEnv("GRU_MASCOT_ENV", "");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("NODE_ENV", "production");
+    expect(mascotObservabilityEnvironment()).toBe("staging");
+    vi.unstubAllEnvs();
   });
 });

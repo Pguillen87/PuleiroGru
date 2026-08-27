@@ -38,7 +38,7 @@ export function supportCode(context: Pick<MascotTraceContext, "requestId">) {
 export function mascotLog(event: string, fields: Record<string, unknown> = {}) {
   const payload: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV ?? "unknown",
+    environment: mascotObservabilityEnvironment(),
     service: "puleiro-bff",
     event,
   };
@@ -46,6 +46,14 @@ export function mascotLog(event: string, fields: Record<string, unknown> = {}) {
     if (SAFE_FIELDS.has(key) && isSafeValue(value)) payload[key] = value;
   }
   console.log(JSON.stringify(payload));
+}
+
+export function mascotObservabilityEnvironment() {
+  const configured = process.env.GRU_MASCOT_ENV?.trim().toLowerCase();
+  if (configured) return configured;
+  if (process.env.VERCEL_ENV === "preview") return "staging";
+  if (process.env.VERCEL_ENV === "production") return "production";
+  return process.env.NODE_ENV ?? "unknown";
 }
 
 function isSafeValue(value: unknown) {

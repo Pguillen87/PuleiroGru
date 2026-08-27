@@ -3,7 +3,6 @@ import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { getAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
-import { prepareMascotDisplayAsset } from "@/lib/mascot-generation/display-asset";
 import { createTraceContext, mascotLog, traceResponse, type MascotTraceContext } from "@/lib/observability/mascot-trace";
 
 export const runtime = "nodejs";
@@ -21,7 +20,10 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
     const provider = getMascotGenerationProvider();
     if (!provider.getMasterImage) return new NextResponse(null, { status: 404 });
     const sourceImage = await provider.getMasterImage(jobId, masterId, jobIdentity(uid, attemptId));
-    const image = sourceImage ? await prepareMascotDisplayAsset(sourceImage) : null;
+    // Modal promotes only the separately QC-approved RGBA derivative into
+    // this endpoint. Do not repair or silently fall back to a raw Master in
+    // the BFF: an invalid derivative must remain observable and fail closed.
+    const image = sourceImage;
     if (!image) return new NextResponse(null, { status: 404 });
     mascotLog("master_image_read", { ...trace, jobId, masterId, result: "success", durationMs: Math.round(performance.now() - startedAt), httpStatus: 200 });
     return traceResponse(new NextResponse(Buffer.from(image.bytes), {

@@ -464,6 +464,99 @@ test("mantém as poses indisponíveis quando a capacidade do servidor as bloquei
   expect(posePosts).toBe(0);
 });
 
+test("fecha o editor e reflete a pose antes da confirmação remota", async ({ page }) => {
+  const job = {
+    id: "jornal-otimista",
+    attemptId: "attempt-jornal-otimista",
+    status: "master_approved",
+    message: "Mascote mestre aprovado.",
+    generationScheduled: true,
+    masters: [{ id: "master_1", imageUrl: "/assets/puleiro-reveal.jpg" }],
+    approvedMasterId: "master_1",
+    configuration: {
+      displayName: "Mascote GRU",
+      poseChoices: { ...jobIdentity.poseChoices },
+      configurationRevision: 0,
+    },
+    ...jobIdentity,
+  };
+  await page.route("**/api/mascot/jobs/current", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ job }),
+  }));
+  await page.route("**/api/mascot/jobs/jornal-otimista/configuration", async (route) => {
+    const body = route.request().postDataJSON();
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        job: {
+          ...job,
+          configuration: {
+            ...job.configuration,
+            poseChoices: body.poseChoices,
+            configurationRevision: 1,
+          },
+          poseChoices: body.poseChoices,
+        },
+      }),
+    });
+  });
+
+  await page.goto("/criar");
+  const normal = page.locator(".mascot-journal__pose").filter({ hasText: "NORMAL" });
+  await normal.getByRole("button", { name: "Editar" }).click();
+  await normal.getByText("Relaxado", { exact: true }).click();
+  await normal.getByRole("button", { name: "Salvar pose" }).click();
+
+  await expect(normal.locator(".mascot-journal__editor")).toHaveCount(0);
+  await expect(normal.locator(".mascot-journal__pose-summary")).toContainText("Relaxado");
+  await expect(page.getByText("Salvando suas escolhas…")).toBeVisible();
+  await expect(page.getByText("Configuração salva.")).toBeVisible({ timeout: 3_000 });
+});
+
+test("restaura a pose e reabre o editor quando o salvamento falha", async ({ page }) => {
+  const job = {
+    id: "jornal-rollback",
+    attemptId: "attempt-jornal-rollback",
+    status: "master_approved",
+    message: "Mascote mestre aprovado.",
+    generationScheduled: true,
+    masters: [{ id: "master_1", imageUrl: "/assets/puleiro-reveal.jpg" }],
+    approvedMasterId: "master_1",
+    configuration: {
+      displayName: "Mascote GRU",
+      poseChoices: { ...jobIdentity.poseChoices },
+      configurationRevision: 0,
+    },
+    ...jobIdentity,
+  };
+  await page.route("**/api/mascot/jobs/current", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ job }),
+  }));
+  await page.route("**/api/mascot/jobs/jornal-rollback/configuration", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ code: "CONFIGURATION_SAVE_FAILED", message: "Não foi possível salvar esta configuração agora." }),
+    });
+  });
+
+  await page.goto("/criar");
+  const normal = page.locator(".mascot-journal__pose").filter({ hasText: "NORMAL" });
+  await normal.getByRole("button", { name: "Editar" }).click();
+  await normal.getByText("Relaxado", { exact: true }).click();
+  await normal.getByRole("button", { name: "Salvar pose" }).click();
+
+  await expect(normal.locator(".mascot-journal__editor")).toHaveCount(0);
+  await expect(normal.locator(".mascot-journal__pose-summary")).toContainText("Relaxado");
+  await expect(normal.locator(".mascot-journal__editor")).toBeVisible({ timeout: 3_000 });
+  await expect(normal.locator(".mascot-journal__pose-summary")).toContainText("Pronto e atento");
+  await expect(page.locator(".stage-error")).toContainText("Não foi possível salvar");
+});
+
 test("Jornal mantém o Master real em desktop e reflow sem corte em mobile", async ({ page }) => {
   await page.route("**/api/mascot/jobs/current", (route) => route.fulfill({
     contentType: "application/json",

@@ -44,6 +44,7 @@ export function MascotConfigurationDialog({
   const [name, setName] = useState(configuration.displayName);
   const [editingRole, setEditingRole] = useState<PoseRole | null>(null);
   const [draftOption, setDraftOption] = useState("");
+  const poseSaveSequence = useRef(0);
   const nameValid = isValidName(name);
 
   useEffect(() => {
@@ -57,6 +58,16 @@ export function MascotConfigurationDialog({
   const dismiss = () => {
     dialogRef.current?.close();
     onDismiss();
+  };
+  const savePose = (role: PoseRole) => {
+    const optionId = draftOption;
+    const saveSequence = ++poseSaveSequence.current;
+    setEditingRole(null);
+    void onSavePose(role, optionId).then((saved) => {
+      if (saved || poseSaveSequence.current !== saveSequence) return;
+      setDraftOption(optionId);
+      setEditingRole(role);
+    });
   };
   const savingMessage = saveStatus === "saving"
     ? "Salvando suas escolhas…"
@@ -98,7 +109,7 @@ export function MascotConfigurationDialog({
               ) : <div className="mascot-journal__portrait-empty">Master protegido</div>}
               <figcaption>Master aprovado · referência privada</figcaption>
             </figure>
-            <small>As imagens abaixo são referências de pose, não prévias falsas do seu mascote.</small>
+            <small>As miniaturas são referências de movimento; não são imagens do mascote gerado.</small>
           </aside>
           <div className="mascot-journal__desk">
             <form className="mascot-journal__name" onSubmit={(event) => { event.preventDefault(); if (nameValid) void onSaveName(name); }}>
@@ -118,7 +129,7 @@ export function MascotConfigurationDialog({
             return <section className="mascot-journal__pose" key={role}>
               <div className="mascot-journal__pose-summary">
                 <span className="pose-reference-preview mascot-journal__reference" style={{ backgroundPosition: option?.previewPosition }} aria-hidden="true" />
-                <div><h3>{POSE_ROLE_LABELS[role]}</h3><p>{option?.label ?? "Escolha pendente"}</p><small>Referência de pose</small></div>
+                <div><h3>{POSE_ROLE_LABELS[role]}</h3><p>{option?.label ?? "Escolha pendente"}</p><small>Referência de movimento</small></div>
                 <button type="button" onClick={() => { setEditingRole(role); setDraftOption(current); }} disabled={saving}>Editar</button>
                 {fieldSaving && <span className="mascot-journal__field-status" role="status">Salvando…</span>}
               </div>
@@ -131,7 +142,7 @@ export function MascotConfigurationDialog({
                     <span>{item.label}</span>
                   </label>)}
                 </div>
-                <p><button type="button" onClick={() => setEditingRole(null)} disabled={saving}>Cancelar</button><button type="button" onClick={() => void onSavePose(role, draftOption).then((saved) => saved && setEditingRole(null))} disabled={saving || !draftOption || draftOption === current}>Salvar pose</button></p>
+                <p><button type="button" onClick={() => setEditingRole(null)} disabled={saving}>Cancelar</button><button type="button" onClick={() => savePose(role)} disabled={saving || !draftOption || draftOption === current}>Salvar pose</button></p>
               </fieldset>}
             </section>;
               })}

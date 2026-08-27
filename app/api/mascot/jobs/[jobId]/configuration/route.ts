@@ -18,6 +18,7 @@ type ConfigurationPatch = Partial<Pick<MascotConfiguration, "displayName" | "pos
 };
 
 export async function PATCH(request: Request, context: { params: Promise<{ jobId: string }> }) {
+  const startedAt = performance.now();
   const { jobId } = await context.params;
   let trace: MascotTraceContext | undefined;
   if (!validId(jobId)) return NextResponse.json({ message: "Identificador inválido." }, { status: 400 });
@@ -44,9 +45,21 @@ export async function PATCH(request: Request, context: { params: Promise<{ jobId
       configurationRevision: revision,
     }, jobIdentity(identity.uid, attemptId, trace));
     if (identity.mode === "supabase-session") await saveAttemptJob(await createClient(), identity.uid, job, trace);
-    mascotLog("mascot_configuration_saved", { ...trace, jobId, result: "saved" });
+    mascotLog("mascot_configuration_saved", {
+      ...trace,
+      jobId,
+      result: "saved",
+      durationMs: Math.round(performance.now() - startedAt),
+    });
     return traceResponse(NextResponse.json({ job }, { status: 200 }), trace, job.requestId);
   } catch (error) {
+    mascotLog("mascot_configuration_save_failed", {
+      ...trace,
+      jobId,
+      result: "failed",
+      durationMs: Math.round(performance.now() - startedAt),
+      safeErrorCode: error instanceof Error && "code" in error ? String(error.code) : "CONFIGURATION_SAVE_FAILED",
+    });
     return integrationErrorResponse(error, "CONFIGURATION_SAVE_FAILED", "Não foi possível salvar esta configuração agora.", trace);
   }
 }

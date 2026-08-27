@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isDeletableAttemptStatus, isResumableAttemptStatus } from "@/lib/mascot-generation/attempt-store";
+import { isDeletableAttemptStatus, isResumableAttemptStatus, prioritizeAttempt, type MascotAttempt } from "@/lib/mascot-generation/attempt-store";
 
 describe("isResumableAttemptStatus", () => {
   it("não retoma um mascote já guardado ou cancelado", () => {
@@ -25,5 +25,23 @@ describe("isDeletableAttemptStatus", () => {
     expect(isDeletableAttemptStatus("awaiting_master_approval")).toBe(false);
     expect(isDeletableAttemptStatus("master_approved")).toBe(false);
     expect(isDeletableAttemptStatus("ready")).toBe(false);
+  });
+});
+
+describe("prioritizeAttempt", () => {
+  const attempt = (attemptId: string): MascotAttempt => ({
+    id: attemptId,
+    user_id: "user-1",
+    attempt_id: attemptId,
+    modal_job_id: `job-${attemptId}`,
+    status: "registered",
+    selected_master_id: null,
+    created_at: "2026-08-27T00:00:00Z",
+    updated_at: "2026-08-27T00:00:00Z",
+  });
+
+  it("prioriza o cookie sem descartar candidatos seguintes", () => {
+    const ordered = prioritizeAttempt([attempt("newer"), attempt("cookie"), attempt("master")], "cookie");
+    expect(ordered.map((item) => item.attempt_id)).toEqual(["cookie", "newer", "master"]);
   });
 });

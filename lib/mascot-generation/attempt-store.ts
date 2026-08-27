@@ -59,16 +59,24 @@ export async function findAttemptByJobId(client: SupabaseClient, userId: string,
   return data;
 }
 
-export async function findLatestResumableAttempt(client: SupabaseClient, userId: string) {
+export async function findResumableAttempts(client: SupabaseClient, userId: string, limit = 10) {
   const { data, error } = await client.from("mascot_attempts")
     .select("*")
     .eq("user_id", userId)
     .in("status", RESUMABLE_ATTEMPT_STATUSES)
     .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle<MascotAttempt>();
+    .limit(limit)
+    .returns<MascotAttempt[]>();
   if (error) throw new MascotAttemptStoreError();
-  return data;
+  return data ?? [];
+}
+
+export function prioritizeAttempt(attempts: MascotAttempt[], attemptId: string | undefined) {
+  if (!attemptId) return attempts;
+  const preferred = attempts.find((attempt) => attempt.attempt_id === attemptId);
+  return preferred
+    ? [preferred, ...attempts.filter((attempt) => attempt.attempt_id !== attemptId)]
+    : attempts;
 }
 
 export function isResumableAttemptStatus(status: GenerationJobStatus) {

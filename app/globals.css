@@ -1886,23 +1886,44 @@ main {
 .mascot-journal__save-message { color: #3f7446; font-weight: 750; }
 
 @media (max-width: 38rem) {
-  .mascot-journal { width: 100%; max-height: 100dvh; min-height: 100dvh; border-width: 0; box-shadow: none; }
-  .mascot-journal__masthead { grid-template-columns: minmax(0, 1fr) auto; padding-inline: 1rem; }
-  .mascot-journal__close { right: 1rem; }
+  .mascot-journal { width: 100%; max-height: 100dvh; min-height: 100dvh; border-width: 0; box-shadow: none; overscroll-behavior: contain; }
+  .mascot-journal__masthead { position: sticky; top: 0; z-index: 2; grid-template-columns: minmax(0, 1fr) 3rem; gap: .75rem; padding: max(.75rem, env(safe-area-inset-top)) 1rem .75rem; text-align: left; }
+  .mascot-journal__close { position: static; grid-column: 2; grid-row: 1; align-self: center; justify-self: end; transform: none; }
   .mascot-journal__brand { grid-column: 1; text-align: left; }
   .mascot-journal__seal { display: none !important; }
-  .mascot-journal__body { padding: 1rem; }
-  .mascot-journal__edition { grid-template-columns: 1fr; }
-  .mascot-journal__portrait { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .65rem; padding: 0 0 1rem; border-right: 0; border-bottom: 1px solid #7f6b4c; text-align: left; }
-  .mascot-journal__portrait > p { grid-column: 1 / -1; margin: 0; }
-  .mascot-journal__portrait figure { width: 7.4rem; }
-  .mascot-journal__portrait img { min-height: 9rem; height: 9rem; }
-  .mascot-journal__portrait > small { align-self: center; margin: 0; }
-  .mascot-journal__pose-summary { grid-template-columns: 2.75rem minmax(0, 1fr) auto; gap: .5rem; }
-  .mascot-journal__reference { width: 2.75rem; height: 2.75rem; }
-  .mascot-journal__editor > div { grid-template-columns: 1fr; }
-  .mascot-journal__name > div { display: grid; grid-template-columns: 1fr; }
+  .mascot-journal__body { padding: 1rem 1rem max(1.5rem, env(safe-area-inset-bottom)); }
+  .mascot-journal__headline { padding: .15rem 0 .85rem; }
+  .mascot-journal__headline .state-kicker { margin-bottom: .45rem; font-size: .72rem; }
+  .mascot-journal__body h2 { max-width: 15ch; margin-block: .25rem; font-size: clamp(1.8rem, 8.5vw, 2.2rem); line-height: .98; }
+  .mascot-journal__headline > p:last-child { margin-top: .65rem; font-size: .94rem; line-height: 1.45; }
+  .mascot-journal__edition { grid-template-columns: 1fr; gap: 1rem; margin-top: 1rem; }
+  .mascot-journal__portrait { padding: 0 0 1rem; border-right: 0; border-bottom: 3px double #7f6b4c; text-align: left; }
+  .mascot-journal__portrait > p { margin-bottom: .55rem; }
+  .mascot-journal__portrait figure { display: grid; grid-template-columns: minmax(8rem, 42%) minmax(0, 1fr); width: 100%; box-shadow: 3px 4px 0 rgb(69 53 35 / 20%); }
+  .mascot-journal__portrait img { min-height: 0; height: 11.5rem; grid-column: 1; object-position: center; }
+  .mascot-journal__portrait figcaption { display: grid; grid-column: 2; place-items: center; padding: .85rem; border-top: 0; border-left: 1px solid #6a5840; font-size: .78rem; text-align: center; }
+  .mascot-journal__portrait > small { margin-top: .65rem; font-size: .78rem; line-height: 1.4; }
+  .mascot-journal__name { margin-bottom: .8rem; padding: .75rem; }
+  .mascot-journal__name > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; }
+  .mascot-journal__name button { min-width: 5.75rem; }
+  .mascot-journal__pose-summary { grid-template-columns: 3rem minmax(0, 1fr) 4.75rem; gap: .6rem; padding-block: .7rem; }
+  .mascot-journal__pose-summary > button { width: 100%; padding-inline: .45rem; }
+  .mascot-journal__reference { width: 3rem; height: 3rem; }
+  .mascot-journal__editor { margin-bottom: .8rem; }
+  .mascot-journal__editor > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mascot-journal__editor label { grid-template-columns: 2.35rem minmax(0, 1fr); min-height: 3.5rem; }
+  .mascot-journal__editor p { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mascot-journal__editor p button { width: 100%; }
   .mascot-journal__status { grid-template-columns: 1fr; }
+  .mascot-journal__actions .stage-actions, .mascot-journal__actions .stage-button { width: 100%; }
+}
+
+@media (max-width: 22rem) {
+  .mascot-journal__name > div, .mascot-journal__editor > div { grid-template-columns: 1fr; }
+  .mascot-journal__portrait figure { grid-template-columns: minmax(7rem, 40%) minmax(0, 1fr); }
+  .mascot-journal__pose-summary { grid-template-columns: 2.75rem minmax(0, 1fr); }
+  .mascot-journal__pose-summary > button { grid-column: 1 / -1; }
+  .mascot-journal__field-status { grid-column: 1 / -1; }
 }
 
 @media (prefers-reduced-motion: no-preference) {

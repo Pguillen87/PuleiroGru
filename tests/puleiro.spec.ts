@@ -582,7 +582,7 @@ test("Jornal mantém o Master real em desktop e reflow sem corte em mobile", asy
   expect(portrait?.x).toBeLessThan(desk?.x ?? 0);
 
   const close = journal.getByRole("button", { name: "Fechar configurações" });
-  for (const width of [1440, 1024, 768, 390]) {
+  for (const width of [1440, 1024, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     const journalBox = await journal.boundingBox();
     const closeBox = await close.boundingBox();
@@ -594,6 +594,12 @@ test("Jornal mantém o Master real em desktop e reflow sem corte em mobile", asy
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator(".mascot-journal__portrait img")).toBeVisible();
+  const mobilePortrait = await journal.locator(".mascot-journal__portrait figure").boundingBox();
+  const mobileNameInput = await journal.locator("#mascot-display-name").boundingBox();
+  const mobileNameSave = await journal.locator(".mascot-journal__name button").boundingBox();
+  expect(mobilePortrait?.width).toBeGreaterThanOrEqual(320);
+  expect(Math.abs((mobileNameInput?.y ?? 0) - (mobileNameSave?.y ?? 100))).toBeLessThan(4);
+  expect(mobileNameSave?.height).toBeGreaterThanOrEqual(48);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
     await page.evaluate(() => document.documentElement.clientWidth),
   );

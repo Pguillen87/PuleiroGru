@@ -166,6 +166,7 @@ export interface MascotGenerationProvider {
   startMasterGeneration(jobId: string, identity: JobIdentity): Promise<GenerationJob>;
   getJob(jobId: string, identity: JobIdentity): Promise<GenerationJob | null>;
   getJobByAttempt(identity: JobIdentity): Promise<GenerationJob | null>;
+  deleteJob(jobId: string, identity: JobIdentity): Promise<{ deleted: true; idempotentReplay: boolean }>;
   approveMaster(jobId: string, masterId: string, identity: JobIdentity): Promise<GenerationJob>;
   updateConfiguration(jobId: string, configuration: Partial<MascotConfiguration> & Pick<MascotConfiguration, "configurationRevision">, identity: JobIdentity): Promise<GenerationJob>;
   startPoseGeneration(jobId: string, choices: PoseChoices, identity: JobIdentity): Promise<GenerationJob>;

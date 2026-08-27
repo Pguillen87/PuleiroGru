@@ -75,6 +75,17 @@ export async function markAttemptReady(client: SupabaseClient, userId: string, a
   if (error || !data) throw new MascotAttemptStoreError();
 }
 
+export async function deleteAttempt(client: SupabaseClient, userId: string, attemptId: string, jobId: string) {
+  const { data, error } = await client.from("mascot_attempts")
+    .delete()
+    .eq("user_id", userId)
+    .eq("attempt_id", attemptId)
+    .eq("modal_job_id", jobId)
+    .select("id")
+    .maybeSingle<{ id: string }>();
+  if (error || !data) throw new MascotAttemptStoreError("Não foi possível excluir esta tentativa.");
+}
+
 export async function reserveAttempt(client: SupabaseClient, userId: string, attemptId: string) {
   const { error } = await client.from("mascot_attempts").upsert({
     user_id: userId,

@@ -35,6 +35,11 @@ type ModalJob = {
   idempotentReplay?: boolean;
 };
 
+type ModalDeletion = {
+  deleted: boolean;
+  idempotent_replay?: boolean;
+};
+
 export class ModalProviderError extends Error {
   constructor(readonly status: number, readonly code: string, message: string) {
     super(message);
@@ -102,6 +107,19 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
     const response = await this.request(`/v2/mascot/jobs?attempt_id=${query}`, identity);
     if (response.status === 404) return null;
     return this.toGenerationJob(await this.readJob(response), response);
+  }
+
+  async deleteJob(jobId: string, identity: JobIdentity) {
+    const response = await this.request(`/v2/mascot/jobs/${encodeURIComponent(jobId)}`, identity, {
+      method: "DELETE",
+      headers: {
+        ...this.operationHeaders(identity),
+        "X-Idempotency-Key": `delete:${identity.ownerId}:${identity.attemptId}:${jobId}`,
+      },
+    });
+    const payload = await this.readDeletion(response);
+    if (!payload.deleted) throw new ModalProviderError(503, "JOB_DELETE_FAILED", "A exclusão do nascimento não foi confirmada.");
+    return { deleted: true as const, idempotentReplay: payload.idempotent_replay === true };
   }
 
   async approveMaster(jobId: string, masterId: string, identity: JobIdentity) {
@@ -197,6 +215,11 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
   private async readJob(response: Response) {
     if (!response.ok) await this.throwResponse(response);
     return response.json() as Promise<ModalJob>;
+  }
+
+  private async readDeletion(response: Response) {
+    if (!response.ok) await this.throwResponse(response);
+    return response.json() as Promise<ModalDeletion>;
   }
 
   private async throwResponse(response: Response): Promise<never> {

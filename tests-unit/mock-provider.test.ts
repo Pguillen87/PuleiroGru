@@ -20,4 +20,13 @@ describe("jobs owner-scoped e retomáveis", () => {
     const job = await provider.createMasterJob(input);
     await expect(provider.getJob(job.id, { ...input, ownerId: "owner-b" })).resolves.toBeNull();
   });
+
+  it("exclui somente o job da tentativa e do owner correspondente", async () => {
+    const provider = new MockMascotGenerationProvider();
+    const input = { ...image, subjectIdentity, ownerId: "owner-a", attemptId: crypto.randomUUID(), correlationId: crypto.randomUUID(), idempotencyKey: "register" };
+    const job = await provider.createMasterJob(input);
+    await expect(provider.deleteJob(job.id, { ...input, attemptId: crypto.randomUUID() })).rejects.toThrow("Nascimento não encontrado");
+    await expect(provider.deleteJob(job.id, input)).resolves.toEqual({ deleted: true, idempotentReplay: false });
+    await expect(provider.getJob(job.id, input)).resolves.toBeNull();
+  });
 });

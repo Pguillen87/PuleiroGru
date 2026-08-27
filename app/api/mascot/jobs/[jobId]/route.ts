@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
-import { getAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
+import { ATTEMPT_COOKIE, getAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
-import { saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
+import { deleteAttempt, findAttempt, saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
 import { createClient } from "@/lib/supabase/server";
 import { reconcileGenerationTelemetry } from "@/lib/mascot-generation/telemetry-store";
 import { reconcileAssetChecks } from "@/lib/mascot-generation/asset-check-store";
@@ -42,5 +42,39 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
   } catch (error) {
     mascotLog("generation_status_read", { ...(trace ?? {}), jobId, result: "failure", durationMs: Math.round(performance.now() - startedAt), safeErrorCode: error instanceof Error ? error.name : "UNKNOWN" });
     return integrationErrorResponse(error, "JOB_READ_FAILED", "Não foi possível consultar o nascimento agora.", trace);
+  }
+}
+
+export async function DELETE(request: Request, context: { params: Promise<{ jobId: string }> }) {
+  const { jobId } = await context.params;
+  const startedAt = performance.now();
+  let trace: MascotTraceContext | undefined;
+  if (!validId(jobId)) return NextResponse.json({ message: "Identificador inválido.", code: "INVALID_JOB_ID" }, { status: 400 });
+  try {
+    const [identity, attemptId] = await Promise.all([requireBrowserIdentity(request), getAttemptId()]);
+    if (!attemptId || identity.mode !== "supabase-session") {
+      return NextResponse.json({ message: "Entre novamente para excluir este nascimento.", code: "DELETION_REQUIRES_SESSION" }, { status: 403 });
+    }
+    trace = createTraceContext(attemptId, true);
+    const client = await createClient();
+    const attempt = await findAttempt(client, identity.uid, attemptId);
+    if (!attempt || attempt.modal_job_id !== jobId) {
+      return traceResponse(NextResponse.json({ message: "Nascimento não encontrado.", code: "JOB_NOT_FOUND" }, { status: 404 }), trace);
+    }
+    const deletion = await getMascotGenerationProvider().deleteJob(jobId, jobIdentity(identity.uid, attemptId, trace));
+    await deleteAttempt(client, identity.uid, attemptId, jobId);
+    mascotLog("generation_deleted", {
+      ...trace, jobId, result: deletion.idempotentReplay ? "idempotent_replay" : "deleted",
+      durationMs: Math.round(performance.now() - startedAt), httpStatus: 202,
+    });
+    const response = traceResponse(NextResponse.json({ deleted: true }, { status: 202 }), trace);
+    response.cookies.delete(ATTEMPT_COOKIE);
+    return response;
+  } catch (error) {
+    mascotLog("generation_deleted", {
+      ...(trace ?? {}), jobId, result: "failure", durationMs: Math.round(performance.now() - startedAt),
+      safeErrorCode: error instanceof Error ? error.name : "UNKNOWN",
+    });
+    return integrationErrorResponse(error, "JOB_DELETE_FAILED", "Não foi possível excluir este nascimento agora.", trace);
   }
 }

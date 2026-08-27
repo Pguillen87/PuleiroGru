@@ -99,6 +99,15 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
     return record ? this.getJob(record.job.id, identity) : null;
   }
 
+  async deleteJob(jobId: string, identity: JobIdentity) {
+    const record = jobs.get(jobId);
+    if (!record || record.ownerId !== identity.ownerId || record.job.attemptId !== identity.attemptId) {
+      throw new Error("Nascimento não encontrado.");
+    }
+    jobs.delete(jobId);
+    return { deleted: true as const, idempotentReplay: false };
+  }
+
   async approveMaster(jobId: string, masterId: string, identity: JobIdentity) {
     const job = await this.getJob(jobId, identity);
     if (!job || !job.masters.some(({ id }) => id === masterId)) throw new Error("Master não encontrado.");

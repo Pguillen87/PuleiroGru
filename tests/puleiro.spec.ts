@@ -68,7 +68,7 @@ test("percorre o fluxo explícito sem ações prematuras", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Gostei deste" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Seu mascote chegou!" })).toBeVisible({ timeout: 5_000 });
   await page.getByRole("button", { name: "Gostei deste" }).click();
-  await expect(page.getByRole("heading", { name: "Como ele fica quando está pronto?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Configure os jeitos que ele contará" })).toBeVisible();
 });
 
 for (const mimeType of ["image/jpeg", "image/png", "image/webp"]) {
@@ -298,7 +298,7 @@ test("retoma job já aprovado sem acusar ausência de Masters", async ({ page })
     }),
   }));
   await page.goto("/criar");
-  await expect(page.getByRole("heading", { name: "Como ele fica quando está pronto?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Configure os jeitos que ele contará" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Este nascimento precisa de outra tentativa" })).toHaveCount(0);
   await expect(page.locator(".stage__art img")).toHaveAttribute("src", "/api/mascot/jobs/aprovado/master/master_3");
 });
@@ -430,17 +430,43 @@ test("mantém as poses indisponíveis quando a capacidade do servidor as bloquei
   await page.goto("/criar");
   await completeFlow(page);
   await page.getByRole("button", { name: "Gostei deste" }).click();
-  await expect(page.locator(".pose-choice-grid .pose-reference-preview")).toHaveCount(4);
-  await page.getByRole("radio", { name: /Relaxado/ }).check();
-  await page.getByRole("button", { name: "Continuar" }).click();
-  await page.getByRole("radio", { name: /Reação natural/ }).check();
-  await page.getByRole("button", { name: "Continuar" }).click();
-  await page.getByRole("radio", { name: /Organizando ideias/ }).check();
-  await page.getByRole("button", { name: "Continuar" }).click();
-  await expect(page.getByRole("heading", { name: "Revise os jeitos do seu mascote" })).toBeVisible();
-  await expect(page.locator(".pose-summary .pose-reference-preview")).toHaveCount(3);
+  await expect(page.getByRole("heading", { name: "Configure os jeitos que ele contará" })).toBeVisible();
+  await expect(page.locator(".mascot-journal__pose-summary .pose-reference-preview")).toHaveCount(3);
+  await expect(page.getByText("Configuração pronta e salva")).toBeVisible();
+  await expect(page.getByText("Oficina de poses indisponível")).toBeVisible();
   await expect(page.getByRole("button", { name: "Gerar as três poses" })).toBeDisabled();
   expect(posePosts).toBe(0);
+});
+
+test("Jornal mantém o Master real em desktop e reflow sem corte em mobile", async ({ page }) => {
+  await page.route("**/api/mascot/jobs/current", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      job: {
+        id: "jornal-master",
+        attemptId: "attempt-jornal-master",
+        status: "master_approved",
+        message: "Mascote mestre aprovado.",
+        generationScheduled: true,
+        masters: [{ id: "master_1", imageUrl: "/assets/puleiro-reveal.jpg" }],
+        approvedMasterId: "master_1",
+        ...jobIdentity,
+      },
+    }),
+  }));
+  await page.goto("/criar");
+  const journal = page.locator("dialog.mascot-journal");
+  await expect(journal).toBeVisible();
+  await expect(journal.locator(".mascot-journal__portrait img")).toHaveAttribute("src", "/assets/puleiro-reveal.jpg");
+  const portrait = await journal.locator(".mascot-journal__portrait").boundingBox();
+  const desk = await journal.locator(".mascot-journal__desk").boundingBox();
+  expect(portrait?.x).toBeLessThan(desk?.x ?? 0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".mascot-journal__portrait img")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+    await page.evaluate(() => document.documentElement.clientWidth),
+  );
 });
 
 for (const scenario of [
@@ -479,10 +505,7 @@ for (const scenario of [
       }),
     }));
     await page.goto("/criar");
-    await expect(page.getByRole("heading", { name: "Como ele fica quando está pronto?" })).toBeVisible();
-    await page.getByRole("button", { name: "Continuar" }).click();
-    await page.getByRole("button", { name: "Continuar" }).click();
-    await page.getByRole("button", { name: "Continuar" }).click();
+    await expect(page.getByRole("heading", { name: "Configure os jeitos que ele contará" })).toBeVisible();
     const submit = page.getByRole("button", { name: "Gerar as três poses" });
     if (scenario.enabled) {
       await expect(submit).toBeEnabled({ timeout: 5_000 });

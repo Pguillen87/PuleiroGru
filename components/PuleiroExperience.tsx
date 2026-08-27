@@ -71,14 +71,18 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
       />
     ),
     "master-ready": flow.revealComplete
-      ? <MasterDecisionStage mode="ready" position={flow.masterPosition} errorMessage={flow.errorMessage} onAccept={flow.acceptMaster} onNext={flow.nextMaster} onReloadImage={flow.retryMasterImage} />
+      ? <MasterDecisionStage mode="ready" position={flow.masterPosition} errorMessage={flow.errorMessage} approving={flow.masterApprovalPending} onAccept={flow.acceptMaster} onNext={flow.nextMaster} onReloadImage={flow.retryMasterImage} />
       : <PreparingStage title="O nascimento começou" message="O palco está revelando seu mascote." />,
     "master-approved": <MasterDecisionStage mode="approved" onAccept={flow.openPoseConfiguration} onNext={flow.nextMaster} />,
     "master-rejected": <MasterDecisionStage mode="ready" position={flow.masterPosition} onAccept={flow.acceptMaster} onNext={flow.nextMaster} />,
     "configuring-poses": flow.configuration ? <MascotConfigurationDialog
       category={flow.subjectIdentity?.category ?? "other"}
       configuration={flow.configuration}
+      masterUrl={flow.masterUrl}
       saving={flow.configurationSaving}
+      savingField={flow.configurationSavingField}
+      saveStatus={flow.configurationSaveStatus}
+      configurationReady={flow.configurationReady}
       poseGenerationReady={flow.poseGenerationReady}
       capabilityMessage={flow.poseCapabilityMessage}
       errorMessage={flow.errorMessage}

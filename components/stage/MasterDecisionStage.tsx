@@ -8,6 +8,7 @@ type MasterDecisionStageProps = {
   onNext: () => void;
   onReloadImage?: () => void;
   errorMessage?: string;
+  approving?: boolean;
 };
 
 export function MasterDecisionStage(props: MasterDecisionStageProps) {
@@ -16,7 +17,7 @@ export function MasterDecisionStage(props: MasterDecisionStageProps) {
       <span className="state-kicker">Escolha registrada</span>
       <h2 id="state-title">Este é o seu mascote mestre</h2>
       <StatusMessage title="Mascote mestre aprovado" detail="A aprovação não iniciou poses, empacotamento ou qualquer nova geração." />
-      <div className="stage-actions"><StageButton onClick={props.onAccept}>Abrir Jornal do Puleiro</StageButton></div>
+      <div className="stage-actions"><StageButton onClick={props.onAccept} disabled={props.approving}>{props.approving ? "Abrindo o Jornal…" : "Abrir Jornal do Puleiro"}</StageButton></div>
     </>
   );
 
@@ -32,8 +33,8 @@ export function MasterDecisionStage(props: MasterDecisionStageProps) {
         </>
       )}
       <div className="stage-actions" aria-label="Escolha do mascote">
-        <StageButton onClick={props.onAccept}>Gostei deste</StageButton>
-        <StageButton tone="secondary" onClick={props.onNext}>Ver outra opção</StageButton>
+        <StageButton onClick={props.onAccept} disabled={props.approving}>{props.approving ? "Guardando escolha…" : "Gostei deste"}</StageButton>
+        <StageButton tone="secondary" onClick={props.onNext} disabled={props.approving}>Ver outra opção</StageButton>
       </div>
     </>
   );

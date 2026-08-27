@@ -1,4 +1,5 @@
 import type { GenerationCapabilities, GenerationJob, MascotConfiguration, PoseChoices, SubjectIdentity } from "./types";
+import { DEFAULT_POSE_CHOICES } from "./pose-catalog";
 
 type JobResponse = { job?: GenerationJob | null; message?: string; code?: string; supportCode?: string; retryable?: boolean };
 
@@ -29,7 +30,25 @@ async function readResponse(response: Response, allowEmpty = false) {
       body.supportCode,
     );
   }
-  return body.job ?? null;
+  return body.job ? normalizeGenerationJob(body.job) : null;
+}
+
+function normalizeGenerationJob(job: GenerationJob): GenerationJob {
+  // `configuration` was added to the v2 response without removing the older
+  // top-level poseChoices field. Keep resumptions safe during a rolling
+  // deployment and for already-published clients that only know the old shape.
+  const poseChoices = job.poseChoices ?? job.configuration?.poseChoices ?? DEFAULT_POSE_CHOICES;
+  return {
+    ...job,
+    masters: job.masters ?? [],
+    poses: job.poses ?? [],
+    poseChoices,
+    configuration: job.configuration ?? {
+      displayName: "Mascote GRU",
+      poseChoices,
+      configurationRevision: 0,
+    },
+  };
 }
 
 function safeSupportMessage(message: string, supportCode?: string) {

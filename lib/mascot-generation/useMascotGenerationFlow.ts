@@ -34,8 +34,10 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   const [libraryItem, setLibraryItem] = useState<MascotLibraryItem>();
   const [generationStartedAt, setGenerationStartedAt] = useState<number>();
   const [capabilities, setCapabilities] = useState<GenerationCapabilities>();
-  const [capabilitiesLoading, setCapabilitiesLoading] = useState(false);
   const [configurationSaving, setConfigurationSaving] = useState(false);
+  const [configurationSavingField, setConfigurationSavingField] = useState<"displayName" | PoseRole>();
+  const [configurationSaveStatus, setConfigurationSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [masterApprovalPending, setMasterApprovalPending] = useState(false);
   const controller = useRef<AbortController | undefined>(undefined);
   const resumeController = useRef<AbortController | undefined>(undefined);
   const transitionTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -43,30 +45,35 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   const newAttemptForPhoto = useRef(false);
   const librarySaveInFlight = useRef(false);
   const libraryAutoSaveAttempted = useRef(false);
+  const masterApprovalInFlight = useRef(false);
   const activeMaster = job?.masters[masterIndex];
   const progress = generationProgress(state, job, generationStartedAt);
-  const poseGenerationReady = Boolean(
+  const capabilitiesLoading = Boolean(job && ["awaiting_master_approval", "master_approved"].includes(job.status) && !capabilities);
+  const configurationReady = Boolean(
     job?.status === "master_approved"
     && job.approvedMasterId
-    && capabilities?.poses.ready
     && validDisplayName(job.configuration.displayName)
-    && capabilities.poses.catalogVersion === POSE_CATALOG_VERSION
     && (Object.keys(poseChoices) as PoseRole[]).every((role) =>
-      capabilities.poseCatalog[role]?.includes(poseChoices[role])
-      && POSE_OPTIONS.some((option) => option.role === role && option.id === poseChoices[role]),
+      POSE_OPTIONS.some((option) => option.role === role && option.id === poseChoices[role]),
     ),
+  );
+  const poseGenerationReady = Boolean(
+    configurationReady
+    && capabilities?.poses.ready
+    && capabilities.poses.catalogVersion === POSE_CATALOG_VERSION
+    && (Object.keys(poseChoices) as PoseRole[]).every((role) => capabilities.poseCatalog[role]?.includes(poseChoices[role])),
   );
 
   useEffect(() => {
-    if (job?.status !== "master_approved") return;
+    const jobStatus = job?.status;
+    if (!jobStatus || !["awaiting_master_approval", "master_approved"].includes(jobStatus)) return;
     const current = new AbortController();
     void getGenerationCapabilities(current.signal)
       .then(setCapabilities)
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
         setErrorMessage(error instanceof Error ? error.message : "Não foi possível conferir a oficina de poses.");
-      })
-      .finally(() => setCapabilitiesLoading(false));
+      });
     return () => current.abort();
   }, [job?.id, job?.status]);
 
@@ -366,7 +373,9 @@ export function useMascotGenerationFlow(config: FlowConfig) {
   }, [applyJob, config, photo, startGeneration, subjectIdentity]);
 
   const acceptMaster = useCallback(async () => {
-    if (!job || !activeMaster) return;
+    if (!job || !activeMaster || masterApprovalInFlight.current) return;
+    masterApprovalInFlight.current = true;
+    setMasterApprovalPending(true);
     const current = new AbortController();
     controller.current = current;
     setErrorMessage("");
@@ -375,40 +384,80 @@ export function useMascotGenerationFlow(config: FlowConfig) {
       setJob((existing) => ({ ...approved, masters: approved.masters.length ? approved.masters : existing?.masters ?? [] }));
       setSubjectIdentity(approved.subjectIdentity);
       setPoseChoices(approved.configuration.poseChoices);
-      setCapabilitiesLoading(true);
       setState("configuring-poses");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Não foi possível registrar sua escolha.");
       setState("master-ready");
+    } finally {
+      masterApprovalInFlight.current = false;
+      setMasterApprovalPending(false);
     }
   }, [activeMaster, job]);
 
-  const saveConfiguration = useCallback(async (next: { displayName?: string; poseChoices?: PoseChoices }) => {
+  const saveConfiguration = useCallback(async (next: { displayName?: string; poseChoices?: PoseChoices }, field: "displayName" | PoseRole) => {
     if (!job || configurationSaving) return false;
+    const previous = job;
+    const optimistic = {
+      ...job,
+      configuration: {
+        ...job.configuration,
+        ...next,
+        poseChoices: next.poseChoices ?? job.configuration.poseChoices,
+      },
+      poseChoices: next.poseChoices ?? job.poseChoices,
+    };
     const current = new AbortController();
     controller.current = current;
     setConfigurationSaving(true);
+    setConfigurationSavingField(field);
+    setConfigurationSaveStatus("saving");
     setErrorMessage("");
+    setJob(optimistic);
+    setPoseChoices(optimistic.configuration.poseChoices);
     try {
       const updated = await updateMascotConfiguration(job.id, {
         ...next,
         configurationRevision: job.configuration.configurationRevision,
       }, current.signal);
-      setJob(updated);
+      setJob((existing) => ({ ...updated, masters: updated.masters.length ? updated.masters : existing?.masters ?? previous.masters }));
       setPoseChoices(updated.configuration.poseChoices);
+      setConfigurationSaveStatus("saved");
       return true;
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Não foi possível salvar a configuração.");
+      const conflict = error instanceof GenerationRequestError && error.code === "POSE_CONFIGURATION_CONFLICT";
+      if (conflict) {
+        try {
+          const refreshed = await resumeGenerationJob(current.signal);
+          if (refreshed) {
+            setJob((existing) => ({ ...refreshed, masters: refreshed.masters.length ? refreshed.masters : existing?.masters ?? previous.masters }));
+            setPoseChoices(refreshed.configuration.poseChoices);
+          } else {
+            setJob(previous);
+            setPoseChoices(previous.configuration.poseChoices);
+          }
+        } catch {
+          setJob(previous);
+          setPoseChoices(previous.configuration.poseChoices);
+        }
+      } else {
+        setJob(previous);
+        setPoseChoices(previous.configuration.poseChoices);
+      }
+      setConfigurationSaveStatus("error");
+      setErrorMessage(conflict
+        ? "A configuração foi alterada em outra sessão. As escolhas mais recentes foram recarregadas."
+        : error instanceof Error ? error.message : "Não foi possível salvar a configuração.");
       return false;
     } finally {
       setConfigurationSaving(false);
+      setConfigurationSavingField(undefined);
     }
   }, [configurationSaving, job]);
 
-  const saveDisplayName = useCallback((displayName: string) => saveConfiguration({ displayName }), [saveConfiguration]);
+  const saveDisplayName = useCallback((displayName: string) => saveConfiguration({ displayName }, "displayName"), [saveConfiguration]);
   const savePoseChoice = useCallback((role: PoseRole, optionId: string) => {
     if (!job) return Promise.resolve(false);
-    return saveConfiguration({ poseChoices: { ...job.configuration.poseChoices, [role]: optionId } });
+    return saveConfiguration({ poseChoices: { ...job.configuration.poseChoices, [role]: optionId } }, role);
   }, [job, saveConfiguration]);
   const openPoseConfiguration = useCallback(() => setState("configuring-poses"), []);
   const closePoseConfiguration = useCallback(() => setState("master-approved"), []);
@@ -522,6 +571,10 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     poseChoices,
     configuration: job?.configuration,
     configurationSaving,
+    configurationSavingField,
+    configurationSaveStatus,
+    configurationReady,
+    masterApprovalPending,
     poseGenerationReady,
     poseCapabilitiesLoading: capabilitiesLoading,
     poseCapabilityMessage: capabilityMessage(capabilities, capabilitiesLoading),
@@ -536,7 +589,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     continuePoseSelection,
     backPoseSelection,
     generatePoseSet,
-  }), [acceptMaster, activeMaster, backPoseSelection, capabilities, capabilitiesLoading, changePhoto, closePoseConfiguration, configurationSaving, confirmPhoto, continuePoseSelection, deleteRegisteredMascot, errorCode, errorMessage, generatePoseSet, job, libraryItem, masterIndex, masterUrl, nextMaster, openPoseConfiguration, photoUrl, poseChoices, poseGenerationReady, progress, resumeCurrentGeneration, revealComplete, retryMasterImage, saveDisplayName, saveLibrary, savePoseChoice, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
+  }), [acceptMaster, activeMaster, backPoseSelection, capabilities, capabilitiesLoading, changePhoto, closePoseConfiguration, configurationReady, configurationSaveStatus, configurationSaving, configurationSavingField, confirmPhoto, continuePoseSelection, deleteRegisteredMascot, errorCode, errorMessage, generatePoseSet, job, libraryItem, masterApprovalPending, masterIndex, masterUrl, nextMaster, openPoseConfiguration, photoUrl, poseChoices, poseGenerationReady, progress, resumeCurrentGeneration, revealComplete, retryMasterImage, saveDisplayName, saveLibrary, savePoseChoice, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
 }
 
 function validDisplayName(value: string) {

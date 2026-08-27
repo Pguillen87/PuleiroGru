@@ -49,6 +49,16 @@ export async function findAttempt(client: SupabaseClient, userId: string, attemp
   return data;
 }
 
+export async function findAttemptByJobId(client: SupabaseClient, userId: string, jobId: string) {
+  const { data, error } = await client.from("mascot_attempts")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("modal_job_id", jobId)
+    .maybeSingle<MascotAttempt>();
+  if (error) throw new MascotAttemptStoreError();
+  return data;
+}
+
 export async function findLatestResumableAttempt(client: SupabaseClient, userId: string) {
   const { data, error } = await client.from("mascot_attempts")
     .select("*")
@@ -63,6 +73,10 @@ export async function findLatestResumableAttempt(client: SupabaseClient, userId:
 
 export function isResumableAttemptStatus(status: GenerationJobStatus) {
   return RESUMABLE_ATTEMPT_STATUSES.includes(status);
+}
+
+export function isDeletableAttemptStatus(status: GenerationJobStatus) {
+  return status === "registered" || status === "awaiting_generation_authorization";
 }
 
 export async function markAttemptReady(client: SupabaseClient, userId: string, attemptId: string) {

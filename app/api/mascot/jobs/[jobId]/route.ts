@@ -3,7 +3,7 @@ import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { ATTEMPT_COOKIE, getAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
-import { deleteAttempt, findAttempt, saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
+import { deleteAttempt, findAttempt, findAttemptByJobId, isDeletableAttemptStatus, saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
 import { createClient } from "@/lib/supabase/server";
 import { reconcileGenerationTelemetry } from "@/lib/mascot-generation/telemetry-store";
 import { reconcileAssetChecks } from "@/lib/mascot-generation/asset-check-store";
@@ -51,20 +51,28 @@ export async function DELETE(request: Request, context: { params: Promise<{ jobI
   let trace: MascotTraceContext | undefined;
   if (!validId(jobId)) return NextResponse.json({ message: "Identificador inválido.", code: "INVALID_JOB_ID" }, { status: 400 });
   try {
-    const [identity, attemptId] = await Promise.all([requireBrowserIdentity(request), getAttemptId()]);
-    if (!attemptId || identity.mode !== "supabase-session") {
+    const [identity, cookieAttemptId] = await Promise.all([requireBrowserIdentity(request), getAttemptId()]);
+    if (identity.mode !== "supabase-session") {
       return NextResponse.json({ message: "Entre novamente para excluir este nascimento.", code: "DELETION_REQUIRES_SESSION" }, { status: 403 });
     }
-    trace = createTraceContext(attemptId, true);
+    const lookupTrace = createTraceContext(cookieAttemptId ?? jobId, true);
+    trace = lookupTrace;
     const client = await createClient();
-    const attempt = await findAttempt(client, identity.uid, attemptId);
+    const attempt = cookieAttemptId
+      ? await findAttempt(client, identity.uid, cookieAttemptId)
+      : await findAttemptByJobId(client, identity.uid, jobId);
     if (!attempt || attempt.modal_job_id !== jobId) {
-      return traceResponse(NextResponse.json({ message: "Nascimento não encontrado.", code: "JOB_NOT_FOUND" }, { status: 404 }), trace);
+      return traceResponse(NextResponse.json({ message: "Nascimento não encontrado.", code: "JOB_NOT_FOUND" }, { status: 404 }), lookupTrace);
     }
-    const deletion = await getMascotGenerationProvider().deleteJob(jobId, jobIdentity(identity.uid, attemptId, trace));
-    await deleteAttempt(client, identity.uid, attemptId, jobId);
+    if (!isDeletableAttemptStatus(attempt.status)) {
+      return traceResponse(NextResponse.json({ message: "Este nascimento não pode mais ser excluído por esta etapa.", code: "JOB_DELETION_NOT_ALLOWED" }, { status: 409 }), lookupTrace);
+    }
+    const deletionTrace = createTraceContext(attempt.attempt_id, true);
+    trace = deletionTrace;
+    const deletion = await getMascotGenerationProvider().deleteJob(jobId, jobIdentity(identity.uid, attempt.attempt_id, deletionTrace));
+    await deleteAttempt(client, identity.uid, attempt.attempt_id, jobId);
     mascotLog("generation_deleted", {
-      ...trace, jobId, result: deletion.idempotentReplay ? "idempotent_replay" : "deleted",
+      ...deletionTrace, jobId, result: deletion.idempotentReplay ? "idempotent_replay" : "deleted",
       durationMs: Math.round(performance.now() - startedAt), httpStatus: 202,
     });
     const response = traceResponse(NextResponse.json({ deleted: true }, { status: 202 }), trace);

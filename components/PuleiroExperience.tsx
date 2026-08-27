@@ -30,6 +30,7 @@ export function PuleiroExperience({ config }: { config: FlowConfig }) {
 function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
   const flow = useMascotGenerationFlow(config);
   const [announcement, setAnnouncement] = useState("");
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
 
   const stageContent = {
     entry: <EntryStage onStart={flow.openSelection} />,
@@ -58,17 +59,15 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
           : "Você pode fechar esta página e voltar com a mesma conta."}
         action={config.masterGenerationEnabled
           ? <StageButton type="button" onClick={flow.startRegisteredGeneration}>Começar nascimento</StageButton>
-          : <StageButton
-              type="button"
-              tone="secondary"
-              onClick={() => {
-                if (window.confirm("Excluir este nascimento e a foto enviada? Esta ação não pode ser desfeita.")) {
-                  void flow.deleteRegisteredMascot();
-                }
-              }}
-            >
-              Excluir este nascimento
-            </StageButton>}
+          : deleteConfirmationOpen ? <>
+              <p role="alert">A foto enviada e este nascimento serão excluídos definitivamente.</p>
+              <StageButton type="button" tone="secondary" onClick={() => setDeleteConfirmationOpen(false)}>Cancelar</StageButton>
+              <StageButton type="button" onClick={() => {
+                setDeleteConfirmationOpen(false);
+                void flow.deleteRegisteredMascot();
+              }}>Confirmar exclusão</StageButton>
+            </>
+            : <StageButton type="button" tone="secondary" onClick={() => setDeleteConfirmationOpen(true)}>Excluir este nascimento</StageButton>}
       />
     ),
     "master-ready": flow.revealComplete

@@ -185,24 +185,6 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setState("photo-selection");
   }, []);
 
-  const deleteRegisteredMascot = useCallback(async () => {
-    if (!job || !["registered", "awaiting_generation_authorization"].includes(job.status)) return false;
-    controller.current?.abort();
-    const current = new AbortController();
-    controller.current = current;
-    setErrorMessage("");
-    try {
-      await deleteGenerationJob(job.id, current.signal);
-      startNewMascot();
-      return true;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return false;
-      setErrorCode(error instanceof GenerationRequestError ? error.code : "JOB_DELETE_FAILED");
-      setErrorMessage(error instanceof Error ? error.message : "Não foi possível excluir este nascimento agora.");
-      return false;
-    }
-  }, [job, startNewMascot]);
-
   const confirmPhoto = useCallback(() => setState("subject-confirmation"), []);
 
   const finishReveal = useCallback(() => {
@@ -230,6 +212,36 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     setState("master-ready");
     finishReveal();
   }, [finishReveal]);
+
+  const deleteRegisteredMascot = useCallback(async () => {
+    if (!job || !["registered", "awaiting_generation_authorization"].includes(job.status)) return false;
+    controller.current?.abort();
+    const current = new AbortController();
+    controller.current = current;
+    setErrorMessage("");
+    try {
+      await deleteGenerationJob(job.id, current.signal);
+      startNewMascot();
+      return true;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return false;
+      if (error instanceof GenerationRequestError && error.retryable) {
+        try {
+          const resumed = await resumeGenerationJob(current.signal);
+          if (!resumed || resumed.id !== job.id) {
+            if (resumed) applyJob(resumed);
+            else startNewMascot();
+            return true;
+          }
+        } catch (resumeError) {
+          if (resumeError instanceof DOMException && resumeError.name === "AbortError") return false;
+        }
+      }
+      setErrorCode(error instanceof GenerationRequestError ? error.code : "JOB_DELETE_FAILED");
+      setErrorMessage(error instanceof Error ? error.message : "Não foi possível excluir este nascimento agora.");
+      return false;
+    }
+  }, [applyJob, job, startNewMascot]);
 
   const startGeneration = useCallback(async (confirmedIdentity?: SubjectIdentity) => {
     if (!photo) return setState("photo-selection");

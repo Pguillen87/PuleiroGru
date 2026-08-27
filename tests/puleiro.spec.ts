@@ -303,6 +303,32 @@ test("retoma job já aprovado sem acusar ausência de Masters", async ({ page })
   await expect(page.locator(".stage__art img")).toHaveAttribute("src", "/api/mascot/jobs/aprovado/master/master_3");
 });
 
+test("consulta o estado antes de oferecer nova exclusão após resposta incerta", async ({ page }) => {
+  let reads = 0;
+  let deletionAttempted = false;
+  await page.route("**/api/mascot/jobs/current", (route) => {
+    reads += 1;
+    const job = !deletionAttempted
+      ? { id: "registro-incerto", attemptId: "attempt-incerto", status: "registered", message: "Nascimento guardado.", generationScheduled: false, masters: [], ...jobIdentity }
+      : { id: "master-retomado", attemptId: "attempt-anterior", status: "master_approved", message: "Mascote mestre aprovado.", generationScheduled: true, masters: [{ id: "master_1", imageUrl: "/assets/puleiro-reveal.jpg" }], approvedMasterId: "master_1", ...jobIdentity };
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ job }) });
+  });
+  await page.route("**/api/mascot/jobs/registro-incerto", (route) => {
+    deletionAttempted = true;
+    return route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ code: "JOB_DELETE_FAILED", message: "A exclusão ainda está sendo confirmada.", retryable: true }),
+    });
+  });
+  await page.goto("/criar");
+  await expect(page.getByRole("heading", { name: "Nascimento guardado" })).toBeVisible();
+  await page.getByRole("button", { name: "Excluir este nascimento" }).click();
+  await page.getByRole("button", { name: "Confirmar exclusão" }).click();
+  await expect(page.getByRole("heading", { name: "Configure os jeitos que ele contará" })).toBeVisible();
+  expect(reads).toBeGreaterThanOrEqual(2);
+});
+
 test("retoma geração de poses por GET e preserva o Master inteiro", async ({ page }) => {
   let posePosts = 0;
   page.on("request", (request) => {

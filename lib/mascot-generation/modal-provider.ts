@@ -279,6 +279,7 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
 
 export function modalRequestTimeoutMs(path: string, method = "GET") {
   if (method === "POST" && path === "/v2/mascot/jobs") return 35_000;
+  if (method === "DELETE" && /^\/v2\/mascot\/jobs\/[^/?]+$/.test(path)) return 60_000;
   if (method === "POST") return 20_000;
   return 20_000;
 }

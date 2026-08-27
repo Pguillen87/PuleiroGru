@@ -58,7 +58,17 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
           : "Você pode fechar esta página e voltar com a mesma conta."}
         action={config.masterGenerationEnabled
           ? <StageButton type="button" onClick={flow.startRegisteredGeneration}>Começar nascimento</StageButton>
-          : undefined}
+          : <StageButton
+              type="button"
+              tone="secondary"
+              onClick={() => {
+                if (window.confirm("Excluir este nascimento e a foto enviada? Esta ação não pode ser desfeita.")) {
+                  void flow.deleteRegisteredMascot();
+                }
+              }}
+            >
+              Excluir este nascimento
+            </StageButton>}
       />
     ),
     "master-ready": flow.revealComplete

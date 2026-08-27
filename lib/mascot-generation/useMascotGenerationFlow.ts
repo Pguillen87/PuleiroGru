@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PuleiroState } from "@/lib/puleiro-state";
 import { REDUCED_REVEAL_DURATION_MS, REVEAL_DURATION_MS } from "@/lib/puleiro-state";
-import { approveMaster, createGenerationJob, finalizeMascot, GenerationRequestError, getGenerationCapabilities, pollGenerationJob, resumeGenerationJob, startMasterGeneration, startPoseGeneration, updateMascotConfiguration } from "./client";
+import { approveMaster, createGenerationJob, deleteGenerationJob, finalizeMascot, GenerationRequestError, getGenerationCapabilities, pollGenerationJob, resumeGenerationJob, startMasterGeneration, startPoseGeneration, updateMascotConfiguration } from "./client";
 import { DEFAULT_POSE_CHOICES, POSE_CATALOG_VERSION, POSE_OPTIONS, POSE_ROLE_ORDER } from "./pose-catalog";
 import type { GenerationCapabilities, GenerationJob, MascotLibraryItem, PoseChoices, PoseRole, SubjectIdentity } from "./types";
 import type { GenerationProgressModel } from "@/components/status/GenerationProgress";
@@ -177,6 +177,24 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     libraryAutoSaveAttempted.current = false;
     setState("photo-selection");
   }, []);
+
+  const deleteRegisteredMascot = useCallback(async () => {
+    if (!job || !["registered", "awaiting_generation_authorization"].includes(job.status)) return false;
+    controller.current?.abort();
+    const current = new AbortController();
+    controller.current = current;
+    setErrorMessage("");
+    try {
+      await deleteGenerationJob(job.id, current.signal);
+      startNewMascot();
+      return true;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return false;
+      setErrorCode(error instanceof GenerationRequestError ? error.code : "JOB_DELETE_FAILED");
+      setErrorMessage(error instanceof Error ? error.message : "Não foi possível excluir este nascimento agora.");
+      return false;
+    }
+  }, [job, startNewMascot]);
 
   const confirmPhoto = useCallback(() => setState("subject-confirmation"), []);
 
@@ -488,6 +506,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     confirmSubject: startGeneration,
     changePhoto,
     startNewMascot,
+    deleteRegisteredMascot,
     startGeneration,
     resumeCurrentGeneration,
     startRegisteredGeneration,
@@ -517,7 +536,7 @@ export function useMascotGenerationFlow(config: FlowConfig) {
     continuePoseSelection,
     backPoseSelection,
     generatePoseSet,
-  }), [acceptMaster, activeMaster, backPoseSelection, capabilities, capabilitiesLoading, changePhoto, closePoseConfiguration, configurationSaving, confirmPhoto, continuePoseSelection, errorCode, errorMessage, generatePoseSet, job, libraryItem, masterIndex, masterUrl, nextMaster, openPoseConfiguration, photoUrl, poseChoices, poseGenerationReady, progress, resumeCurrentGeneration, revealComplete, retryMasterImage, saveDisplayName, saveLibrary, savePoseChoice, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
+  }), [acceptMaster, activeMaster, backPoseSelection, capabilities, capabilitiesLoading, changePhoto, closePoseConfiguration, configurationSaving, confirmPhoto, continuePoseSelection, deleteRegisteredMascot, errorCode, errorMessage, generatePoseSet, job, libraryItem, masterIndex, masterUrl, nextMaster, openPoseConfiguration, photoUrl, poseChoices, poseGenerationReady, progress, resumeCurrentGeneration, revealComplete, retryMasterImage, saveDisplayName, saveLibrary, savePoseChoice, selectPhoto, selectPose, startGeneration, startNewMascot, startRegisteredGeneration, state, statusMessage, subjectIdentity]);
 }
 
 function validDisplayName(value: string) {

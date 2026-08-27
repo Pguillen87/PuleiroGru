@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createGenerationJob, pollGenerationJob, startPoseGeneration, updateMascotConfiguration } from "@/lib/mascot-generation/client";
+import { createGenerationJob, deleteGenerationJob, pollGenerationJob, startPoseGeneration, updateMascotConfiguration } from "@/lib/mascot-generation/client";
 import type { GenerationJob } from "@/lib/mascot-generation/types";
 
 const job: GenerationJob = {
@@ -119,5 +119,12 @@ describe("retomada durante consulta instável", () => {
     await updateMascotConfiguration("job-1", { displayName: "Paulinho", configurationRevision: 0 }, new AbortController().signal);
 
     expect(fetchMock).toHaveBeenCalledWith("/api/mascot/jobs/job-1/configuration", expect.objectContaining({ method: "PATCH" }));
+  });
+
+  it("só aceita a confirmação explícita da exclusão do BFF", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ deleted: true }), { status: 202, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(deleteGenerationJob("job-1", new AbortController().signal)).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith("/api/mascot/jobs/job-1", expect.objectContaining({ method: "DELETE" }));
   });
 });

@@ -112,6 +112,22 @@ export async function resumeGenerationJob(signal: AbortSignal) {
   return readResponse(response, true);
 }
 
+export async function deleteGenerationJob(jobId: string, signal: AbortSignal) {
+  const response = await fetch(`/api/mascot/jobs/${encodeURIComponent(jobId)}`, {
+    method: "DELETE",
+    signal,
+  });
+  const body = await response.json().catch(() => ({})) as { deleted?: boolean; message?: string; code?: string; supportCode?: string };
+  if (!response.ok || body.deleted !== true) {
+    throw new GenerationRequestError(
+      safeSupportMessage(body.message ?? "Não foi possível excluir este nascimento agora.", body.supportCode),
+      response.status >= 500,
+      body.code ?? "JOB_DELETE_FAILED",
+      body.supportCode,
+    );
+  }
+}
+
 export async function approveMaster(jobId: string, masterId: string, signal: AbortSignal) {
   const response = await fetch(
     `/api/mascot/jobs/${encodeURIComponent(jobId)}/masters/${encodeURIComponent(masterId)}/approve`,

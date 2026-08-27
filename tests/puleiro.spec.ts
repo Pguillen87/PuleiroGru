@@ -462,6 +462,17 @@ test("Jornal mantém o Master real em desktop e reflow sem corte em mobile", asy
   const desk = await journal.locator(".mascot-journal__desk").boundingBox();
   expect(portrait?.x).toBeLessThan(desk?.x ?? 0);
 
+  const close = journal.getByRole("button", { name: "Fechar configurações" });
+  for (const width of [1440, 1024, 768, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const journalBox = await journal.boundingBox();
+    const closeBox = await close.boundingBox();
+    expect(journalBox).not.toBeNull();
+    expect(closeBox).not.toBeNull();
+    expect(closeBox!.x + closeBox!.width).toBeGreaterThanOrEqual(journalBox!.x + journalBox!.width - 96);
+    expect(closeBox!.x + closeBox!.width).toBeLessThanOrEqual(journalBox!.x + journalBox!.width - 8);
+  }
+
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator(".mascot-journal__portrait img")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(

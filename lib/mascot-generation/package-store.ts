@@ -35,13 +35,18 @@ export type MascotPackageManifest = {
   assets: PackageAsset[];
 };
 export type MascotPackageRow = { id: string; user_id?: string; package_version: string; manifest: unknown; status: PackageStatus };
+export type PackageRecoveryStage = "after_asset_1" | "after_assets_3" | "after_manifest" | "after_code" | "before_ready" | "after_ready";
+export type PackageRecoveryHooks = {
+  /** Internal test seam. It is never populated by an HTTP request. */
+  afterStage?: (stage: PackageRecoveryStage, packageId: string) => Promise<void> | void;
+};
 
 export class MascotPackageError extends Error {
   constructor(readonly code: string, message: string) { super(message); }
 }
 
 /** Explicit recovery operation. `ready` is the only public commit marker. */
-export async function publishMascotPackage(client: SupabaseClient, userId: string, itemId: string) {
+export async function publishMascotPackage(client: SupabaseClient, userId: string, itemId: string, hooks?: PackageRecoveryHooks) {
   const admin = createAdminClient();
   if (!admin) throw new MascotPackageError("PACKAGE_STORAGE_UNAVAILABLE", "Armazenamento de pacotes não configurado.");
   const item = await findLibraryItem(client, userId, itemId);
@@ -51,12 +56,18 @@ export async function publishMascotPackage(client: SupabaseClient, userId: strin
   const packageRow = existing ?? await createPendingPackage(admin, userId, item);
   if (packageRow.status === "revoked") throw new MascotPackageError("PACKAGE_REVOKED", "Este pacote foi revogado e não pode ser preparado novamente.");
   const sources = await loadApprovedPoseAssets(userId, item);
-  const assets = await storeAssetsExactly(admin, userId, packageRow.id, sources);
+  const assets = await storeAssetsExactly(admin, userId, packageRow.id, sources, hooks);
+  await notifyRecoveryStage(hooks, "after_assets_3", packageRow.id);
   const manifest = createManifest(item, assets);
   assertManifest(manifest, userId, packageRow.id);
   await savePendingManifest(admin, userId, packageRow.id, manifest);
+  await notifyRecoveryStage(hooks, "after_manifest", packageRow.id);
   await ensureImportCode(admin, userId, packageRow.id, item.mascotCode);
-  return { item, package: await promoteReady(admin, userId, packageRow.id, manifest) };
+  await notifyRecoveryStage(hooks, "after_code", packageRow.id);
+  await notifyRecoveryStage(hooks, "before_ready", packageRow.id);
+  const ready = await promoteReady(admin, userId, packageRow.id, manifest);
+  await notifyRecoveryStage(hooks, "after_ready", packageRow.id);
+  return { item, package: ready };
 }
 
 /** Published manifests are immutable; a future revision requires an explicit Android contract. */
@@ -126,13 +137,20 @@ async function loadApprovedPoseAssets(userId: string, item: MascotLibraryItem) {
   }));
 }
 
-async function storeAssetsExactly(admin: SupabaseClient, userId: string, packageId: string, sources: Awaited<ReturnType<typeof loadApprovedPoseAssets>>): Promise<PackageAsset[]> {
-  return Promise.all(sources.map(async (source) => {
+async function storeAssetsExactly(admin: SupabaseClient, userId: string, packageId: string, sources: Awaited<ReturnType<typeof loadApprovedPoseAssets>>, hooks?: PackageRecoveryHooks): Promise<PackageAsset[]> {
+  const assets: PackageAsset[] = [];
+  for (const [index, source] of sources.entries()) {
     const storagePath = packageAssetPath(userId, packageId, source.role, source.hash, source.mimeType);
     await putOrVerifyExactBytes(admin, storagePath, source.bytes, source.mimeType, source.hash);
-    return { poseId: source.pose.id, role: source.role.toUpperCase() as Uppercase<PoseRole>, storagePath, sha256: source.hash,
-      expectedBytes: source.bytes.byteLength, mimeType: source.mimeType, width: source.width, height: source.height };
-  }));
+    assets.push({ poseId: source.pose.id, role: source.role.toUpperCase() as Uppercase<PoseRole>, storagePath, sha256: source.hash,
+      expectedBytes: source.bytes.byteLength, mimeType: source.mimeType, width: source.width, height: source.height });
+    if (index === 0) await notifyRecoveryStage(hooks, "after_asset_1", packageId);
+  }
+  return assets;
+}
+
+async function notifyRecoveryStage(hooks: PackageRecoveryHooks | undefined, stage: PackageRecoveryStage, packageId: string) {
+  await hooks?.afterStage?.(stage, packageId);
 }
 
 async function putOrVerifyExactBytes(admin: SupabaseClient, storagePath: string, bytes: Uint8Array, mimeType: PackageAsset["mimeType"], expectedHash: string) {

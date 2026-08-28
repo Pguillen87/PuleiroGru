@@ -4,6 +4,7 @@ import { listLibraryItems } from "@/lib/mascot-generation/library-store";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
+import type { MascotLibraryItem } from "@/lib/mascot-generation/types";
 
 export const runtime = "nodejs";
 
@@ -27,13 +28,36 @@ export async function GET(request: Request) {
     });
     const nextOffset = offset + page.items.length < page.total ? offset + page.items.length : null;
     const admin = createAdminClient();
+    const packageStates = admin ? await readFinalizationStates(admin, identity.uid, page.items) : new Map<string, MascotLibraryItem["finalization"]>();
     const publicIds = admin && page.items.length
       ? new Set((await admin.from("mascot_public_mascots").select("source_item_id").in("source_item_id", page.items.map((item) => item.id))).data?.map((row: { source_item_id: string }) => row.source_item_id) ?? [])
       : new Set<string>();
-    return NextResponse.json({ items: page.items.map((item) => presentLibraryItem(item, publicIds.has(item.id))), total: page.total, nextOffset });
+    const decorated = page.items.map((item) => ({ ...item, finalization: packageStates.get(item.id) ?? { state: "not_started" as const } }));
+    const items = decorated.filter((item) => item.finalization?.state === "ready");
+    const pendingItems = decorated.filter((item) => item.finalization?.state !== "ready");
+    return NextResponse.json({ items: items.map((item) => presentLibraryItem(item, publicIds.has(item.id))), pendingItems: pendingItems.map((item) => presentLibraryItem(item, false)), total: page.total, nextOffset });
   } catch (error) {
     return integrationErrorResponse(error, "LIBRARY_READ_FAILED", "Não foi possível abrir sua biblioteca agora.");
   }
+}
+
+async function readFinalizationStates(admin: NonNullable<ReturnType<typeof createAdminClient>>, userId: string, items: Awaited<ReturnType<typeof listLibraryItems>>["items"]) {
+  const states = new Map<string, MascotLibraryItem["finalization"]>();
+  if (!items.length) return states;
+  const itemIds = items.map((item) => item.id);
+  const jobIds = items.map((item) => item.jobId);
+  const [{ data: packages }, { data: attempts }] = await Promise.all([
+    admin.from("mascot_packages").select("library_item_id, status").eq("user_id", userId).in("library_item_id", itemIds),
+    admin.from("mascot_attempts").select("modal_job_id, status, operation_id, last_error_code").eq("user_id", userId).in("modal_job_id", jobIds),
+  ]);
+  const attemptsByJob = new Map((attempts ?? []).map((attempt: { modal_job_id: string; status: string; operation_id: string | null; last_error_code: string | null }) => [attempt.modal_job_id, attempt]));
+  for (const item of items) {
+    const packageRow = (packages ?? []).find((entry: { library_item_id: string }) => entry.library_item_id === item.id) as { status: string } | undefined;
+    const attempt = attemptsByJob.get(item.jobId);
+    const state = packageRow?.status === "ready" ? "ready" : packageRow?.status === "pending" || attempt?.status === "packaging" ? "packaging" : attempt?.status === "failed" ? "failed" : "not_started";
+    states.set(item.id, { state, operationId: attempt?.operation_id ?? undefined, errorCode: attempt?.last_error_code ?? undefined });
+  }
+  return states;
 }
 
 function presentLibraryItem(item: Awaited<ReturnType<typeof listLibraryItems>>["items"][number], isPublic: boolean) {

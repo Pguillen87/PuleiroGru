@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { createClient } from "@/lib/supabase/server";
+import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
 import { publishMascotPackage, MascotPackageError } from "@/lib/mascot-generation/package-store";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request, context: { params: Promise<{ itemId: string }> }) {
   try {
+    requireTrustedMutationRequest(request, { contentTypes: ["application/json"] });
     const identity = await requireBrowserIdentity(request);
     if (identity.mode !== "supabase-session") return NextResponse.json({ code: "SESSION_REQUIRED" }, { status: 401 });
     const { itemId } = await context.params;

@@ -97,6 +97,27 @@ export async function markAttemptReady(client: SupabaseClient, userId: string, a
   if (error || !data) throw new MascotAttemptStoreError();
 }
 
+export async function markAttemptPackaging(client: SupabaseClient, userId: string, attemptId: string) {
+  await updateAttemptFinalization(client, userId, attemptId, "packaging", null);
+}
+
+export async function markAttemptPackageFailed(client: SupabaseClient, userId: string, attemptId: string, errorCode: string) {
+  await updateAttemptFinalization(client, userId, attemptId, "failed", errorCode);
+}
+
+async function updateAttemptFinalization(
+  client: SupabaseClient,
+  userId: string,
+  attemptId: string,
+  status: GenerationJobStatus,
+  errorCode: string | null,
+) {
+  const { data, error } = await client.from("mascot_attempts")
+    .update({ status, current_stage: status, last_error_code: errorCode, updated_at: new Date().toISOString() })
+    .eq("user_id", userId).eq("attempt_id", attemptId).select("id").maybeSingle<{ id: string }>();
+  if (error || !data) throw new MascotAttemptStoreError();
+}
+
 export async function deleteAttempt(client: SupabaseClient, userId: string, attemptId: string, jobId: string) {
   const { data, error } = await client.from("mascot_attempts")
     .delete()

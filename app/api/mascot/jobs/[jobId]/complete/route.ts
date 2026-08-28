@@ -3,8 +3,9 @@ import { createHash } from "node:crypto";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { getAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
-import { markAttemptReady } from "@/lib/mascot-generation/attempt-store";
+import { markAttemptPackageFailed, markAttemptPackaging, markAttemptReady } from "@/lib/mascot-generation/attempt-store";
 import { saveLibraryItem } from "@/lib/mascot-generation/library-store";
+import { MascotPackageError, publishMascotPackage } from "@/lib/mascot-generation/package-store";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import type { GeneratedPose, GenerationJob, PoseRole } from "@/lib/mascot-generation/types";
 import { createClient } from "@/lib/supabase/server";
@@ -18,6 +19,7 @@ const expectedRoles: PoseRole[] = ["normal", "listening", "transcribing"];
 export async function POST(request: Request, context: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await context.params;
   if (!validId(jobId)) return NextResponse.json({ message: "Identificador inválido." }, { status: 400 });
+  let finalization: { userId: string; attemptId: string } | null = null;
   try {
     requireTrustedMutationRequest(request, { contentTypes: ["application/json"] });
     const body = await request.json().catch(() => null) as { displayName?: unknown } | null;
@@ -37,6 +39,8 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     await verifyPoseAssets(job, identity.uid, attemptId);
     const supabase = await createClient();
     await reconcileAssetChecks(supabase, identity.uid, job);
+    finalization = { userId: identity.uid, attemptId };
+    await markAttemptPackaging(supabase, identity.uid, attemptId);
     const item = await saveLibraryItem(supabase, identity.uid, {
       displayName,
       jobId: job.id,
@@ -44,9 +48,14 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
       masterId: job.approvedMasterId,
       poses: job.poses.map((pose) => ({ ...pose, imageUrl: "" })),
     });
+    const finalized = await publishMascotPackage(supabase, identity.uid, item.id);
     await markAttemptReady(supabase, identity.uid, attemptId);
-    return NextResponse.json({ item: presentLibraryItem(item) }, { status: 201 });
+    return NextResponse.json({ item: presentLibraryItem(finalized.item), package: finalized.package }, { status: 201 });
   } catch (error) {
+    if (finalization) {
+      const errorCode = error instanceof MascotPackageError ? error.code : "PACKAGE_FINALIZATION_FAILED";
+      await markAttemptPackageFailed(await createClient(), finalization.userId, finalization.attemptId, errorCode).catch(() => undefined);
+    }
     return integrationErrorResponse(error, "LIBRARY_SAVE_FAILED", "Não foi possível guardar este mascote agora.");
   }
 }

@@ -14,7 +14,15 @@ export default function FixturePanel() {
       setResult(JSON.stringify(await response.json(), null, 2));
     } finally { setRunning(false); }
   }
+  async function inspectSource() {
+    setRunning(true); setResult("");
+    try {
+      const response = await fetch("/api/internal/staging-package-fixture", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "inspect_source" }) });
+      setResult(JSON.stringify(await response.json(), null, 2));
+    } finally { setRunning(false); }
+  }
   return <main><h1>Validação interna de pacote</h1><p>Disponível apenas no Preview com sessão QA autorizada.</p>
+    <button disabled={running} onClick={inspectSource}>Inspecionar fonte</button>
     {checkpoints.map((checkpoint) => <button key={checkpoint} disabled={running} onClick={() => run(checkpoint)}>{checkpoint}</button>)}
     <pre aria-live="polite">{result}</pre>
   </main>;

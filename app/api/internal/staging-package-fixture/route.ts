@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import sharp from "sharp";
 import { authErrorResponse, requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -7,10 +8,14 @@ import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
 import { parseReadyManifest, publishMascotPackage, resolveMascotImportCode, type PackageAsset, type PackageRecoveryStage } from "@/lib/mascot-generation/package-store";
 import { FixtureAudit, FixtureStageError, fixtureErrorResponse } from "@/lib/mascot-generation/fixture-observability";
 import { resolveFixtureSource, type FixtureSource } from "@/lib/mascot-generation/fixture-source";
+import { fixtureSourceRoles, inspectPoseQc, poseSetVisualV2Thresholds, shortHash } from "@/lib/mascot-generation/fixture-source-inspection";
+import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
+import { jobIdentity } from "@/lib/mascot-generation/attempt";
 
 export const runtime = "nodejs";
 
 const ORIGINAL_QA_JOB_ID = "job_ad22b714e3547391e9654abf1ece384b";
+const INSPECTION_SOURCE_JOB_ID = "job_43136e0b5283358281bc1d4c6efa8c01";
 const checkpoints = new Set<PackageRecoveryStage>(["after_asset_1", "after_assets_3", "after_manifest", "after_code", "before_ready", "after_ready"]);
 
 class FixtureAbort extends Error {}
@@ -19,11 +24,12 @@ export async function POST(request: Request) {
   if (process.env.VERCEL_ENV !== "preview") return NextResponse.json({ code: "FIXTURE_DISABLED" }, { status: 404 });
   try {
     requireTrustedMutationRequest(request, { contentTypes: ["application/json"] });
-    const checkpoint = await requestedCheckpoint(request);
+    const action = await requestedAction(request);
     const identity = await requireBrowserIdentity(request);
     if (identity.mode !== "supabase-session") return NextResponse.json({ code: "SESSION_REQUIRED" }, { status: 401 });
     await requireFixtureOwner();
-    return NextResponse.json(await runFixture(identity.uid, checkpoint));
+    if (action === "inspect_source") return NextResponse.json(await inspectSource(identity.uid));
+    return NextResponse.json(await runFixture(identity.uid, action));
   } catch (error) {
     const auth = authErrorResponse(error);
     if (auth) return auth;
@@ -32,10 +38,12 @@ export async function POST(request: Request) {
   }
 }
 
-async function requestedCheckpoint(request: Request): Promise<PackageRecoveryStage> {
-  const value = (await request.json().catch(() => null) as { checkpoint?: unknown } | null)?.checkpoint;
-  if (typeof value !== "string" || !checkpoints.has(value as PackageRecoveryStage)) throw new Error("FIXTURE_CHECKPOINT_INVALID");
-  return value as PackageRecoveryStage;
+async function requestedAction(request: Request): Promise<PackageRecoveryStage | "inspect_source"> {
+  const value = (await request.json().catch(() => null) as { checkpoint?: unknown; action?: unknown } | null);
+  if (value?.action === "inspect_source") return "inspect_source";
+  const checkpoint = value?.checkpoint;
+  if (typeof checkpoint !== "string" || !checkpoints.has(checkpoint as PackageRecoveryStage)) throw new Error("FIXTURE_CHECKPOINT_INVALID");
+  return checkpoint as PackageRecoveryStage;
 }
 
 async function requireFixtureOwner() {
@@ -128,6 +136,40 @@ async function loadFixtureSource(admin: NonNullable<ReturnType<typeof createAdmi
   const source = !error ? resolveFixtureSource(data, userId) : null;
   if (!source) throw new Error("FIXTURE_SOURCE_UNAVAILABLE");
   return source;
+}
+
+async function inspectSource(userId: string) {
+  const admin = createAdminClient();
+  if (!admin) throw new FixtureStageError("FIXTURE_PROVIDER_FETCH", "FIXTURE_STORAGE_UNAVAILABLE");
+  const reader = await loadFixtureSource(admin, userId);
+  const provider = getMascotGenerationProvider();
+  const identity = jobIdentity(userId, reader.attemptId);
+  const job = await provider.getJob(INSPECTION_SOURCE_JOB_ID, identity);
+  if (!job) throw new FixtureStageError("FIXTURE_PROVIDER_FETCH", "FIXTURE_SOURCE_UNAVAILABLE");
+  const poses = [];
+  for (const role of fixtureSourceRoles) {
+    const pose = job.poses.filter((entry) => entry.role === role);
+    const image = pose.length === 1 ? await provider.getPoseImage?.(job.id, role, identity) : null;
+    const actualHash = image ? createHash("sha256").update(image.bytes).digest("hex") : undefined;
+    const metadata = image ? await sharp(image.bytes).metadata() : undefined;
+    poses.push({
+      role,
+      count: pose.length,
+      manifestHash: shortHash(pose[0]?.sha256),
+      servedHash: shortHash(actualHash),
+      hashMatches: Boolean(pose[0]?.sha256 && actualHash === pose[0].sha256),
+      pngRgba: metadata?.format === "png" && metadata.hasAlpha === true,
+      qc: inspectPoseQc(pose[0]?.qc as Record<string, unknown> | undefined),
+    });
+  }
+  return {
+    jobId: job.id,
+    sourceAttemptResolvedServerSide: Boolean(job.attemptId),
+    jobStatus: job.status,
+    poseSetQc: job.poseSetQc,
+    poseSetVisualV2Thresholds,
+    poses,
+  };
 }
 
 async function createFixtureItem(admin: NonNullable<ReturnType<typeof createAdminClient>>, userId: string, checkpoint: string, source: FixtureSource) {

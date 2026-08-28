@@ -85,7 +85,9 @@ async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {
 }
 
 async function createFixtureItem(admin: NonNullable<ReturnType<typeof createAdminClient>>, userId: string, checkpoint: string) {
-  const code = `GRU-FIX-${randomBytes(4).toString("hex").toUpperCase()}`;
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = randomBytes(8);
+  const code = `GRU-${[0, 4].map((offset) => Array.from(bytes.subarray(offset, offset + 4), (value) => alphabet[value % alphabet.length]).join("")).join("-")}`;
   const { data, error } = await admin.from("mascot_library_items").insert({
     user_id: userId, attempt_id: SOURCE_ATTEMPT_ID, modal_job_id: SOURCE_JOB_ID, master_id: "master_1",
     display_name: `Fixture ${checkpoint}`, mascot_code: code, pose_snapshot: [],

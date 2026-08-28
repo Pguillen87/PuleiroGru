@@ -98,6 +98,14 @@ export interface MascotLibraryItem {
   };
 }
 
+/** Additive set-level gate; alpha QC on each asset is necessary but not sufficient. */
+export interface PoseSetVisualQualityMetrics {
+  status: "passed" | "failed";
+  code: string;
+  version: string;
+  safe_reasons: string[];
+}
+
 export interface CommunityMascot {
   id: string;
   mascotCode: string;
@@ -138,6 +146,7 @@ export interface GenerationJob {
   poseChoices: PoseChoices;
   configuration: MascotConfiguration;
   poses: GeneratedPose[];
+  poseSetQc?: PoseSetVisualQualityMetrics;
   errorCode?: string;
   retryable?: boolean;
   operationId?: string;

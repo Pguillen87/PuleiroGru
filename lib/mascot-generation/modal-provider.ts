@@ -8,6 +8,7 @@ import type {
   GenerationJob,
   GenerationCapabilities,
   AssetQualityMetrics,
+  PoseSetVisualQualityMetrics,
   JobIdentity,
   MascotGenerationProvider,
   MasterImage,
@@ -30,6 +31,7 @@ type ModalJob = {
   poseChoices?: PoseChoices;
   configuration?: MascotConfiguration;
   poses?: Array<{ id: string; role: PoseRole; optionId: string; label: string; sha256?: string; size?: number; templateVersion?: string; qc?: AssetQualityMetrics }>;
+  poseSetQc?: PoseSetVisualQualityMetrics;
   error?: { code?: string; retryable?: boolean };
   operationId?: string;
   idempotentReplay?: boolean;
@@ -268,6 +270,7 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
         ...pose,
         imageUrl: `/api/mascot/jobs/${encodeURIComponent(job.jobId)}/pose/${encodeURIComponent(pose.role)}`,
       })),
+      poseSetQc: job.poseSetQc,
       errorCode: job.error?.code,
       retryable: job.error?.retryable,
       operationId: job.operationId ?? response?.headers.get("x-operation-id") ?? undefined,

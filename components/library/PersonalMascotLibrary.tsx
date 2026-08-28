@@ -15,6 +15,7 @@ const PAGE_SIZE = 24;
 
 export function PersonalMascotLibrary() {
   const [items, setItems] = useState<MascotLibraryItem[]>([]);
+  const [pendingItems, setPendingItems] = useState<MascotLibraryItem[]>([]);
   const [message, setMessage] = useState("Abrindo sua biblioteca privada…");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortOption>("newest");
@@ -46,6 +47,7 @@ export function PersonalMascotLibrary() {
           return;
         }
         setItems(page.items);
+        setPendingItems(page.pendingItems ?? []);
         setTotal(page.total);
         setNextOffset(page.nextOffset);
         setMessage(page.items.length
@@ -92,7 +94,7 @@ export function PersonalMascotLibrary() {
       </section>
       <LibraryControls filter={filter} query={query} sort={sort} onFilter={setFilter} onQuery={setQuery} onSort={setSort} />
       <p className="library-status" role="status" aria-live="polite">{message}</p>
-      {visibleItems.length > 0 ? <ul className="library-grid" aria-label="Mascotes salvos">
+      {visibleItems.length > 0 ? <ul className="library-grid" aria-label="Mascotes prontos">
         {visibleItems.map((item, index) => <li key={item.id}><LibraryItem
           item={item}
           priority={index < 4}
@@ -119,6 +121,10 @@ export function PersonalMascotLibrary() {
           }}
         /></li>)}
       </ul> : <LibraryEmptyState hasItems={total > 0 || Boolean(query) || filter === "favorites"} />}
+      {pendingItems.length > 0 && <section className="library-pending" aria-labelledby="library-pending-title">
+        <div><span className="state-kicker">Finalizações pendentes</span><h2 id="library-pending-title">Ainda não prontos para usar</h2><p>Esses mascotes continuam privados. O código para Android só será liberado depois da conferência completa.</p></div>
+        <ul className="library-grid" aria-label="Mascotes aguardando finalização">{pendingItems.map((item, index) => <li key={item.id}><LibraryItem item={item} priority={index < 2} catalogNumber={index + 1} selected={false} onSelect={() => undefined} onFavoriteUpdate={() => undefined} onCollectionRefresh={(nextMessage) => { setLibraryRevision((revision) => revision + 1); setMessage(nextMessage); }} onFeedback={(nextMessage, tone = "success") => setFooterFeedback({ message: nextMessage, tone })} onItemUpdate={(updated) => setPendingItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))} onItemRemove={(itemId) => setPendingItems((current) => current.filter((entry) => entry.id !== itemId))} /></li>)}</ul>
+      </section>}
       {nextOffset !== null && <button className="library-load-more" type="button" disabled={loadingMore} onClick={() => void loadMore()}>
         {loadingMore ? "Carregando mascotes…" : "Carregar mais mascotes"}
       </button>}
@@ -184,7 +190,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
   const [saving, setSaving] = useState(false);
   const [published, setPublished] = useState(Boolean(item.isPublic));
   const [packaging, setPackaging] = useState(false);
-  const [packageReady, setPackageReady] = useState(false);
+  const [packageReady, setPackageReady] = useState(item.finalization?.state === "ready");
   const [packageSuccessOpen, setPackageSuccessOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(item.displayName);
@@ -196,6 +202,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
   const moreActionsRef = useRef<HTMLDivElement>(null);
   const closePosesRef = useRef<HTMLButtonElement>(null);
   const imageUrl = item.poses.find((pose) => pose.role === "normal")?.imageUrl ?? item.poses[0]?.imageUrl;
+  const operationalReady = packageReady || item.finalization?.state === "ready";
 
   useEffect(() => {
     if (!packageSuccessOpen) return;
@@ -220,6 +227,10 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
   }, [moreActionsOpen]);
 
   async function copyCode() {
+    if (!operationalReady) {
+      onFeedback("O código será liberado quando a finalização do pacote estiver concluída.", "error");
+      return;
+    }
     try {
       if (!navigator.clipboard) throw new Error();
       await navigator.clipboard.writeText(item.mascotCode);
@@ -359,7 +370,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
             <input id={`favorite-rank-${item.id}`} type="number" inputMode="numeric" min={1} max={10_000} value={favoriteRankDraft} disabled={saving} onChange={(event) => setFavoriteRankDraft(event.target.value)} />
             <button type="submit" aria-label="Salvar posição dourada" title="Salvar posição dourada" disabled={saving}><CheckIcon /></button>
           </form>}
-          <button type="button" onClick={() => { setMoreActionsOpen(false); void togglePublication(); }}>{published ? "Remover da comunidade" : "Publicar no Puleiro"}</button>
+          {operationalReady && <button type="button" onClick={() => { setMoreActionsOpen(false); void togglePublication(); }}>{published ? "Remover da comunidade" : "Publicar no Puleiro"}</button>}
           <button type="button" className="library-item__delete" onClick={() => { setMoreActionsOpen(false); setDeleteDialogOpen(true); }}>Excluir mascote</button>
         </div>}
       </div>
@@ -381,14 +392,14 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
         <code title={item.mascotCode}>{item.mascotCode}</code>
       </div>
       <div className="library-item__actions">
-        <button type="button" onClick={() => void copyCode()}>{copied ? "Código copiado" : "Copiar código"}</button>
+        <button type="button" disabled={!operationalReady} onClick={() => void copyCode()} title={operationalReady ? undefined : "O código será liberado após a finalização do pacote."}>{copied ? "Código copiado" : "Copiar código"}</button>
         <button
           type="button"
           className="library-item__open-gru"
-          disabled={saving || packaging || packageReady}
+          disabled={saving || packaging || operationalReady}
           onClick={() => void prepareAndroidPackage()}
           title="Prepara o pacote privado para importação no aplicativo GRU."
-        >{packageReady ? "Pacote pronto" : packaging ? "Preparando…" : "Preparar Android"}</button>
+        >{operationalReady ? "Pronto para usar" : packaging ? "Finalizando…" : item.finalization?.state === "failed" ? "Tentar finalizar" : "Retomar finalização"}</button>
       </div>
       <time className="library-item__date" dateTime={item.createdAt}>{formatCreatedAt(item.createdAt)}</time>
     </div>
@@ -487,7 +498,7 @@ function LibraryEmptyState({ hasItems }: { hasItems: boolean }) {
   </section>;
 }
 
-type LibraryPage = { items: MascotLibraryItem[]; total: number; nextOffset: number | null; error?: string };
+type LibraryPage = { items: MascotLibraryItem[]; pendingItems?: MascotLibraryItem[]; total: number; nextOffset: number | null; error?: string };
 
 async function loadLibrary({ query, filter, sort, offset = 0, signal }: {
   query: string; filter: FilterOption; sort: SortOption; offset?: number; signal?: AbortSignal;
@@ -497,7 +508,7 @@ async function loadLibrary({ query, filter, sort, offset = 0, signal }: {
     const response = await fetch(`/api/mascot/library?${parameters}`, { cache: "no-store", signal });
     const body = await response.json().catch(() => ({})) as Partial<LibraryPage> & { message?: string };
     if (!response.ok) throw new Error(body.message ?? "Não foi possível abrir sua biblioteca.");
-    return { items: body.items ?? [], total: body.total ?? 0, nextOffset: body.nextOffset ?? null };
+    return { items: body.items ?? [], pendingItems: body.pendingItems ?? [], total: body.total ?? 0, nextOffset: body.nextOffset ?? null };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") return null;
     return {

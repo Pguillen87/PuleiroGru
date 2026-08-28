@@ -91,6 +91,11 @@ export interface MascotLibraryItem {
   isFavorite: boolean;
   favoriteRank?: number;
   isPublic?: boolean;
+  finalization?: {
+    state: "not_started" | "packaging" | "ready" | "failed";
+    operationId?: string;
+    errorCode?: string;
+  };
 }
 
 export interface CommunityMascot {

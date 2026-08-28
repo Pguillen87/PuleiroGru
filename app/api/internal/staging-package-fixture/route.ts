@@ -6,11 +6,10 @@ import { createClient } from "@/lib/supabase/server";
 import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
 import { parseReadyManifest, publishMascotPackage, resolveMascotImportCode, type PackageAsset, type PackageRecoveryStage } from "@/lib/mascot-generation/package-store";
 import { FixtureAudit, FixtureStageError, fixtureErrorResponse } from "@/lib/mascot-generation/fixture-observability";
+import { resolveFixtureSource, type FixtureSource } from "@/lib/mascot-generation/fixture-source";
 
 export const runtime = "nodejs";
 
-const SOURCE_JOB_ID = "job_43136e0b5283358281bc1d4c6efa8c01";
-const SOURCE_ATTEMPT_ID = `pose-smoke:${SOURCE_JOB_ID}`;
 const ORIGINAL_QA_JOB_ID = "job_ad22b714e3547391e9654abf1ece384b";
 const checkpoints = new Set<PackageRecoveryStage>(["after_asset_1", "after_assets_3", "after_manifest", "after_code", "before_ready", "after_ready"]);
 
@@ -57,9 +56,12 @@ async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {
   let result: Record<string, unknown> | undefined;
   let failure: unknown;
   try {
+    audit.start("FIXTURE_PROVIDER_FETCH");
+    const source = await loadFixtureSource(admin, userId);
+    audit.succeed();
     audit.start("FIXTURE_ITEM_CREATE");
     try {
-      item = await createFixtureItem(admin, userId, checkpoint);
+      item = await createFixtureItem(admin, userId, checkpoint, source);
       audit.succeed();
     } catch (error) {
       throw audit.fail(error);
@@ -117,12 +119,23 @@ async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {
   }
 }
 
-async function createFixtureItem(admin: NonNullable<ReturnType<typeof createAdminClient>>, userId: string, checkpoint: string) {
+async function loadFixtureSource(admin: NonNullable<ReturnType<typeof createAdminClient>>, userId: string): Promise<FixtureSource> {
+  const { data, error } = await admin.from("mascot_attempts")
+    .select("user_id, attempt_id, selected_master_id")
+    .eq("modal_job_id", ORIGINAL_QA_JOB_ID)
+    .eq("user_id", userId)
+    .maybeSingle<{ user_id: string; attempt_id: string; selected_master_id: string | null }>();
+  const source = !error ? resolveFixtureSource(data, userId) : null;
+  if (!source) throw new Error("FIXTURE_SOURCE_UNAVAILABLE");
+  return source;
+}
+
+async function createFixtureItem(admin: NonNullable<ReturnType<typeof createAdminClient>>, userId: string, checkpoint: string, source: FixtureSource) {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const bytes = randomBytes(8);
   const code = `GRU-${[0, 4].map((offset) => Array.from(bytes.subarray(offset, offset + 4), (value) => alphabet[value % alphabet.length]).join("")).join("-")}`;
   const { data, error } = await admin.from("mascot_library_items").insert({
-    user_id: userId, attempt_id: SOURCE_ATTEMPT_ID, modal_job_id: SOURCE_JOB_ID, master_id: "master_1",
+    user_id: userId, attempt_id: source.attemptId, modal_job_id: ORIGINAL_QA_JOB_ID, master_id: source.masterId,
     display_name: `Fixture ${checkpoint}`, mascot_code: code, pose_snapshot: [],
   }).select("id, mascot_code").single<{ id: string; mascot_code: string }>();
   if (error || !data) throw new Error("FIXTURE_ITEM_CREATE_FAILED");

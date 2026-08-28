@@ -7,7 +7,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { jobIdentity } from "./attempt";
 import { findLibraryItem } from "./library-store";
 import { getMascotGenerationProvider } from "./provider";
-import type { GeneratedPose, MascotLibraryItem, PoseRole } from "./types";
+import type { GeneratedPose, MascotLibraryItem, PoseRole, PoseSetVisualQualityMetrics } from "./types";
+import { isPoseSetReadyForPackaging } from "./pose-set-qc";
 
 const BUCKET = "mascot-packages";
 const PACKAGE_VERSION = "1.0.0";
@@ -108,7 +109,7 @@ async function loadApprovedPoseAssets(userId: string, item: MascotLibraryItem) {
   const identity = jobIdentity(userId, item.attemptId);
   const job = await provider.getJob(item.jobId, identity);
   if (!job || job.approvedMasterId !== item.masterId) throw new MascotPackageError("PACKAGE_SOURCE_UNAVAILABLE", "Não foi possível confirmar o conjunto aprovado.");
-  assertApprovedSet(job.poses);
+  assertApprovedSet(job.poses, job.poseSetQc);
   return Promise.all(ROLES.map(async (role) => {
     const pose = job.poses.find((entry) => entry.role === role)!;
     const source = await provider.getPoseImage?.(item.jobId, role, identity);
@@ -195,9 +196,10 @@ function isReadyManifest(value: unknown, item: MascotLibraryItem) {
   const manifest = parseReadyManifest(value);
   return manifest?.mascotId === item.id;
 }
-function assertApprovedSet(poses: GeneratedPose[]) {
-  if (poses.length !== ROLES.length || ROLES.some((role) => poses.filter((pose) => pose.role === role && pose.qc?.status === "passed" && /^[a-f0-9]{64}$/.test(pose.sha256 ?? "")).length !== 1)) {
-    throw new MascotPackageError("POSE_SET_NOT_READY", "As três poses aprovadas ainda não estão disponíveis.");
+function assertApprovedSet(poses: GeneratedPose[], poseSetQc?: PoseSetVisualQualityMetrics) {
+  if (!isPoseSetReadyForPackaging(poses, poseSetQc)) {
+    if (poseSetQc?.status !== "failed") throw new MascotPackageError("POSE_SET_NOT_READY", "As três poses aprovadas ainda não estão disponíveis.");
+    throw new MascotPackageError("VISUAL_POSE_CONSISTENCY_FAILED", "As poses precisam manter o mesmo enquadramento antes de formar o pacote.");
   }
 }
 function assertManifest(manifest: MascotPackageManifest, userId?: string, packageId?: string) {

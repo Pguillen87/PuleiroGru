@@ -27,8 +27,14 @@ export async function POST(request: Request) {
   } catch (error) {
     const auth = authErrorResponse(error);
     if (auth) return auth;
-    return NextResponse.json({ code: error instanceof FixtureAbort ? "FIXTURE_ABORT_EXPECTED" : "FIXTURE_FAILED" }, { status: 409 });
+    return NextResponse.json({ code: fixtureErrorCode(error) }, { status: 409 });
   }
+}
+
+function fixtureErrorCode(error: unknown) {
+  if (error instanceof FixtureAbort) return "FIXTURE_ABORT_EXPECTED";
+  if (error instanceof Error && /^(FIXTURE_|PACKAGE_|POSE_|MASCOT_)[A-Z0-9_]+$/.test(error.message)) return error.message;
+  return "FIXTURE_FAILED";
 }
 
 async function requestedCheckpoint(request: Request): Promise<PackageRecoveryStage> {

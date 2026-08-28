@@ -39,6 +39,7 @@ export type PackageRecoveryStage = "after_asset_1" | "after_assets_3" | "after_m
 export type PackageRecoveryHooks = {
   /** Internal test seam. It is never populated by an HTTP request. */
   afterStage?: (stage: PackageRecoveryStage, packageId: string) => Promise<void> | void;
+  onAssetStored?: (asset: PackageAsset, packageId: string) => Promise<void> | void;
 };
 
 export class MascotPackageError extends Error {
@@ -144,6 +145,7 @@ async function storeAssetsExactly(admin: SupabaseClient, userId: string, package
     await putOrVerifyExactBytes(admin, storagePath, source.bytes, source.mimeType, source.hash);
     assets.push({ poseId: source.pose.id, role: source.role.toUpperCase() as Uppercase<PoseRole>, storagePath, sha256: source.hash,
       expectedBytes: source.bytes.byteLength, mimeType: source.mimeType, width: source.width, height: source.height });
+    await hooks?.onAssetStored?.(assets.at(-1)!, packageId);
     if (index === 0) await notifyRecoveryStage(hooks, "after_asset_1", packageId);
   }
   return assets;

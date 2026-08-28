@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
 import { parseReadyManifest, publishMascotPackage, resolveMascotImportCode, type PackageAsset, type PackageRecoveryStage } from "@/lib/mascot-generation/package-store";
+import { FixtureAudit, FixtureStageError, fixtureErrorResponse } from "@/lib/mascot-generation/fixture-observability";
 
 export const runtime = "nodejs";
 
@@ -27,14 +28,9 @@ export async function POST(request: Request) {
   } catch (error) {
     const auth = authErrorResponse(error);
     if (auth) return auth;
-    return NextResponse.json({ code: fixtureErrorCode(error) }, { status: 409 });
+    const failure = fixtureErrorResponse(error, "FIXTURE_ITEM_CREATE");
+    return NextResponse.json(failure, { status: 409 });
   }
-}
-
-function fixtureErrorCode(error: unknown) {
-  if (error instanceof FixtureAbort) return "FIXTURE_ABORT_EXPECTED";
-  if (error instanceof Error && /^(FIXTURE_|PACKAGE_|POSE_|MASCOT_)[A-Z0-9_]+$/.test(error.message)) return error.message;
-  return "FIXTURE_FAILED";
 }
 
 async function requestedCheckpoint(request: Request): Promise<PackageRecoveryStage> {
@@ -53,40 +49,71 @@ async function requireFixtureOwner() {
 async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {
   const admin = createAdminClient();
   if (!admin) throw new Error("FIXTURE_STORAGE_UNAVAILABLE");
-  const item = await createFixtureItem(admin, userId, checkpoint);
+  const audit = new FixtureAudit();
+  let item: { id: string; mascotCode: string } | undefined;
   const assets = new Map<string, PackageAsset>();
   let packageId = "";
   let failedAsExpected = false;
-  let cleaned = false;
+  let result: Record<string, unknown> | undefined;
+  let failure: unknown;
   try {
+    audit.start("FIXTURE_ITEM_CREATE");
+    try {
+      item = await createFixtureItem(admin, userId, checkpoint);
+      audit.succeed();
+    } catch (error) {
+      throw audit.fail(error);
+    }
     try {
       await publishMascotPackage(await createClient(), userId, item.id, {
         onAssetStored: (asset, id) => { assets.set(asset.storagePath, asset); packageId = id; },
         afterStage: (stage, id) => { packageId = id; if (stage === checkpoint) throw new FixtureAbort(); },
+        onLifecycleStage: (stage, count) => audit.start(stage, count),
       });
     } catch (error) {
-      if (!(error instanceof FixtureAbort)) throw error;
+      if (!(error instanceof FixtureAbort)) throw audit.fail(error);
+      audit.succeed(assets.size);
       failedAsExpected = true;
     }
     const pending = await fixtureState(admin, userId, item.id, packageId, item.mascotCode);
     const replay = await publishMascotPackage(await createClient(), userId, item.id);
     packageId = replay.package.id;
     const manifest = parseReadyManifest(replay.package.manifest);
-    if (!manifest) throw new Error("FIXTURE_MANIFEST_INVALID");
+    if (!manifest) throw audit.fail(new Error("manifest"));
     for (const asset of manifest.assets) assets.set(asset.storagePath, asset);
     const ready = await fixtureState(admin, userId, item.id, packageId, item.mascotCode);
-    await cleanupFixture(admin, item.id, packageId, [...assets.keys()]);
-    cleaned = true;
+    result = {
+      checkpoint, failedAsExpected, readyBeforeReplay: pending.packageStatus === "ready", codeResolvedBeforeReady: pending.codeResolved,
+      replayReady: ready.packageStatus === "ready", replayCodeResolved: ready.codeResolved,
+      counts: { assets: assets.size },
+    };
+  } catch (error) {
+    failure = error;
+  }
+
+  if (item) {
+    audit.start("FIXTURE_CLEANUP", assets.size);
+    try {
+      await cleanupFixture(admin, item.id, packageId, [...assets.keys()]);
+      audit.succeed();
+    } catch (error) {
+      const cleanupFailure = audit.fail(error);
+      if (!failure) failure = cleanupFailure;
+    }
+  }
+
+  if (failure) throw failure;
+  if (!item || !result) throw audit.fail(new Error("fixture result"));
+  try {
     const cleanup = await fixtureState(admin, userId, item.id, packageId, item.mascotCode);
     const qa = await admin.from("mascot_library_items").select("id", { count: "exact", head: true }).eq("modal_job_id", ORIGINAL_QA_JOB_ID);
     return {
-      checkpoint, failedAsExpected, readyBeforeReplay: pending.packageStatus === "ready", codeResolvedBeforeReady: pending.codeResolved,
-      replayReady: ready.packageStatus === "ready", replayCodeResolved: ready.codeResolved,
-      counts: { assets: assets.size, postCleanupItems: cleanup.items, postCleanupPackages: cleanup.packages, postCleanupCodes: cleanup.codes },
+      ...result,
+      counts: { ...(result.counts as Record<string, number>), postCleanupItems: cleanup.items, postCleanupPackages: cleanup.packages, postCleanupCodes: cleanup.codes },
       qaJobLibraryItems: qa.count ?? 0,
     };
-  } finally {
-    if (!cleaned) await cleanupFixture(admin, item.id, packageId, [...assets.keys()]);
+  } catch {
+    throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_CLEANUP_VERIFY_FAILED");
   }
 }
 

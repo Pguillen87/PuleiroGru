@@ -36,10 +36,20 @@ export type MascotPackageManifest = {
 };
 export type MascotPackageRow = { id: string; user_id?: string; package_version: string; manifest: unknown; status: PackageStatus };
 export type PackageRecoveryStage = "after_asset_1" | "after_assets_3" | "after_manifest" | "after_code" | "before_ready" | "after_ready";
+export type PackageFixtureLifecycleStage =
+  | "FIXTURE_PROVIDER_FETCH"
+  | "FIXTURE_SOURCE_ASSET_READ"
+  | "FIXTURE_ASSET_VALIDATE"
+  | "FIXTURE_STORAGE_WRITE"
+  | "FIXTURE_MANIFEST_BUILD"
+  | "FIXTURE_IMPORT_CODE_CREATE"
+  | "FIXTURE_READY_PROMOTION";
 export type PackageRecoveryHooks = {
   /** Internal test seam. It is never populated by an HTTP request. */
   afterStage?: (stage: PackageRecoveryStage, packageId: string) => Promise<void> | void;
   onAssetStored?: (asset: PackageAsset, packageId: string) => Promise<void> | void;
+  /** Preview fixture instrumentation; callers cannot populate it through HTTP. */
+  onLifecycleStage?: (stage: PackageFixtureLifecycleStage, count?: number) => Promise<void> | void;
 };
 
 export class MascotPackageError extends Error {
@@ -56,16 +66,19 @@ export async function publishMascotPackage(client: SupabaseClient, userId: strin
   if (existing?.status === "ready" && isReadyManifest(existing.manifest, item)) return { item, package: existing };
   const packageRow = existing ?? await createPendingPackage(admin, userId, item);
   if (packageRow.status === "revoked") throw new MascotPackageError("PACKAGE_REVOKED", "Este pacote foi revogado e não pode ser preparado novamente.");
-  const sources = await loadApprovedPoseAssets(userId, item);
+  const sources = await loadApprovedPoseAssets(userId, item, hooks);
   const assets = await storeAssetsExactly(admin, userId, packageRow.id, sources, hooks);
   await notifyRecoveryStage(hooks, "after_assets_3", packageRow.id);
+  await notifyLifecycleStage(hooks, "FIXTURE_MANIFEST_BUILD");
   const manifest = createManifest(item, assets);
   assertManifest(manifest, userId, packageRow.id);
   await savePendingManifest(admin, userId, packageRow.id, manifest);
   await notifyRecoveryStage(hooks, "after_manifest", packageRow.id);
+  await notifyLifecycleStage(hooks, "FIXTURE_IMPORT_CODE_CREATE");
   await ensureImportCode(admin, userId, packageRow.id, item.mascotCode);
   await notifyRecoveryStage(hooks, "after_code", packageRow.id);
   await notifyRecoveryStage(hooks, "before_ready", packageRow.id);
+  await notifyLifecycleStage(hooks, "FIXTURE_READY_PROMOTION");
   const ready = await promoteReady(admin, userId, packageRow.id, manifest);
   await notifyRecoveryStage(hooks, "after_ready", packageRow.id);
   return { item, package: ready };
@@ -116,17 +129,21 @@ async function createPendingPackage(admin: SupabaseClient, userId: string, item:
   throw new MascotPackageError("PACKAGE_REGISTRATION_FAILED", "Não foi possível iniciar a finalização do pacote.");
 }
 
-async function loadApprovedPoseAssets(userId: string, item: MascotLibraryItem) {
+async function loadApprovedPoseAssets(userId: string, item: MascotLibraryItem, hooks?: PackageRecoveryHooks) {
   const provider = getMascotGenerationProvider();
   const identity = jobIdentity(userId, item.attemptId);
+  await notifyLifecycleStage(hooks, "FIXTURE_PROVIDER_FETCH");
   const job = await provider.getJob(item.jobId, identity);
   if (!job || job.approvedMasterId !== item.masterId) throw new MascotPackageError("PACKAGE_SOURCE_UNAVAILABLE", "Não foi possível confirmar o conjunto aprovado.");
   assertApprovedSet(job.poses, job.poseSetQc);
-  return Promise.all(ROLES.map(async (role) => {
+  const sources = [];
+  for (const role of ROLES) {
     const pose = job.poses.find((entry) => entry.role === role)!;
+    await notifyLifecycleStage(hooks, "FIXTURE_SOURCE_ASSET_READ");
     const source = await provider.getPoseImage?.(item.jobId, role, identity);
     if (!source) throw new MascotPackageError("POSE_ASSET_NOT_FOUND", `A pose ${role} não está disponível.`);
     const bytes = new Uint8Array(source.bytes);
+    await notifyLifecycleStage(hooks, "FIXTURE_ASSET_VALIDATE");
     const hash = sha256(bytes);
     if (hash !== pose.sha256 || (pose.size !== undefined && pose.size !== bytes.byteLength)) {
       throw new MascotPackageError("POSE_CHECKSUM_MISMATCH", `A pose ${role} não corresponde ao derivado aprovado.`);
@@ -134,14 +151,16 @@ async function loadApprovedPoseAssets(userId: string, item: MascotLibraryItem) {
     const metadata = await sharp(bytes).metadata();
     const mimeType = normalizeImageMime(source.contentType);
     if (!metadata.width || !metadata.height) throw new MascotPackageError("POSE_DIMENSIONS_INVALID", `A pose ${role} não possui dimensões válidas.`);
-    return { pose, role, bytes, hash, mimeType, width: metadata.width, height: metadata.height };
-  }));
+    sources.push({ pose, role, bytes, hash, mimeType, width: metadata.width, height: metadata.height });
+  }
+  return sources;
 }
 
 async function storeAssetsExactly(admin: SupabaseClient, userId: string, packageId: string, sources: Awaited<ReturnType<typeof loadApprovedPoseAssets>>, hooks?: PackageRecoveryHooks): Promise<PackageAsset[]> {
   const assets: PackageAsset[] = [];
   for (const [index, source] of sources.entries()) {
     const storagePath = packageAssetPath(userId, packageId, source.role, source.hash, source.mimeType);
+    await notifyLifecycleStage(hooks, "FIXTURE_STORAGE_WRITE", index + 1);
     await putOrVerifyExactBytes(admin, storagePath, source.bytes, source.mimeType, source.hash);
     assets.push({ poseId: source.pose.id, role: source.role.toUpperCase() as Uppercase<PoseRole>, storagePath, sha256: source.hash,
       expectedBytes: source.bytes.byteLength, mimeType: source.mimeType, width: source.width, height: source.height });
@@ -153,6 +172,10 @@ async function storeAssetsExactly(admin: SupabaseClient, userId: string, package
 
 async function notifyRecoveryStage(hooks: PackageRecoveryHooks | undefined, stage: PackageRecoveryStage, packageId: string) {
   await hooks?.afterStage?.(stage, packageId);
+}
+
+async function notifyLifecycleStage(hooks: PackageRecoveryHooks | undefined, stage: PackageFixtureLifecycleStage, count?: number) {
+  await hooks?.onLifecycleStage?.(stage, count);
 }
 
 async function putOrVerifyExactBytes(admin: SupabaseClient, storagePath: string, bytes: Uint8Array, mimeType: PackageAsset["mimeType"], expectedHash: string) {

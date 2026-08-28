@@ -23,4 +23,12 @@ describe("fixture observability", () => {
       safeErrorCode: "FIXTURE_PROVIDER_FETCH_FAILED",
     });
   });
+
+  it("keeps provider codes server-side while returning only the phase code", () => {
+    const error = Object.assign(new Error("upstream body"), { code: "MODAL_REQUEST_FAILED" });
+    expect(fixtureErrorResponse(error, "FIXTURE_PROVIDER_FETCH")).toEqual({
+      stage: "FIXTURE_PROVIDER_FETCH",
+      safeErrorCode: "FIXTURE_PROVIDER_FETCH_FAILED",
+    });
+  });
 });

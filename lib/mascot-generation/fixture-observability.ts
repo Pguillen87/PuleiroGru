@@ -31,6 +31,15 @@ export class FixtureStageError extends Error {
   }
 }
 
+function safeTechnicalCode(error: unknown) {
+  if (error instanceof FixtureStageError) return error.safeErrorCode;
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" && /^[A-Z][A-Z0-9_]{2,80}$/.test(code)) return code;
+  }
+  return "UNKNOWN_ERROR";
+}
+
 export function fixtureFailure(stage: FixtureStage, error: unknown): FixtureStageError {
   void error;
   return new FixtureStageError(stage);
@@ -67,19 +76,20 @@ export class FixtureAudit {
 
   fail(error: unknown, count?: number): FixtureStageError {
     const failure = fixtureFailure(this.currentStage, error);
-    this.write(this.currentStage, "failed", failure.safeErrorCode, count);
+    this.write(this.currentStage, "failed", failure.safeErrorCode, count, safeTechnicalCode(error));
     this.active = false;
     return failure;
   }
 
   get stage() { return this.currentStage; }
 
-  private write(stage: FixtureStage, outcome: FixtureOutcome, safeErrorCode?: string, count?: number) {
+  private write(stage: FixtureStage, outcome: FixtureOutcome, safeErrorCode?: string, count?: number, technicalCode?: string) {
     console.info("staging_package_fixture", {
       operationId: this.operationId,
       stage,
       outcome,
       safeErrorCode,
+      technicalCode,
       durationMs: Date.now() - this.startedAt,
       ...(count === undefined ? {} : { count }),
     });

@@ -24,7 +24,9 @@ export const runtime = "nodejs";
 // attempt binding used to read that clone; browser input never participates.
 const ATTEMPT_ANCHOR_JOB_ID = "job_ad22b714e3547391e9654abf1ece384b";
 const FIXTURE_SOURCE_JOB_ID = "job_43136e0b5283358281bc1d4c6efa8c01";
-const PREVIOUS_AFTER_ASSET_1_OPERATION_ID = "fixture-434b44e3-67fc-4c66-9f40-b130f7872bca";
+// This Preview-only harness may recover only this exact failed run. It never
+// accepts an operation id from the browser or discovers a candidate by owner.
+const RECOVERABLE_FIXTURE_OPERATION_ID = "fixture-6ef6b6e8-a6b3-482f-bddd-5ea07b3d6a65";
 class FixtureAbort extends Error {}
 
 class FixtureStorageCleanupFailure extends FixtureStageError {
@@ -62,7 +64,7 @@ async function inspectPreviousCleanupStorage(userId: string) {
   if (!admin) throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_STORAGE_UNAVAILABLE");
   const { data, error } = await admin.from("staging_package_fixture_runs")
     .select("storage_paths")
-    .eq("operation_id", PREVIOUS_AFTER_ASSET_1_OPERATION_ID)
+    .eq("operation_id", RECOVERABLE_FIXTURE_OPERATION_ID)
     .eq("user_id", userId)
     .eq("source_job_id", FIXTURE_SOURCE_JOB_ID)
     .maybeSingle<{ storage_paths: unknown }>();
@@ -77,7 +79,7 @@ async function inspectPreviousCleanupStorage(userId: string) {
   if (summary.storageCleanupVerified) {
     const evidence = verifiedFixtureStorageEvidence(summary);
     await persistFixtureStorageCleanupEvidence(admin, {
-      operationId: PREVIOUS_AFTER_ASSET_1_OPERATION_ID,
+      operationId: RECOVERABLE_FIXTURE_OPERATION_ID,
       userId,
     }, evidence);
   }
@@ -89,7 +91,7 @@ async function recoverPreviousAfterAssetOne(userId: string) {
   if (!admin) throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_STORAGE_UNAVAILABLE");
   const { data, error } = await admin.from("staging_package_fixture_runs")
     .select("item_id, package_id, import_code_id, storage_paths, cleanup_counts")
-    .eq("operation_id", PREVIOUS_AFTER_ASSET_1_OPERATION_ID)
+    .eq("operation_id", RECOVERABLE_FIXTURE_OPERATION_ID)
     .eq("user_id", userId)
     .eq("source_job_id", FIXTURE_SOURCE_JOB_ID)
     .maybeSingle<{ item_id: string | null; package_id: string | null; import_code_id: string | null; storage_paths: unknown; cleanup_counts: unknown }>();
@@ -98,7 +100,7 @@ async function recoverPreviousAfterAssetOne(userId: string) {
   if (error || !registryState) {
     throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_RECOVERY_RECORD_INVALID");
   }
-  const registry = { operationId: PREVIOUS_AFTER_ASSET_1_OPERATION_ID, userId };
+  const registry = { operationId: RECOVERABLE_FIXTURE_OPERATION_ID, userId };
   await markFixtureRunCleanup(admin, registry, "cleaning");
   try {
     const counts = await recoverExactFixtureDatabase(registryState, userId, fixtureRecoveryGateway(admin));

@@ -13,4 +13,4 @@ Um mascote fica **pronto para uso** somente quando o pacote privado V1 está com
 
 Storage `mascot-packages` é privado; as URLs de importação são assinadas, curtas e `no-store`. Logs devem conter somente IDs técnicos, estágio, duração, quantidade de assets e prefixos de hash.
 
-**PENDENTE PARA PRODUÇÃO:** rate limiting/WAF da rota pública `GET /api/mascot/import/{code}`. Nenhum rollout de Production pode ser aprovado antes dessa proteção.
+**PENDENTE PARA PRODUÇÃO:** rate limiting/WAF da rota pública `GET /api/mascot/import/{code}`. A regra deve ser observada primeiro e, após revisão de tráfego, aplicada por IP na Vercel com limite inicial de **30 requisições por 60 segundos**. O enforcement deve responder `429` e incluir `Retry-After` quando o provedor o disponibilizar. Nenhum rollout de Production pode ser aprovado antes dessa proteção estar publicada e validada.

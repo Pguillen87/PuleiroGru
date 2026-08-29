@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FixtureStorageCleanupResult } from "./fixture-storage-cleanup";
+import type { VerifiedFixtureStorageEvidence } from "./fixture-storage-evidence";
 
 const table = "staging_package_fixture_runs";
 
@@ -52,6 +53,15 @@ export async function markFixtureRunCleanup(
       },
     } : {}),
   });
+}
+
+/** Persists a server-derived Storage result without changing the DB cleanup state. */
+export async function persistFixtureStorageCleanupEvidence(
+  admin: SupabaseClient,
+  registry: FixtureRunRegistry,
+  evidence: VerifiedFixtureStorageEvidence,
+) {
+  await updateFixtureRunRegistry(admin, registry, { cleanup_counts: evidence });
 }
 
 /** The registry is retained only after a failed cleanup, to permit exact recovery. */

@@ -10,8 +10,10 @@ import { FixtureAudit, FixtureProviderFetchAudit, FixtureStageError, fixtureErro
 import { countFixtureSourceRoles, resolveFixtureSource, resolveProviderFixtureSource, type FixtureSource } from "@/lib/mascot-generation/fixture-source";
 import { fixtureSourceRoles, inspectPoseQc, poseSetVisualV2Thresholds, shortHash } from "@/lib/mascot-generation/fixture-source-inspection";
 import { removeAndVerifyFixtureStorage, summarizeFixtureStorageVerification, verifyExactFixtureStorage, type FixtureStorageCleanupResult } from "@/lib/mascot-generation/fixture-storage-cleanup";
-import { createFixtureRunRegistry, deleteFixtureRunRegistry, markFixtureRunCleanup, updateFixtureRunRegistry } from "@/lib/mascot-generation/fixture-run-registry";
+import { createFixtureRunRegistry, deleteFixtureRunRegistry, markFixtureRunCleanup, persistFixtureStorageCleanupEvidence, updateFixtureRunRegistry } from "@/lib/mascot-generation/fixture-run-registry";
 import { recoverExactFixtureDatabase, type FixtureRecoveryGateway, type FixtureRecoveryRegistry } from "@/lib/mascot-generation/fixture-recovery";
+import { verifiedFixtureStorageEvidence } from "@/lib/mascot-generation/fixture-storage-evidence";
+import { fixtureHarnessAction, type FixtureHarnessAction } from "@/lib/mascot-generation/fixture-harness-action";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import { jobIdentity } from "@/lib/mascot-generation/attempt";
 
@@ -23,8 +25,6 @@ export const runtime = "nodejs";
 const ATTEMPT_ANCHOR_JOB_ID = "job_ad22b714e3547391e9654abf1ece384b";
 const FIXTURE_SOURCE_JOB_ID = "job_43136e0b5283358281bc1d4c6efa8c01";
 const PREVIOUS_AFTER_ASSET_1_OPERATION_ID = "fixture-434b44e3-67fc-4c66-9f40-b130f7872bca";
-const checkpoints = new Set<PackageRecoveryStage>(["after_asset_1", "after_assets_3", "after_manifest", "after_code", "before_ready", "after_ready"]);
-
 class FixtureAbort extends Error {}
 
 export async function POST(request: Request) {
@@ -47,14 +47,8 @@ export async function POST(request: Request) {
   }
 }
 
-async function requestedAction(request: Request): Promise<PackageRecoveryStage | "inspect_source" | "inspect_previous_cleanup_storage" | "recover_previous_after_asset_1"> {
-  const value = (await request.json().catch(() => null) as { checkpoint?: unknown; action?: unknown } | null);
-  if (value?.action === "inspect_source") return "inspect_source";
-  if (value?.action === "inspect_previous_cleanup_storage") return "inspect_previous_cleanup_storage";
-  if (value?.action === "recover_previous_after_asset_1") return "recover_previous_after_asset_1";
-  const checkpoint = value?.checkpoint;
-  if (typeof checkpoint !== "string" || !checkpoints.has(checkpoint as PackageRecoveryStage)) throw new Error("FIXTURE_CHECKPOINT_INVALID");
-  return checkpoint as PackageRecoveryStage;
+async function requestedAction(request: Request): Promise<FixtureHarnessAction> {
+  return fixtureHarnessAction(await request.json().catch(() => null));
 }
 
 async function inspectPreviousCleanupStorage(userId: string) {
@@ -85,7 +79,15 @@ async function inspectPreviousCleanupStorage(userId: string) {
       };
     },
   });
-  return { method: "exists", objects, ...summarizeFixtureStorageVerification(objects) };
+  const summary = summarizeFixtureStorageVerification(objects);
+  if (summary.storageCleanupVerified) {
+    const evidence = verifiedFixtureStorageEvidence(summary);
+    await persistFixtureStorageCleanupEvidence(admin, {
+      operationId: PREVIOUS_AFTER_ASSET_1_OPERATION_ID,
+      userId,
+    }, evidence);
+  }
+  return { method: "exists", objects, ...summary };
 }
 
 async function recoverPreviousAfterAssetOne(userId: string) {

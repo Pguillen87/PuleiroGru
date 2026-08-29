@@ -9,6 +9,7 @@ import { parseReadyManifest, publishMascotPackage, resolveMascotImportCode, type
 import { FixtureAudit, FixtureProviderFetchAudit, FixtureStageError, fixtureErrorResponse } from "@/lib/mascot-generation/fixture-observability";
 import { countFixtureSourceRoles, resolveFixtureSource, resolveProviderFixtureSource, type FixtureSource } from "@/lib/mascot-generation/fixture-source";
 import { fixtureSourceRoles, inspectPoseQc, poseSetVisualV2Thresholds, shortHash } from "@/lib/mascot-generation/fixture-source-inspection";
+import { removeAndVerifyFixtureStorage, type FixtureStorageCleanupResult } from "@/lib/mascot-generation/fixture-storage-cleanup";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import { jobIdentity } from "@/lib/mascot-generation/attempt";
 
@@ -65,6 +66,7 @@ async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {
   let packageId = "";
   let failedAsExpected = false;
   let result: Record<string, unknown> | undefined;
+  let storageCleanup: FixtureStorageCleanupResult | undefined;
   let failure: unknown;
   try {
     audit.start("FIXTURE_PROVIDER_FETCH");
@@ -109,7 +111,7 @@ async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {
   if (item) {
     audit.start("FIXTURE_CLEANUP", assets.size);
     try {
-      await cleanupFixture(admin, item.id, packageId, [...assets.keys()]);
+      storageCleanup = await cleanupFixture(admin, item.id, packageId, [...assets.keys()]);
       audit.succeed();
     } catch (error) {
       const cleanupFailure = audit.fail(error);
@@ -124,7 +126,15 @@ async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {
     const qa = await admin.from("mascot_library_items").select("id", { count: "exact", head: true }).eq("modal_job_id", ATTEMPT_ANCHOR_JOB_ID);
     return {
       ...result,
-      counts: { ...(result.counts as Record<string, number>), postCleanupItems: cleanup.items, postCleanupPackages: cleanup.packages, postCleanupCodes: cleanup.codes },
+      counts: {
+        ...(result.counts as Record<string, number>),
+        postCleanupItems: cleanup.items,
+        postCleanupPackages: cleanup.packages,
+        postCleanupCodes: cleanup.codes,
+        storageObjectsExpected: storageCleanup?.storageObjectsExpected ?? 0,
+        storageObjectsRemaining: storageCleanup?.storageObjectsRemaining ?? 0,
+        storageCleanupVerified: storageCleanup?.storageCleanupVerified ?? false,
+      },
       qaJobLibraryItems: qa.count ?? 0,
     };
   } catch {
@@ -251,9 +261,35 @@ async function fixtureState(admin: NonNullable<ReturnType<typeof createAdminClie
   return { packageStatus: packageRow.data?.status ?? null, codeResolved: Boolean(resolved), items: items.count ?? 0, packages: packages.count ?? 0, codes: codes.count ?? 0 };
 }
 
-async function cleanupFixture(admin: NonNullable<ReturnType<typeof createAdminClient>>, itemId: string, packageId: string, paths: string[]) {
-  if (paths.length) await admin.storage.from("mascot-packages").remove(paths);
+async function cleanupFixture(
+  admin: NonNullable<ReturnType<typeof createAdminClient>>,
+  itemId: string,
+  packageId: string,
+  paths: string[],
+): Promise<FixtureStorageCleanupResult> {
+  const cleanup = await removeAndVerifyFixtureStorage(paths, {
+    removeExact: async (exactPaths) => {
+      if (!exactPaths.length) return;
+      const { error } = await admin.storage.from("mascot-packages").remove([...exactPaths]);
+      if (error) throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_STORAGE_REMOVE_FAILED");
+    },
+    objectExistsExact: async (path) => {
+      const { data, error } = await admin.storage.from("mascot-packages").download(path);
+      if (data) return true;
+      if (storageObjectWasRemoved(error)) return false;
+      throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_STORAGE_VERIFY_FAILED");
+    },
+  });
+  if (!cleanup.storageCleanupVerified) {
+    throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_STORAGE_CLEANUP_RESIDUE");
+  }
   if (packageId) await admin.from("mascot_import_codes").delete().eq("package_id", packageId);
   if (packageId) await admin.from("mascot_packages").delete().eq("id", packageId);
   await admin.from("mascot_library_items").delete().eq("id", itemId);
+  return cleanup;
+}
+
+function storageObjectWasRemoved(error: unknown) {
+  if (!error || typeof error !== "object" || !("status" in error)) return false;
+  return (error as { status?: unknown }).status === 404;
 }

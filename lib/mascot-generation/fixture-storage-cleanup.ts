@@ -15,11 +15,27 @@ export type FixtureStorageVerifyResult = {
   httpStatus: number | null;
   result: "exists" | "not_found" | "verify_error";
   safeErrorCode: string | null;
+  errorName?: "StorageApiError" | "StorageUnknownError" | "Unknown" | null;
+  safeMessage?: string | null;
+  pathPresent?: boolean;
+  bucketPresent?: boolean;
+  authPresent?: boolean;
   durationMs: number;
 };
 
 export type FixtureStorageVerifyGateway = {
-  verifyExact(path: string): Promise<{ exists: boolean; httpStatus: number | null; errorCode: string | null }>;
+  verifyExact(path: string): Promise<FixtureStorageVerificationResponse>;
+};
+
+export type FixtureStorageVerificationResponse = {
+  exists: boolean;
+  httpStatus: number | null;
+  errorCode: string | null;
+  errorName?: "StorageApiError" | "StorageUnknownError" | "Unknown" | null;
+  safeMessage?: string | null;
+  pathPresent?: boolean;
+  bucketPresent?: boolean;
+  authPresent?: boolean;
 };
 
 /**
@@ -65,7 +81,8 @@ export async function verifyExactFixtureStorage(
         operation: "verify",
         httpStatus: null,
         result: "verify_error",
-        safeErrorCode: "FIXTURE_STORAGE_VERIFY_SDK_FAILED",
+        safeErrorCode: "FIXTURE_STORAGE_VERIFY_SDK_FAILED", errorName: "Unknown", safeMessage: "Falha ao consultar o Storage.",
+        pathPresent: true, bucketPresent: true, authPresent: true,
         durationMs: Date.now() - startedAt,
       };
     }
@@ -74,17 +91,19 @@ export async function verifyExactFixtureStorage(
 
 export function classifyFixtureStorageVerification(
   objectIndex: number,
-  verification: { exists: boolean; httpStatus: number | null; errorCode: string | null },
+  verification: FixtureStorageVerificationResponse,
   durationMs: number,
 ): FixtureStorageVerifyResult {
-  if (verification.exists) return { objectIndex, operation: "verify", httpStatus: verification.httpStatus ?? 200, result: "exists", safeErrorCode: null, durationMs };
-  if (verification.httpStatus === 404) return { objectIndex, operation: "verify", httpStatus: 404, result: "not_found", safeErrorCode: null, durationMs };
+  const context = { errorName: verification.errorName ?? null, safeMessage: verification.safeMessage ?? null, pathPresent: verification.pathPresent ?? true, bucketPresent: verification.bucketPresent ?? true, authPresent: verification.authPresent ?? true };
+  if (verification.exists) return { objectIndex, operation: "verify", httpStatus: verification.httpStatus ?? 200, result: "exists", safeErrorCode: null, ...context, durationMs };
+  if (verification.httpStatus === 404) return { objectIndex, operation: "verify", httpStatus: 404, result: "not_found", safeErrorCode: null, ...context, durationMs };
   return {
     objectIndex,
     operation: "verify",
     httpStatus: verification.httpStatus,
     result: "verify_error",
     safeErrorCode: fixtureStorageVerifyErrorCode(verification.httpStatus, verification.errorCode),
+    ...context,
     durationMs,
   };
 }

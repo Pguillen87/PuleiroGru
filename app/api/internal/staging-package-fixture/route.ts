@@ -76,6 +76,11 @@ async function inspectPreviousCleanupStorage(userId: string) {
         exists: metadata !== null,
         httpStatus: storageError ? storageErrorStatus(storageError) : metadata !== null ? 200 : null,
         errorCode: storageError ? "FIXTURE_STORAGE_VERIFY_SDK_FAILED" : null,
+        errorName: storageError ? storageErrorName(storageError) : null,
+        safeMessage: storageError ? storageErrorMessage(storageError) : null,
+        pathPresent: Boolean(path),
+        bucketPresent: true,
+        authPresent: true,
       };
     },
   });
@@ -400,4 +405,18 @@ function storageErrorStatus(error: unknown) {
   if (!error || typeof error !== "object" || !("status" in error)) return null;
   const status = (error as { status?: unknown }).status;
   return typeof status === "number" && Number.isInteger(status) ? status : null;
+}
+
+function storageErrorName(error: unknown): "StorageApiError" | "StorageUnknownError" | "Unknown" {
+  if (!error || typeof error !== "object" || !("name" in error)) return "Unknown";
+  const name = (error as { name?: unknown }).name;
+  return name === "StorageApiError" || name === "StorageUnknownError" ? name : "Unknown";
+}
+
+function storageErrorMessage(error: unknown) {
+  const status = storageErrorStatus(error);
+  if (status === 400) return "A consulta de metadados foi recusada pelo Storage.";
+  if (status === 401 || status === 403) return "O Storage recusou a autorização da consulta.";
+  if (status !== null && status >= 500) return "O Storage falhou ao processar a consulta.";
+  return "Falha ao consultar metadados do Storage.";
 }

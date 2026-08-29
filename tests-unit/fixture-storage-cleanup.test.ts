@@ -48,7 +48,7 @@ describe("fixture storage cleanup", () => {
 });
 
 describe("fixture storage verification", () => {
-  it("reports three exact objects as removed when Storage returns 404", async () => {
+  it("treats an exact Storage info 404 as a successfully removed object", async () => {
     const verifyExact = vi.fn<(path: string) => Promise<{ exists: boolean; httpStatus: number | null; errorCode: string | null }>>(async () => ({ exists: false, httpStatus: 404, errorCode: null }));
     const result = await verifyExactFixtureStorage(fixturePaths, { verifyExact });
     expect(result.map(({ result: status }) => status)).toEqual(["not_found", "not_found", "not_found"]);
@@ -62,13 +62,13 @@ describe("fixture storage verification", () => {
     [false, 403, "ignored", "verify_error", "FIXTURE_STORAGE_VERIFY_AUTH_FAILED"],
     [false, 503, "ignored", "verify_error", "FIXTURE_STORAGE_VERIFY_BACKEND_FAILED"],
     [false, null, "FIXTURE_STORAGE_VERIFY_SDK_FAILED", "verify_error", "FIXTURE_STORAGE_VERIFY_SDK_FAILED"],
-  ] as const)("normalizes status %s", async (exists, httpStatus, errorCode, expectedResult, expectedCode) => {
+  ] as const)("normalizes exact Storage info status %s", async (exists, httpStatus, errorCode, expectedResult, expectedCode) => {
     const [result] = await verifyExactFixtureStorage([fixturePaths[0]], { verifyExact: async () => ({ exists, httpStatus, errorCode }) });
     expect(result.result).toBe(expectedResult);
     expect(result.safeErrorCode).toBe(expectedCode);
   });
 
-  it("does not consult paths that are not registered", async () => {
+  it("consults Storage info only for registered exact paths", async () => {
     const verifyExact = vi.fn<(path: string) => Promise<{ exists: boolean; httpStatus: number | null; errorCode: string | null }>>(async () => ({ exists: false, httpStatus: 404, errorCode: null }));
     await verifyExactFixtureStorage([fixturePaths[0], fixturePaths[0], fixturePaths[2]], { verifyExact });
     expect(verifyExact.mock.calls.map((args) => args[0] as string)).toEqual([fixturePaths[0], fixturePaths[2]]);

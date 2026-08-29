@@ -71,15 +71,15 @@ async function inspectPreviousCleanupStorage(userId: string) {
   }
   const objects = await verifyExactFixtureStorage(paths, {
     verifyExact: async (path) => {
-      const { data: exists, error: storageError } = await admin.storage.from("mascot-packages").exists(path);
+      const { data: metadata, error: storageError } = await admin.storage.from("mascot-packages").info(path);
       return {
-        exists: exists === true,
-        httpStatus: storageError ? storageErrorStatus(storageError) : exists === true ? 200 : null,
+        exists: metadata !== null,
+        httpStatus: storageError ? storageErrorStatus(storageError) : metadata !== null ? 200 : null,
         errorCode: storageError ? "FIXTURE_STORAGE_VERIFY_SDK_FAILED" : null,
       };
     },
   });
-  return { method: "exists", objects };
+  return { method: "info", objects };
 }
 
 async function recoverPreviousAfterAssetOne(userId: string) {

@@ -6,7 +6,7 @@ export type FixtureStorageCleanupResult = {
 
 export type FixtureStorageCleanupGateway = {
   removeExact(paths: readonly string[]): Promise<void>;
-  objectExistsExact(path: string): Promise<boolean>;
+  verifyExact(path: string): Promise<FixtureStorageVerificationResponse>;
 };
 
 export type FixtureStorageVerifyResult = {
@@ -54,13 +54,7 @@ export async function removeAndVerifyFixtureStorage(
 ): Promise<FixtureStorageCleanupResult> {
   const exactPaths = uniqueExactPaths(registeredPaths);
   await gateway.removeExact(exactPaths);
-  const exists = await Promise.all(exactPaths.map((path) => gateway.objectExistsExact(path)));
-  const storageObjectsRemaining = exists.filter(Boolean).length;
-  return {
-    storageObjectsExpected: exactPaths.length,
-    storageObjectsRemaining,
-    storageCleanupVerified: storageObjectsRemaining === 0,
-  };
+  return summarizeFixtureStorageVerification(await verifyExactFixtureStorage(exactPaths, gateway));
 }
 
 function uniqueExactPaths(paths: readonly string[]) {

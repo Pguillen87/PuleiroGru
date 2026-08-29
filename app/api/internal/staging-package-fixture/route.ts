@@ -27,6 +27,12 @@ const FIXTURE_SOURCE_JOB_ID = "job_43136e0b5283358281bc1d4c6efa8c01";
 const PREVIOUS_AFTER_ASSET_1_OPERATION_ID = "fixture-434b44e3-67fc-4c66-9f40-b130f7872bca";
 class FixtureAbort extends Error {}
 
+class FixtureStorageCleanupFailure extends FixtureStageError {
+  constructor(readonly cleanup: FixtureStorageCleanupResult) {
+    super("FIXTURE_CLEANUP", "FIXTURE_STORAGE_CLEANUP_RESIDUE");
+  }
+}
+
 export async function POST(request: Request) {
   if (process.env.VERCEL_ENV !== "preview") return NextResponse.json({ code: "FIXTURE_DISABLED" }, { status: 404 });
   try {
@@ -65,19 +71,7 @@ async function inspectPreviousCleanupStorage(userId: string) {
     throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_RECOVERY_RECORD_INVALID");
   }
   const objects = await verifyExactFixtureStorage(paths, {
-    verifyExact: async (path) => {
-      const { data: exists, error: storageError } = await admin.storage.from("mascot-packages").exists(path);
-      return {
-        exists,
-        httpStatus: storageError ? storageErrorStatus(storageError) : exists === true ? 200 : null,
-        errorCode: storageError ? "FIXTURE_STORAGE_VERIFY_SDK_FAILED" : null,
-        errorName: storageError ? storageErrorName(storageError) : null,
-        safeMessage: storageError ? storageErrorMessage(storageError) : null,
-        pathPresent: Boolean(path),
-        bucketPresent: true,
-        authPresent: true,
-      };
-    },
+    verifyExact: fixtureStorageExistsVerifier(admin),
   });
   const summary = summarizeFixtureStorageVerification(objects);
   if (summary.storageCleanupVerified) {
@@ -272,6 +266,7 @@ async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {
       await deleteFixtureRunRegistry(admin, registry);
       audit.succeed();
     } catch (error) {
+      if (error instanceof FixtureStorageCleanupFailure) storageCleanup = error.cleanup;
       await markFixtureRunCleanup(admin, registry, "failed", storageCleanup).catch(() => undefined);
       const cleanupFailure = audit.fail(error);
       if (!failure) failure = cleanupFailure;
@@ -441,15 +436,10 @@ async function cleanupFixture(
       const { error } = await admin.storage.from("mascot-packages").remove([...exactPaths]);
       if (error) throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_STORAGE_REMOVE_FAILED");
     },
-    objectExistsExact: async (path) => {
-      const { data, error } = await admin.storage.from("mascot-packages").download(path, {}, { cache: "no-store" });
-      if (data) return true;
-      if (storageObjectWasRemoved(error)) return false;
-      throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_STORAGE_VERIFY_FAILED");
-    },
+    verifyExact: fixtureStorageExistsVerifier(admin),
   });
   if (!cleanup.storageCleanupVerified) {
-    throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_STORAGE_CLEANUP_RESIDUE");
+    throw new FixtureStorageCleanupFailure(cleanup);
   }
   if (packageId) await admin.from("mascot_import_codes").delete().eq("package_id", packageId);
   if (packageId) await admin.from("mascot_packages").delete().eq("id", packageId);
@@ -457,9 +447,20 @@ async function cleanupFixture(
   return cleanup;
 }
 
-function storageObjectWasRemoved(error: unknown) {
-  if (!error || typeof error !== "object" || !("status" in error)) return false;
-  return (error as { status?: unknown }).status === 404;
+function fixtureStorageExistsVerifier(admin: NonNullable<ReturnType<typeof createAdminClient>>) {
+  return async (path: string) => {
+    const { data: exists, error: storageError } = await admin.storage.from("mascot-packages").exists(path);
+    return {
+      exists,
+      httpStatus: storageError ? storageErrorStatus(storageError) : exists === true ? 200 : null,
+      errorCode: storageError ? "FIXTURE_STORAGE_VERIFY_SDK_FAILED" : null,
+      errorName: storageError ? storageErrorName(storageError) : null,
+      safeMessage: storageError ? storageErrorMessage(storageError) : null,
+      pathPresent: Boolean(path),
+      bucketPresent: true,
+      authPresent: true,
+    };
+  };
 }
 
 function storageErrorStatus(error: unknown) {

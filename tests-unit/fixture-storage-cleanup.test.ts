@@ -10,21 +10,21 @@ const fixturePaths = [
 describe("fixture storage cleanup", () => {
   it("verifies all three exact fixture objects are gone", async () => {
     const removeExact = vi.fn<(paths: readonly string[]) => Promise<void>>(async () => undefined);
-    const objectExistsExact = vi.fn<(path: string) => Promise<boolean>>(async () => false);
+    const verifyExact = vi.fn<(path: string) => Promise<{ exists: boolean; httpStatus: number | null; errorCode: string | null }>>(async () => ({ exists: false, httpStatus: 400, errorCode: null }));
 
-    await expect(removeAndVerifyFixtureStorage(fixturePaths, { removeExact, objectExistsExact })).resolves.toEqual({
+    await expect(removeAndVerifyFixtureStorage(fixturePaths, { removeExact, verifyExact })).resolves.toEqual({
       storageObjectsExpected: 3,
       storageObjectsRemaining: 0,
       storageCleanupVerified: true,
     });
     expect(removeExact).toHaveBeenCalledWith([...fixturePaths]);
-    expect(objectExistsExact.mock.calls.map((args) => args[0] as string)).toEqual([...fixturePaths]);
+    expect(verifyExact.mock.calls.map((args) => args[0] as string)).toEqual([...fixturePaths]);
   });
 
   it("reports a residual object as a failed cleanup", async () => {
     const result = await removeAndVerifyFixtureStorage(fixturePaths, {
       removeExact: async () => undefined,
-      objectExistsExact: async (path) => path === fixturePaths[1],
+      verifyExact: async (path) => ({ exists: path === fixturePaths[1], httpStatus: path === fixturePaths[1] ? 200 : 404, errorCode: null }),
     });
 
     expect(result).toEqual({
@@ -37,13 +37,13 @@ describe("fixture storage cleanup", () => {
   it("never removes or verifies an unregistered path", async () => {
     const registered = [fixturePaths[0], fixturePaths[0], fixturePaths[2]];
     const removeExact = vi.fn<(paths: readonly string[]) => Promise<void>>(async () => undefined);
-    const objectExistsExact = vi.fn<(path: string) => Promise<boolean>>(async () => false);
+    const verifyExact = vi.fn<(path: string) => Promise<{ exists: boolean; httpStatus: number | null; errorCode: string | null }>>(async () => ({ exists: false, httpStatus: 404, errorCode: null }));
 
-    await removeAndVerifyFixtureStorage(registered, { removeExact, objectExistsExact });
+    await removeAndVerifyFixtureStorage(registered, { removeExact, verifyExact });
 
     expect(removeExact).toHaveBeenCalledWith([fixturePaths[0], fixturePaths[2]]);
-    expect(objectExistsExact.mock.calls.map((args) => args[0] as string)).toEqual([fixturePaths[0], fixturePaths[2]]);
-    expect(objectExistsExact).not.toHaveBeenCalledWith(fixturePaths[1]);
+    expect(verifyExact.mock.calls.map((args) => args[0] as string)).toEqual([fixturePaths[0], fixturePaths[2]]);
+    expect(verifyExact).not.toHaveBeenCalledWith(fixturePaths[1]);
   });
 });
 
@@ -84,5 +84,18 @@ describe("fixture storage verification", () => {
   it("marks cleanup as verified only when all exact objects are not found", async () => {
     const results = await verifyExactFixtureStorage(fixturePaths, { verifyExact: async () => ({ exists: false, httpStatus: 400, errorCode: null }) });
     expect(summarizeFixtureStorageVerification(results)).toEqual({ storageObjectsExpected: 3, storageObjectsRemaining: 0, storageCleanupVerified: true });
+  });
+
+  it.each([
+    [401, "FIXTURE_STORAGE_VERIFY_AUTH_FAILED"],
+    [403, "FIXTURE_STORAGE_VERIFY_AUTH_FAILED"],
+    [503, "FIXTURE_STORAGE_VERIFY_BACKEND_FAILED"],
+  ])("fails normal cleanup for a real Storage error %s", async (httpStatus, code) => {
+    await expect(removeAndVerifyFixtureStorage([fixturePaths[0]], {
+      removeExact: async () => undefined,
+      verifyExact: async () => ({ exists: false, httpStatus, errorCode: "ignored" }),
+    })).resolves.toEqual({ storageObjectsExpected: 1, storageObjectsRemaining: 0, storageCleanupVerified: false });
+    const [result] = await verifyExactFixtureStorage([fixturePaths[0]], { verifyExact: async () => ({ exists: false, httpStatus, errorCode: "ignored" }) });
+    expect(result.safeErrorCode).toBe(code);
   });
 });

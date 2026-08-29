@@ -10,6 +10,7 @@ import { FixtureAudit, FixtureProviderFetchAudit, FixtureStageError, fixtureErro
 import { countFixtureSourceRoles, resolveFixtureSource, resolveProviderFixtureSource, type FixtureSource } from "@/lib/mascot-generation/fixture-source";
 import { fixtureSourceRoles, inspectPoseQc, poseSetVisualV2Thresholds, shortHash } from "@/lib/mascot-generation/fixture-source-inspection";
 import { removeAndVerifyFixtureStorage, type FixtureStorageCleanupResult } from "@/lib/mascot-generation/fixture-storage-cleanup";
+import { createFixtureRunRegistry, deleteFixtureRunRegistry, markFixtureRunCleanup, updateFixtureRunRegistry } from "@/lib/mascot-generation/fixture-run-registry";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import { jobIdentity } from "@/lib/mascot-generation/attempt";
 
@@ -61,6 +62,7 @@ async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {
   const admin = createAdminClient();
   if (!admin) throw new Error("FIXTURE_STORAGE_UNAVAILABLE");
   const audit = new FixtureAudit();
+  const registry = await createFixtureRunRegistry(admin, audit.operationId, userId, FIXTURE_SOURCE_JOB_ID);
   let item: { id: string; mascotCode: string } | undefined;
   const assets = new Map<string, PackageAsset>();
   let packageId = "";
@@ -77,14 +79,23 @@ async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {
     audit.start("FIXTURE_ITEM_CREATE");
     try {
       item = await createFixtureItem(admin, userId, checkpoint, resolvedSource.source);
+      await updateFixtureRunRegistry(admin, registry, { item_id: item.id });
       audit.succeed();
     } catch (error) {
       throw audit.fail(error);
     }
     try {
       await publishMascotPackage(await createClient(), userId, item.id, {
-        onAssetStored: (asset, id) => { assets.set(asset.storagePath, asset); packageId = id; },
-        afterStage: (stage, id) => { packageId = id; if (stage === checkpoint) throw new FixtureAbort(); },
+        onAssetStored: async (asset, id) => {
+          assets.set(asset.storagePath, asset);
+          packageId = id;
+          await updateFixtureRunRegistry(admin, registry, { package_id: id, storage_paths: [...assets.keys()] });
+        },
+        afterStage: async (stage, id) => {
+          packageId = id;
+          await updateFixtureRunRegistry(admin, registry, { package_id: id });
+          if (stage === checkpoint) throw new FixtureAbort();
+        },
         onLifecycleStage: (stage, count) => audit.start(stage, count),
       });
     } catch (error) {
@@ -98,6 +109,12 @@ async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {
     const manifest = parseReadyManifest(replay.package.manifest);
     if (!manifest) throw audit.fail(new Error("manifest"));
     for (const asset of manifest.assets) assets.set(asset.storagePath, asset);
+    const importCodeId = await fixtureImportCodeId(admin, packageId);
+    await updateFixtureRunRegistry(admin, registry, {
+      package_id: packageId,
+      import_code_id: importCodeId,
+      storage_paths: [...assets.keys()],
+    });
     const ready = await fixtureState(admin, userId, item.id, packageId, item.mascotCode);
     result = {
       checkpoint, failedAsExpected, readyBeforeReplay: pending.packageStatus === "ready", codeResolvedBeforeReady: pending.codeResolved,
@@ -111,12 +128,18 @@ async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {
   if (item) {
     audit.start("FIXTURE_CLEANUP", assets.size);
     try {
+      await markFixtureRunCleanup(admin, registry, "cleaning");
       storageCleanup = await cleanupFixture(admin, item.id, packageId, [...assets.keys()]);
+      await markFixtureRunCleanup(admin, registry, "cleaned", storageCleanup);
+      await deleteFixtureRunRegistry(admin, registry);
       audit.succeed();
     } catch (error) {
+      await markFixtureRunCleanup(admin, registry, "failed", storageCleanup).catch(() => undefined);
       const cleanupFailure = audit.fail(error);
       if (!failure) failure = cleanupFailure;
     }
+  } else if (failure) {
+    await deleteFixtureRunRegistry(admin, registry).catch(() => undefined);
   }
 
   if (failure) throw failure;
@@ -261,6 +284,13 @@ async function fixtureState(admin: NonNullable<ReturnType<typeof createAdminClie
   return { packageStatus: packageRow.data?.status ?? null, codeResolved: Boolean(resolved), items: items.count ?? 0, packages: packages.count ?? 0, codes: codes.count ?? 0 };
 }
 
+async function fixtureImportCodeId(admin: NonNullable<ReturnType<typeof createAdminClient>>, packageId: string) {
+  const { data, error } = await admin.from("mascot_import_codes").select("id")
+    .eq("package_id", packageId).maybeSingle<{ id: string }>();
+  if (error || !data) throw new Error("FIXTURE_IMPORT_CODE_UNAVAILABLE");
+  return data.id;
+}
+
 async function cleanupFixture(
   admin: NonNullable<ReturnType<typeof createAdminClient>>,
   itemId: string,
@@ -274,7 +304,7 @@ async function cleanupFixture(
       if (error) throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_STORAGE_REMOVE_FAILED");
     },
     objectExistsExact: async (path) => {
-      const { data, error } = await admin.storage.from("mascot-packages").download(path);
+      const { data, error } = await admin.storage.from("mascot-packages").download(path, {}, { cache: "no-store" });
       if (data) return true;
       if (storageObjectWasRemoved(error)) return false;
       throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_STORAGE_VERIFY_FAILED");

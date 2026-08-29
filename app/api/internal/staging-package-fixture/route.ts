@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createHash, randomBytes } from "node:crypto";
 import sharp from "sharp";
 import { authErrorResponse, requireBrowserIdentity } from "@/lib/auth/browser-auth";
+import { requirePreviewFixtureOwner } from "@/lib/auth/preview-fixture-owner";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
     const action = await requestedAction(request);
     const identity = await requireBrowserIdentity(request);
     if (identity.mode !== "supabase-session") return NextResponse.json({ code: "SESSION_REQUIRED" }, { status: 401 });
-    await requireFixtureOwner();
+    await requirePreviewFixtureOwner(identity.uid);
     if (action === "inspect_source") return NextResponse.json(await inspectSource(identity.uid));
     if (action === "inspect_previous_cleanup_storage") return NextResponse.json(await inspectPreviousCleanupStorage(identity.uid));
     if (action === "recover_previous_after_asset_1") return NextResponse.json(await recoverPreviousAfterAssetOne(identity.uid));
@@ -183,13 +184,6 @@ async function exactFixtureDelete(query: PromiseLike<{ error: unknown }>, code: 
 function fixtureRegistryPaths(value: unknown) {
   if (!Array.isArray(value) || value.some((path) => typeof path !== "string" || !path)) return [];
   return [...new Set(value)];
-}
-
-async function requireFixtureOwner() {
-  const expectedEmail = process.env.SUPABASE_RECOVERY_TEST_EMAIL?.trim().toLowerCase();
-  if (!expectedEmail) throw new Error("FIXTURE_OWNER_NOT_CONFIGURED");
-  const { data, error } = await (await createClient()).auth.getUser();
-  if (error || data.user?.email?.toLowerCase() !== expectedEmail) throw new Error("FIXTURE_OWNER_REJECTED");
 }
 
 async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {

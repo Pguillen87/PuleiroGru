@@ -11,6 +11,7 @@ import { countFixtureSourceRoles, resolveFixtureSource, resolveProviderFixtureSo
 import { fixtureSourceRoles, inspectPoseQc, poseSetVisualV2Thresholds, shortHash } from "@/lib/mascot-generation/fixture-source-inspection";
 import { removeAndVerifyFixtureStorage, summarizeFixtureStorageVerification, verifyExactFixtureStorage, type FixtureStorageCleanupResult } from "@/lib/mascot-generation/fixture-storage-cleanup";
 import { createFixtureRunRegistry, deleteFixtureRunRegistry, markFixtureRunCleanup, updateFixtureRunRegistry } from "@/lib/mascot-generation/fixture-run-registry";
+import { recoverExactFixtureDatabase, type FixtureRecoveryGateway, type FixtureRecoveryRegistry } from "@/lib/mascot-generation/fixture-recovery";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import { jobIdentity } from "@/lib/mascot-generation/attempt";
 
@@ -91,27 +92,94 @@ async function recoverPreviousAfterAssetOne(userId: string) {
   const admin = createAdminClient();
   if (!admin) throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_STORAGE_UNAVAILABLE");
   const { data, error } = await admin.from("staging_package_fixture_runs")
-    .select("item_id, package_id, storage_paths")
+    .select("item_id, package_id, import_code_id, storage_paths, cleanup_counts")
     .eq("operation_id", PREVIOUS_AFTER_ASSET_1_OPERATION_ID)
     .eq("user_id", userId)
     .eq("source_job_id", FIXTURE_SOURCE_JOB_ID)
-    .maybeSingle<{ item_id: string | null; package_id: string | null; storage_paths: unknown }>();
+    .maybeSingle<{ item_id: string | null; package_id: string | null; import_code_id: string | null; storage_paths: unknown; cleanup_counts: unknown }>();
   const paths = fixtureRegistryPaths(data?.storage_paths);
-  if (error || !data?.item_id || !data.package_id || paths.length !== fixtureSourceRoles.length) {
+  const registryState = fixtureRecoveryRegistry(data, paths);
+  if (error || !registryState) {
     throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_RECOVERY_RECORD_INVALID");
   }
   const registry = { operationId: PREVIOUS_AFTER_ASSET_1_OPERATION_ID, userId };
   await markFixtureRunCleanup(admin, registry, "cleaning");
   try {
-    const cleanup = await cleanupFixture(admin, data.item_id, data.package_id, paths);
-    await markFixtureRunCleanup(admin, registry, "cleaned", cleanup);
-    const counts = await fixtureResidualCounts(admin, userId, data.item_id, data.package_id);
+    const counts = await recoverExactFixtureDatabase(registryState, userId, fixtureRecoveryGateway(admin));
+    await markFixtureRunCleanup(admin, registry, "cleaned", {
+      storageObjectsExpected: paths.length,
+      storageObjectsRemaining: 0,
+      storageCleanupVerified: true,
+    });
     await deleteFixtureRunRegistry(admin, registry);
-    return { ...cleanup, ...counts };
+    return {
+      storageObjectsExpected: paths.length,
+      storageObjectsRemaining: 0,
+      storageCleanupVerified: true,
+      ...counts,
+    };
   } catch (error) {
     await markFixtureRunCleanup(admin, registry, "failed").catch(() => undefined);
     throw error;
   }
+}
+
+function fixtureRecoveryRegistry(
+  data: { item_id: string | null; package_id: string | null; import_code_id: string | null; storage_paths: unknown; cleanup_counts: unknown } | null,
+  paths: string[],
+): FixtureRecoveryRegistry | null {
+  const cleanup = data?.cleanup_counts;
+  if (!data?.item_id || !data.package_id || !data.import_code_id || !isVerifiedStorageCleanup(cleanup)) return null;
+  return {
+    itemId: data.item_id,
+    packageId: data.package_id,
+    importCodeId: data.import_code_id,
+    sourceJobId: FIXTURE_SOURCE_JOB_ID,
+    storagePaths: paths,
+    storageCleanupVerified: true,
+    storageObjectsRemaining: 0,
+  };
+}
+
+function isVerifiedStorageCleanup(value: unknown) {
+  if (!value || typeof value !== "object") return false;
+  const record = value as { storageCleanupVerified?: unknown; storageObjectsRemaining?: unknown };
+  return record.storageCleanupVerified === true && record.storageObjectsRemaining === 0;
+}
+
+function fixtureRecoveryGateway(admin: NonNullable<ReturnType<typeof createAdminClient>>): FixtureRecoveryGateway {
+  return {
+    getImportCode: async (id) => fixtureRecoveryRow(admin.from("mascot_import_codes").select("id, user_id, package_id").eq("id", id).maybeSingle(), "package_id"),
+    getPackage: async (id) => fixtureRecoveryRow(admin.from("mascot_packages").select("id, user_id, library_item_id").eq("id", id).maybeSingle(), "library_item_id"),
+    getItem: async (id) => fixtureRecoveryRow(admin.from("mascot_library_items").select("id, user_id, modal_job_id").eq("id", id).maybeSingle(), "modal_job_id"),
+    deleteImportCode: async (id) => exactFixtureDelete(admin.from("mascot_import_codes").delete().eq("id", id), "FIXTURE_IMPORT_CODE_DELETE_FAILED"),
+    deletePackage: async (id) => exactFixtureDelete(admin.from("mascot_packages").delete().eq("id", id), "FIXTURE_PACKAGE_DELETE_FAILED"),
+    deleteItem: async (id) => exactFixtureDelete(admin.from("mascot_library_items").delete().eq("id", id), "FIXTURE_ITEM_DELETE_FAILED"),
+    remaining: async (ids) => {
+      const [items, packages, codes] = await Promise.all([
+        admin.from("mascot_library_items").select("id", { count: "exact", head: true }).eq("id", ids.itemId),
+        admin.from("mascot_packages").select("id", { count: "exact", head: true }).eq("id", ids.packageId),
+        admin.from("mascot_import_codes").select("id", { count: "exact", head: true }).eq("id", ids.importCodeId),
+      ]);
+      if (items.error || packages.error || codes.error) throw new Error("FIXTURE_DB_CLEANUP_VERIFY_FAILED");
+      return { items: items.count ?? 0, packages: packages.count ?? 0, codes: codes.count ?? 0 };
+    },
+  };
+}
+
+async function fixtureRecoveryRow(
+  query: PromiseLike<{ data: { id: string; user_id: string; package_id?: string | null; library_item_id?: string | null; modal_job_id?: string | null } | null; error: unknown }>,
+  parentKey: "package_id" | "library_item_id" | "modal_job_id",
+) {
+  const { data, error } = await query;
+  if (error) throw new Error("FIXTURE_RECOVERY_LOOKUP_FAILED");
+  if (!data) return null;
+  return { id: data.id, userId: data.user_id, parentId: data[parentKey] ?? "" };
+}
+
+async function exactFixtureDelete(query: PromiseLike<{ error: unknown }>, code: string) {
+  const { error } = await query;
+  if (error) throw new Error(code);
 }
 
 function fixtureRegistryPaths(value: unknown) {
@@ -357,15 +425,6 @@ async function fixtureImportCodeId(admin: NonNullable<ReturnType<typeof createAd
     .eq("package_id", packageId).maybeSingle<{ id: string }>();
   if (error || !data) throw new Error("FIXTURE_IMPORT_CODE_UNAVAILABLE");
   return data.id;
-}
-
-async function fixtureResidualCounts(admin: NonNullable<ReturnType<typeof createAdminClient>>, userId: string, itemId: string, packageId: string) {
-  const [items, packages, codes] = await Promise.all([
-    admin.from("mascot_library_items").select("id", { count: "exact", head: true }).eq("id", itemId).eq("user_id", userId),
-    admin.from("mascot_packages").select("id", { count: "exact", head: true }).eq("id", packageId).eq("user_id", userId),
-    admin.from("mascot_import_codes").select("id", { count: "exact", head: true }).eq("package_id", packageId).eq("user_id", userId),
-  ]);
-  return { items: items.count ?? 0, packages: packages.count ?? 0, codes: codes.count ?? 0 };
 }
 
 async function cleanupFixture(

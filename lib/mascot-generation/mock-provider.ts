@@ -1,7 +1,10 @@
 import "server-only";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { generationConfig } from "./config";
-import type { CreateMasterJobInput, GenerationJob, JobIdentity, MascotGenerationProvider, PoseChoices } from "./types";
-import { DEFAULT_POSE_CHOICES } from "./pose-catalog";
+import type { CreateMasterJobInput, GenerationJob, JobIdentity, MascotConfiguration, MascotGenerationProvider, PoseChoices } from "./types";
+import { DEFAULT_POSE_CHOICES, POSE_CATALOG_VERSION, POSE_OPTIONS } from "./pose-catalog";
 
 type MockRecord = { createdAt: number; ownerId: string; job: GenerationJob };
 const globalStore = globalThis as typeof globalThis & { __puleiroMockJobs?: Map<string, MockRecord> };
@@ -9,6 +12,16 @@ const jobs = globalStore.__puleiroMockJobs ?? new Map<string, MockRecord>();
 globalStore.__puleiroMockJobs = jobs;
 
 export class MockMascotGenerationProvider implements MascotGenerationProvider {
+  async getCapabilities() {
+    const catalog = (role: "normal" | "listening" | "transcribing") =>
+      POSE_OPTIONS.filter((option) => option.role === role).map((option) => option.id);
+    return {
+      contractVersion: "v2" as const,
+      master: { ready: generationConfig.masterGenerationEnabled, modelVersion: "mock-v1", promptVersion: "master-v4", reasons: generationConfig.masterGenerationEnabled ? [] : ["GENERATION_DISABLED"] },
+      poses: { ready: generationConfig.poseGenerationEnabled, workerVersion: "mock-v1", catalogVersion: POSE_CATALOG_VERSION, templateVersion: POSE_CATALOG_VERSION, reasons: generationConfig.poseGenerationEnabled ? [] : ["GENERATION_DISABLED"] },
+      poseCatalog: { normal: catalog("normal"), listening: catalog("listening"), transcribing: catalog("transcribing") },
+    };
+  }
   async createMasterJob(input: CreateMasterJobInput) {
     const existing = [...jobs.values()].find(
       ({ ownerId, job }) => ownerId === input.ownerId && job.attemptId === input.attemptId,
@@ -24,6 +37,7 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
       masters: [],
       subjectIdentity: input.subjectIdentity,
       poseChoices: DEFAULT_POSE_CHOICES,
+      configuration: { displayName: "Mascote GRU", poseChoices: DEFAULT_POSE_CHOICES, configurationRevision: 0 },
       poses: [],
     };
     jobs.set(id, { createdAt: Date.now(), ownerId: input.ownerId, job });
@@ -42,6 +56,8 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
     const record = jobs.get(jobId);
     if (!record || record.ownerId !== identity.ownerId) return null;
     if (record.job.status === "generating_poses" && Date.now() - record.createdAt >= generationConfig.mockDelayMs) {
+      const bytes = await readFile(join(process.cwd(), "public", "assets", "puleiro-reveal.jpg"));
+      const sha256 = createHash("sha256").update(bytes).digest("hex");
       record.job = {
         ...record.job,
         status: "awaiting_set_approval",
@@ -52,6 +68,10 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
           optionId: record.job.poseChoices[role],
           label: role,
           imageUrl: "/assets/puleiro-reveal.jpg",
+          sha256,
+          size: bytes.byteLength,
+          templateVersion: POSE_CATALOG_VERSION,
+          qc: { status: "passed" as const, safe_reasons: [], alpha_ratio: 0.5, border_opaque_ratio: 0, foreground_components: 1, width: 1024, height: 1024 },
         })),
       };
     }
@@ -79,6 +99,15 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
     return record ? this.getJob(record.job.id, identity) : null;
   }
 
+  async deleteJob(jobId: string, identity: JobIdentity) {
+    const record = jobs.get(jobId);
+    if (!record || record.ownerId !== identity.ownerId || record.job.attemptId !== identity.attemptId) {
+      throw new Error("Nascimento não encontrado.");
+    }
+    jobs.delete(jobId);
+    return { deleted: true as const, idempotentReplay: false };
+  }
+
   async approveMaster(jobId: string, masterId: string, identity: JobIdentity) {
     const job = await this.getJob(jobId, identity);
     if (!job || !job.masters.some(({ id }) => id === masterId)) throw new Error("Master não encontrado.");
@@ -86,6 +115,30 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
     const record = jobs.get(jobId);
     if (record) record.job = approved;
     return approved;
+  }
+
+  async updateConfiguration(
+    jobId: string,
+    configuration: Partial<MascotConfiguration> & Pick<MascotConfiguration, "configurationRevision">,
+    identity: JobIdentity,
+  ) {
+    const job = await this.getJob(jobId, identity);
+    if (!job || job.status !== "master_approved") throw new Error("A configuração só fica disponível após aprovar o Master.");
+    if (configuration.configurationRevision !== job.configuration.configurationRevision) {
+      throw new Error("POSE_CONFIGURATION_CONFLICT");
+    }
+    const next = {
+      ...job,
+      poseChoices: configuration.poseChoices ?? job.poseChoices,
+      configuration: {
+        displayName: configuration.displayName ?? job.configuration.displayName,
+        poseChoices: configuration.poseChoices ?? job.configuration.poseChoices,
+        configurationRevision: job.configuration.configurationRevision + 1,
+      },
+    };
+    const record = jobs.get(jobId);
+    if (record) record.job = next;
+    return next;
   }
 
   async startPoseGeneration(jobId: string, choices: PoseChoices, identity: JobIdentity) {
@@ -98,5 +151,10 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
       record.job = generating;
     }
     return generating;
+  }
+
+  async getPoseImage() {
+    const bytes = await readFile(join(process.cwd(), "public", "assets", "puleiro-reveal.jpg"));
+    return { bytes: new Uint8Array(bytes), contentType: "image/jpeg" as const };
   }
 }

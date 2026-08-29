@@ -8,6 +8,7 @@ describe("BFF → Modal v2 local sem GPU", () => {
   let registrationCalls = 0;
   let masterGenerationCalls = 0;
   let approvalCalls = 0;
+  let deletionCalls = 0;
   let poseHttpCalls = 0;
   let poseWorkerReservations = 0;
   let approvalIdempotencyKey = "";
@@ -25,6 +26,7 @@ describe("BFF → Modal v2 local sem GPU", () => {
         approvalCalls += 1;
         approvalIdempotencyKey = String(request.headers["x-idempotency-key"] ?? "");
       }
+      if (request.method === "DELETE" && url.pathname === "/v2/mascot/jobs/job-local-1") deletionCalls += 1;
       let operationId = String(request.headers["x-operation-id"] ?? "");
       let idempotentReplay = false;
       if (request.method === "POST" && url.pathname === "/v2/mascot/jobs/job-local-1/pose-generations") {
@@ -43,6 +45,10 @@ describe("BFF → Modal v2 local sem GPU", () => {
       response.setHeader("X-Request-ID", `modal-request-${poseHttpCalls + registrationCalls}`);
       if (operationId) response.setHeader("X-Operation-ID", operationId);
       response.setHeader("Content-Type", "application/json");
+      if (request.method === "DELETE" && url.pathname === "/v2/mascot/jobs/job-local-1") {
+        response.end(JSON.stringify({ deleted: true, idempotent_replay: false }));
+        return;
+      }
       response.end(JSON.stringify({
         jobId: "job-local-1",
         attemptId: payload.attempt_id,
@@ -95,6 +101,7 @@ describe("BFF → Modal v2 local sem GPU", () => {
       operationId: "bff-operation-2",
       requestId: "bff-request-2",
     });
+    const deleted = await provider.deleteJob(created.id, identity);
     expect(created).toMatchObject({ status: "registered", generationScheduled: false });
     expect(scheduled.id).toBe(created.id);
     expect(read?.id).toBe(created.id);
@@ -104,17 +111,20 @@ describe("BFF → Modal v2 local sem GPU", () => {
     expect(approvalIdempotencyKey).toContain("approve:owner-local:attempt-local-123456:job-local-1:master_1");
     expect(firstPoseRequest.operationId).toBe("pose-operation-1");
     expect(replayPoseRequest).toMatchObject({ operationId: "pose-operation-1", idempotentReplay: true });
+    expect(deleted).toEqual({ deleted: true, idempotentReplay: false });
     expect({ masterGenerationCalls, poseHttpCalls, poseWorkerReservations, poseWorkerCalls: 0 }).toEqual({
       masterGenerationCalls: 1,
       poseHttpCalls: 2,
       poseWorkerReservations: 1,
       poseWorkerCalls: 0,
     });
+    expect(deletionCalls).toBe(1);
   });
 
-  it("usa limites de espera próprios para registro e leitura de retomada", async () => {
+  it("usa limites de espera próprios para registro, exclusão e leitura de retomada", async () => {
     const { modalRequestTimeoutMs } = await import("@/lib/mascot-generation/modal-provider");
     expect(modalRequestTimeoutMs("/v2/mascot/jobs", "POST")).toBe(35_000);
+    expect(modalRequestTimeoutMs("/v2/mascot/jobs/job-local", "DELETE")).toBe(60_000);
     expect(modalRequestTimeoutMs("/v2/mascot/jobs?attempt_id=attempt-local", "GET")).toBe(20_000);
     expect(modalRequestTimeoutMs("/v2/mascot/jobs/job-local/pose-generations", "POST")).toBe(20_000);
   });

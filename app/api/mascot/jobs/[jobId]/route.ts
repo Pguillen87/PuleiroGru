@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
-import { getAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
+import { ATTEMPT_COOKIE, getAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
-import { saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
+import { deleteAttempt, findAttempt, findAttemptByJobId, isDeletableAttemptStatus, saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
 import { createClient } from "@/lib/supabase/server";
 import { reconcileGenerationTelemetry } from "@/lib/mascot-generation/telemetry-store";
+import { reconcileAssetChecks } from "@/lib/mascot-generation/asset-check-store";
 import { createTraceContext, mascotLog, traceResponse, type MascotTraceContext } from "@/lib/observability/mascot-trace";
 
 export const runtime = "nodejs";
@@ -25,12 +26,63 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
     if (identity.mode === "supabase-session") {
       const client = await createClient();
       await saveAttemptJob(client, identity.uid, job, trace);
-      await reconcileGenerationTelemetry(client, identity.uid, job).catch(() => undefined);
+      const reconciliations = await Promise.allSettled([
+        reconcileGenerationTelemetry(client, identity.uid, job),
+        reconcileAssetChecks(client, identity.uid, job),
+      ]);
+      reconciliations.forEach((result, index) => {
+        if (result.status === "rejected") mascotLog("generation_reconciliation_failed", {
+          ...trace, jobId, result: "failure", stage: index === 0 ? "telemetry" : "asset_checks",
+          safeErrorCode: result.reason instanceof Error ? result.reason.name : "UNKNOWN",
+        });
+      });
     }
     mascotLog("generation_status_read", { ...trace, jobId, result: "success", durationMs: Math.round(performance.now() - startedAt), httpStatus: 200, stage: job.status });
     return traceResponse(NextResponse.json({ job }, { status: 200 }), trace, job.requestId);
   } catch (error) {
     mascotLog("generation_status_read", { ...(trace ?? {}), jobId, result: "failure", durationMs: Math.round(performance.now() - startedAt), safeErrorCode: error instanceof Error ? error.name : "UNKNOWN" });
     return integrationErrorResponse(error, "JOB_READ_FAILED", "Não foi possível consultar o nascimento agora.", trace);
+  }
+}
+
+export async function DELETE(request: Request, context: { params: Promise<{ jobId: string }> }) {
+  const { jobId } = await context.params;
+  const startedAt = performance.now();
+  let trace: MascotTraceContext | undefined;
+  if (!validId(jobId)) return NextResponse.json({ message: "Identificador inválido.", code: "INVALID_JOB_ID" }, { status: 400 });
+  try {
+    const [identity, cookieAttemptId] = await Promise.all([requireBrowserIdentity(request), getAttemptId()]);
+    if (identity.mode !== "supabase-session") {
+      return NextResponse.json({ message: "Entre novamente para excluir este nascimento.", code: "DELETION_REQUIRES_SESSION" }, { status: 403 });
+    }
+    const lookupTrace = createTraceContext(cookieAttemptId ?? jobId, true);
+    trace = lookupTrace;
+    const client = await createClient();
+    const attempt = cookieAttemptId
+      ? await findAttempt(client, identity.uid, cookieAttemptId)
+      : await findAttemptByJobId(client, identity.uid, jobId);
+    if (!attempt || attempt.modal_job_id !== jobId) {
+      return traceResponse(NextResponse.json({ message: "Nascimento não encontrado.", code: "JOB_NOT_FOUND" }, { status: 404 }), lookupTrace);
+    }
+    if (!isDeletableAttemptStatus(attempt.status)) {
+      return traceResponse(NextResponse.json({ message: "Este nascimento não pode mais ser excluído por esta etapa.", code: "JOB_DELETION_NOT_ALLOWED" }, { status: 409 }), lookupTrace);
+    }
+    const deletionTrace = createTraceContext(attempt.attempt_id, true);
+    trace = deletionTrace;
+    const deletion = await getMascotGenerationProvider().deleteJob(jobId, jobIdentity(identity.uid, attempt.attempt_id, deletionTrace));
+    await deleteAttempt(client, identity.uid, attempt.attempt_id, jobId);
+    mascotLog("generation_deleted", {
+      ...deletionTrace, jobId, result: deletion.idempotentReplay ? "idempotent_replay" : "deleted",
+      durationMs: Math.round(performance.now() - startedAt), httpStatus: 202,
+    });
+    const response = traceResponse(NextResponse.json({ deleted: true }, { status: 202 }), trace);
+    response.cookies.delete(ATTEMPT_COOKIE);
+    return response;
+  } catch (error) {
+    mascotLog("generation_deleted", {
+      ...(trace ?? {}), jobId, result: "failure", durationMs: Math.round(performance.now() - startedAt),
+      safeErrorCode: error instanceof Error ? error.name : "UNKNOWN",
+    });
+    return integrationErrorResponse(error, "JOB_DELETE_FAILED", "Não foi possível excluir este nascimento agora.", trace);
   }
 }

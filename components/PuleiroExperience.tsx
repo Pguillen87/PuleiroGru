@@ -17,6 +17,7 @@ import { MascotCodeStage } from "@/components/stage/MascotCodeStage";
 import { useMascotGenerationFlow, type FlowConfig } from "@/lib/mascot-generation/useMascotGenerationFlow";
 import { AccountGate } from "@/components/auth/AccountGate";
 import { StageButton } from "@/components/actions/StageButton";
+import { MascotConfigurationDialog } from "@/components/stage/MascotConfigurationDialog";
 
 export function PuleiroExperience({ config }: { config: FlowConfig }) {
   return (
@@ -29,6 +30,7 @@ export function PuleiroExperience({ config }: { config: FlowConfig }) {
 function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
   const flow = useMascotGenerationFlow(config);
   const [announcement, setAnnouncement] = useState("");
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
 
   const stageContent = {
     entry: <EntryStage onStart={flow.openSelection} />,
@@ -57,18 +59,42 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
           : "Você pode fechar esta página e voltar com a mesma conta."}
         action={config.masterGenerationEnabled
           ? <StageButton type="button" onClick={flow.startRegisteredGeneration}>Começar nascimento</StageButton>
-          : undefined}
+          : deleteConfirmationOpen ? <>
+              <p role="alert">A foto enviada e este nascimento serão excluídos definitivamente.</p>
+              <StageButton type="button" tone="secondary" onClick={() => setDeleteConfirmationOpen(false)}>Cancelar</StageButton>
+              <StageButton type="button" onClick={() => {
+                setDeleteConfirmationOpen(false);
+                void flow.deleteRegisteredMascot();
+              }}>Confirmar exclusão</StageButton>
+            </>
+            : <StageButton type="button" tone="secondary" onClick={() => setDeleteConfirmationOpen(true)}>Excluir este nascimento</StageButton>}
       />
     ),
     "master-ready": flow.revealComplete
-      ? <MasterDecisionStage mode="ready" position={flow.masterPosition} errorMessage={flow.errorMessage} onAccept={flow.acceptMaster} onNext={flow.nextMaster} onReloadImage={flow.retryMasterImage} />
+      ? <MasterDecisionStage mode="ready" position={flow.masterPosition} errorMessage={flow.errorMessage} approving={flow.masterApprovalPending} onAccept={flow.acceptMaster} onNext={flow.nextMaster} onReloadImage={flow.retryMasterImage} />
       : <PreparingStage title="O nascimento começou" message="O palco está revelando seu mascote." />,
-    "master-approved": <MasterDecisionStage mode="approved" onAccept={flow.acceptMaster} onNext={flow.nextMaster} />,
+    "master-approved": <MasterDecisionStage mode="approved" onAccept={flow.openPoseConfiguration} onNext={flow.nextMaster} />,
     "master-rejected": <MasterDecisionStage mode="ready" position={flow.masterPosition} onAccept={flow.acceptMaster} onNext={flow.nextMaster} />,
+    "configuring-poses": flow.configuration ? <MascotConfigurationDialog
+      category={flow.subjectIdentity?.category ?? "other"}
+      configuration={flow.configuration}
+      masterUrl={flow.masterUrl}
+      saving={flow.configurationSaving}
+      savingField={flow.configurationSavingField}
+      saveStatus={flow.configurationSaveStatus}
+      configurationReady={flow.configurationReady}
+      poseGenerationReady={flow.poseGenerationReady}
+      capabilityMessage={flow.poseCapabilityMessage}
+      errorMessage={flow.errorMessage}
+      onSaveName={flow.saveDisplayName}
+      onSavePose={flow.savePoseChoice}
+      onGenerate={flow.generatePoseSet}
+      onDismiss={flow.closePoseConfiguration}
+    /> : <PreparingStage title="Abrindo o Jornal do Puleiro" message="Recuperando as escolhas salvas…" />,
     "choosing-normal": <PoseSelectionStage role="normal" category={flow.subjectIdentity?.category ?? "other"} selected={flow.poseChoices.normal} onSelect={(option) => flow.selectPose("normal", option)} onContinue={() => flow.continuePoseSelection("normal")} onBack={() => flow.backPoseSelection("normal")} />,
     "choosing-listening": <PoseSelectionStage role="listening" category={flow.subjectIdentity?.category ?? "other"} selected={flow.poseChoices.listening} onSelect={(option) => flow.selectPose("listening", option)} onContinue={() => flow.continuePoseSelection("listening")} onBack={() => flow.backPoseSelection("listening")} />,
     "choosing-transcribing": <PoseSelectionStage role="transcribing" category={flow.subjectIdentity?.category ?? "other"} selected={flow.poseChoices.transcribing} onSelect={(option) => flow.selectPose("transcribing", option)} onContinue={() => flow.continuePoseSelection("transcribing")} onBack={() => flow.backPoseSelection("transcribing")} />,
-    "pose-selection-review": <PoseSelectionReviewStage choices={flow.poseChoices} enabled={config.poseGenerationEnabled} errorMessage={flow.errorMessage} onGenerate={flow.generatePoseSet} onBack={() => flow.backPoseSelection("review")} />,
+    "pose-selection-review": <PoseSelectionReviewStage choices={flow.poseChoices} enabled={flow.poseGenerationReady} capabilityMessage={flow.poseCapabilityMessage} errorMessage={flow.errorMessage} onGenerate={flow.generatePoseSet} onBack={() => flow.backPoseSelection("review")} />,
     "generating-poses": <PreparingStage title="Experimentando os três jeitos" message={flow.statusMessage} detail="O mascote mestre continua sendo a referência de identidade." progress={flow.progress} />,
     "pose-set-ready": flow.poses.length === 3
       ? <PoseSetReadyStage poses={flow.poses} errorMessage={flow.errorMessage} onSave={flow.saveLibrary} />
@@ -86,7 +112,7 @@ function AuthenticatedPuleiroExperience({ config }: { config: FlowConfig }) {
     ),
   }[flow.state];
 
-  const artwork = flow.masterUrl && ["master-ready", "master-approved", "master-rejected", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "generating-poses", "pose-set-ready", "saving-library", "code-ready"].includes(flow.state)
+  const artwork = flow.masterUrl && ["master-ready", "master-approved", "master-rejected", "configuring-poses", "choosing-normal", "choosing-listening", "choosing-transcribing", "pose-selection-review", "generating-poses", "pose-set-ready", "saving-library", "code-ready"].includes(flow.state)
       ? { src: flow.masterUrl, alt: "Mascote mestre criado a partir da fotografia enviada." }
       : undefined;
 

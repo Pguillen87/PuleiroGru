@@ -68,7 +68,7 @@ test("percorre o fluxo explícito sem ações prematuras", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Gostei deste" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Seu mascote chegou!" })).toBeVisible({ timeout: 5_000 });
   await page.getByRole("button", { name: "Gostei deste" }).click();
-  await expect(page.getByRole("heading", { name: "Como ele fica quando está pronto?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Configure os jeitos que ele contará" })).toBeVisible();
 });
 
 for (const mimeType of ["image/jpeg", "image/png", "image/webp"]) {
@@ -298,9 +298,35 @@ test("retoma job já aprovado sem acusar ausência de Masters", async ({ page })
     }),
   }));
   await page.goto("/criar");
-  await expect(page.getByRole("heading", { name: "Como ele fica quando está pronto?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Configure os jeitos que ele contará" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Este nascimento precisa de outra tentativa" })).toHaveCount(0);
   await expect(page.locator(".stage__art img")).toHaveAttribute("src", "/api/mascot/jobs/aprovado/master/master_3");
+});
+
+test("consulta o estado antes de oferecer nova exclusão após resposta incerta", async ({ page }) => {
+  let reads = 0;
+  let deletionAttempted = false;
+  await page.route("**/api/mascot/jobs/current", (route) => {
+    reads += 1;
+    const job = !deletionAttempted
+      ? { id: "registro-incerto", attemptId: "attempt-incerto", status: "registered", message: "Nascimento guardado.", generationScheduled: false, masters: [], ...jobIdentity }
+      : { id: "master-retomado", attemptId: "attempt-anterior", status: "master_approved", message: "Mascote mestre aprovado.", generationScheduled: true, masters: [{ id: "master_1", imageUrl: "/assets/puleiro-reveal.jpg" }], approvedMasterId: "master_1", ...jobIdentity };
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ job }) });
+  });
+  await page.route("**/api/mascot/jobs/registro-incerto", (route) => {
+    deletionAttempted = true;
+    return route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ code: "JOB_DELETE_FAILED", message: "A exclusão ainda está sendo confirmada.", retryable: true }),
+    });
+  });
+  await page.goto("/criar");
+  await expect(page.getByRole("heading", { name: "Nascimento guardado" })).toBeVisible();
+  await page.getByRole("button", { name: "Excluir este nascimento" }).click();
+  await page.getByRole("button", { name: "Confirmar exclusão" }).click();
+  await expect(page.getByRole("heading", { name: "Configure os jeitos que ele contará" })).toBeVisible();
+  expect(reads).toBeGreaterThanOrEqual(2);
 });
 
 test("retoma geração de poses por GET e preserva o Master inteiro", async ({ page }) => {
@@ -422,7 +448,7 @@ test("uma nova foto não é substituída pela retomada de um mascote já conclu�
   await expect(page.getByRole("heading", { name: "Seu GRU está pronto" })).toHaveCount(0);
 });
 
-test("escolhe uma pose por função sem acionar GPU quando a flag está desligada", async ({ page }) => {
+test("mantém as poses indisponíveis quando a capacidade do servidor as bloqueia", async ({ page }) => {
   let posePosts = 0;
   page.on("request", (request) => {
     if (request.method() === "POST" && request.url().includes("/pose-generations")) posePosts += 1;
@@ -430,18 +456,200 @@ test("escolhe uma pose por função sem acionar GPU quando a flag está desligad
   await page.goto("/criar");
   await completeFlow(page);
   await page.getByRole("button", { name: "Gostei deste" }).click();
-  await expect(page.locator(".pose-choice-grid .pose-reference-preview")).toHaveCount(4);
-  await page.getByRole("radio", { name: /Relaxado/ }).check();
-  await page.getByRole("button", { name: "Continuar" }).click();
-  await page.getByRole("radio", { name: /Reação natural/ }).check();
-  await page.getByRole("button", { name: "Continuar" }).click();
-  await page.getByRole("radio", { name: /Organizando ideias/ }).check();
-  await page.getByRole("button", { name: "Continuar" }).click();
-  await expect(page.getByRole("heading", { name: "Revise os jeitos do seu mascote" })).toBeVisible();
-  await expect(page.locator(".pose-summary .pose-reference-preview")).toHaveCount(3);
+  await expect(page.getByRole("heading", { name: "Configure os jeitos que ele contará" })).toBeVisible();
+  await expect(page.locator(".mascot-journal__pose-summary .pose-reference-preview")).toHaveCount(3);
+  await expect(page.getByText("Configuração pronta e salva")).toBeVisible();
+  await expect(page.getByText("Oficina de poses indisponível")).toBeVisible();
   await expect(page.getByRole("button", { name: "Gerar as três poses" })).toBeDisabled();
   expect(posePosts).toBe(0);
 });
+
+test("fecha o editor e reflete a pose antes da confirmação remota", async ({ page }) => {
+  const job = {
+    id: "jornal-otimista",
+    attemptId: "attempt-jornal-otimista",
+    status: "master_approved",
+    message: "Mascote mestre aprovado.",
+    generationScheduled: true,
+    masters: [{ id: "master_1", imageUrl: "/assets/puleiro-reveal.jpg" }],
+    approvedMasterId: "master_1",
+    configuration: {
+      displayName: "Mascote GRU",
+      poseChoices: { ...jobIdentity.poseChoices },
+      configurationRevision: 0,
+    },
+    ...jobIdentity,
+  };
+  await page.route("**/api/mascot/jobs/current", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ job }),
+  }));
+  await page.route("**/api/mascot/jobs/jornal-otimista/configuration", async (route) => {
+    const body = route.request().postDataJSON();
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        job: {
+          ...job,
+          configuration: {
+            ...job.configuration,
+            poseChoices: body.poseChoices,
+            configurationRevision: 1,
+          },
+          poseChoices: body.poseChoices,
+        },
+      }),
+    });
+  });
+
+  await page.goto("/criar");
+  const normal = page.locator(".mascot-journal__pose").filter({ hasText: "NORMAL" });
+  await normal.getByRole("button", { name: "Editar" }).click();
+  await normal.getByText("Relaxado", { exact: true }).click();
+  await normal.getByRole("button", { name: "Salvar pose" }).click();
+
+  await expect(normal.locator(".mascot-journal__editor")).toHaveCount(0);
+  await expect(normal.locator(".mascot-journal__pose-summary")).toContainText("Relaxado");
+  await expect(page.getByText("Salvando suas escolhas…")).toBeVisible();
+  await expect(page.getByText("Configuração salva.")).toBeVisible({ timeout: 3_000 });
+});
+
+test("restaura a pose e reabre o editor quando o salvamento falha", async ({ page }) => {
+  const job = {
+    id: "jornal-rollback",
+    attemptId: "attempt-jornal-rollback",
+    status: "master_approved",
+    message: "Mascote mestre aprovado.",
+    generationScheduled: true,
+    masters: [{ id: "master_1", imageUrl: "/assets/puleiro-reveal.jpg" }],
+    approvedMasterId: "master_1",
+    configuration: {
+      displayName: "Mascote GRU",
+      poseChoices: { ...jobIdentity.poseChoices },
+      configurationRevision: 0,
+    },
+    ...jobIdentity,
+  };
+  await page.route("**/api/mascot/jobs/current", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ job }),
+  }));
+  await page.route("**/api/mascot/jobs/jornal-rollback/configuration", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ code: "CONFIGURATION_SAVE_FAILED", message: "Não foi possível salvar esta configuração agora." }),
+    });
+  });
+
+  await page.goto("/criar");
+  const normal = page.locator(".mascot-journal__pose").filter({ hasText: "NORMAL" });
+  await normal.getByRole("button", { name: "Editar" }).click();
+  await normal.getByText("Relaxado", { exact: true }).click();
+  await normal.getByRole("button", { name: "Salvar pose" }).click();
+
+  await expect(normal.locator(".mascot-journal__editor")).toHaveCount(0);
+  await expect(normal.locator(".mascot-journal__pose-summary")).toContainText("Relaxado");
+  await expect(normal.locator(".mascot-journal__editor")).toBeVisible({ timeout: 3_000 });
+  await expect(normal.locator(".mascot-journal__pose-summary")).toContainText("Pronto e atento");
+  await expect(page.locator(".stage-error")).toContainText("Não foi possível salvar");
+});
+
+test("Jornal mantém o Master real em desktop e reflow sem corte em mobile", async ({ page }) => {
+  await page.route("**/api/mascot/jobs/current", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      job: {
+        id: "jornal-master",
+        attemptId: "attempt-jornal-master",
+        status: "master_approved",
+        message: "Mascote mestre aprovado.",
+        generationScheduled: true,
+        masters: [{ id: "master_1", imageUrl: "/assets/puleiro-reveal.jpg" }],
+        approvedMasterId: "master_1",
+        ...jobIdentity,
+      },
+    }),
+  }));
+  await page.goto("/criar");
+  const journal = page.locator("dialog.mascot-journal");
+  await expect(journal).toBeVisible();
+  await expect(journal.locator(".mascot-journal__portrait img")).toHaveAttribute("src", "/assets/puleiro-reveal.jpg");
+  const portrait = await journal.locator(".mascot-journal__portrait").boundingBox();
+  const desk = await journal.locator(".mascot-journal__desk").boundingBox();
+  expect(portrait?.x).toBeLessThan(desk?.x ?? 0);
+
+  const close = journal.getByRole("button", { name: "Fechar configurações" });
+  for (const width of [1440, 1024, 768, 390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    const journalBox = await journal.boundingBox();
+    const closeBox = await close.boundingBox();
+    expect(journalBox).not.toBeNull();
+    expect(closeBox).not.toBeNull();
+    expect(closeBox!.x + closeBox!.width).toBeGreaterThanOrEqual(journalBox!.x + journalBox!.width - 96);
+    expect(closeBox!.x + closeBox!.width).toBeLessThanOrEqual(journalBox!.x + journalBox!.width - 8);
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".mascot-journal__portrait img")).toBeVisible();
+  const mobilePortrait = await journal.locator(".mascot-journal__portrait figure").boundingBox();
+  const mobileNameInput = await journal.locator("#mascot-display-name").boundingBox();
+  const mobileNameSave = await journal.locator(".mascot-journal__name button").boundingBox();
+  expect(mobilePortrait?.width).toBeGreaterThanOrEqual(320);
+  expect(Math.abs((mobileNameInput?.y ?? 0) - (mobileNameSave?.y ?? 100))).toBeLessThan(4);
+  expect(mobileNameSave?.height).toBeGreaterThanOrEqual(48);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+    await page.evaluate(() => document.documentElement.clientWidth),
+  );
+});
+
+for (const scenario of [
+  { name: "habilita poses quando o catálogo do servidor está pronto", catalogVersion: "web-poses-v1", ready: true, enabled: true },
+  { name: "bloqueia poses com catálogo incompatível", catalogVersion: "web-poses-v0", ready: true, enabled: false },
+]) {
+  test(scenario.name, async ({ page }) => {
+    await page.route("**/api/mascot/jobs/current", (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        job: {
+          id: "master-pronto",
+          attemptId: "attempt-master-pronto",
+          status: "master_approved",
+          message: "Mascote mestre aprovado.",
+          generationScheduled: true,
+          masters: [{ id: "master_1", imageUrl: "/assets/puleiro-reveal.jpg" }],
+          approvedMasterId: "master_1",
+          ...jobIdentity,
+        },
+      }),
+    }));
+    await page.route("**/api/mascot/capabilities", (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        capabilities: {
+          contractVersion: "v2",
+          master: { ready: true, modelVersion: "mock-v1", promptVersion: "master-v4", reasons: [] },
+          poses: { ready: scenario.ready, workerVersion: "pose-worker-v1", catalogVersion: scenario.catalogVersion, templateVersion: "web-poses-v1", reasons: [] },
+          poseCatalog: {
+            normal: ["normal_attentive", "normal_relaxed", "normal_curious", "normal_firm"],
+            listening: ["listening_focus", "listening_process", "listening_natural", "listening_ready"],
+            transcribing: ["transcribing_notes", "transcribing_fast", "transcribing_thought", "transcribing_active"],
+          },
+        },
+      }),
+    }));
+    await page.goto("/criar");
+    await expect(page.getByRole("heading", { name: "Configure os jeitos que ele contará" })).toBeVisible();
+    const submit = page.getByRole("button", { name: "Gerar as três poses" });
+    if (scenario.enabled) {
+      await expect(submit).toBeEnabled({ timeout: 5_000 });
+    } else {
+      await expect(submit).toBeDisabled({ timeout: 5_000 });
+    }
+  });
+}
 
 test("movimento reduzido preserva conteúdo e remove loops", async ({ browser }) => {
   const context = await browser.newContext({ reducedMotion: "reduce" });

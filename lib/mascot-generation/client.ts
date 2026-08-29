@@ -1,4 +1,5 @@
-import type { GenerationJob, PoseChoices, SubjectIdentity } from "./types";
+import type { GenerationCapabilities, GenerationJob, MascotConfiguration, PoseChoices, SubjectIdentity } from "./types";
+import { DEFAULT_POSE_CHOICES } from "./pose-catalog";
 
 type JobResponse = { job?: GenerationJob | null; message?: string; code?: string; supportCode?: string; retryable?: boolean };
 
@@ -29,7 +30,25 @@ async function readResponse(response: Response, allowEmpty = false) {
       body.supportCode,
     );
   }
-  return body.job ?? null;
+  return body.job ? normalizeGenerationJob(body.job) : null;
+}
+
+function normalizeGenerationJob(job: GenerationJob): GenerationJob {
+  // `configuration` was added to the v2 response without removing the older
+  // top-level poseChoices field. Keep resumptions safe during a rolling
+  // deployment and for already-published clients that only know the old shape.
+  const poseChoices = job.poseChoices ?? job.configuration?.poseChoices ?? DEFAULT_POSE_CHOICES;
+  return {
+    ...job,
+    masters: job.masters ?? [],
+    poses: job.poses ?? [],
+    poseChoices,
+    configuration: job.configuration ?? {
+      displayName: "Mascote GRU",
+      poseChoices,
+      configurationRevision: 0,
+    },
+  };
 }
 
 function safeSupportMessage(message: string, supportCode?: string) {
@@ -83,6 +102,22 @@ export async function startPoseGeneration(jobId: string, poseChoices: PoseChoice
   return await readResponse(response) as GenerationJob;
 }
 
+export async function getGenerationCapabilities(signal: AbortSignal): Promise<GenerationCapabilities> {
+  const response = await fetch("/api/mascot/capabilities", { cache: "no-store", signal });
+  const body = await response.json().catch(() => ({})) as {
+    capabilities?: GenerationCapabilities; message?: string; code?: string; supportCode?: string;
+  };
+  if (!response.ok || !body.capabilities) {
+    throw new GenerationRequestError(
+      safeSupportMessage(body.message ?? "Não foi possível conferir a oficina de poses.", body.supportCode),
+      response.status >= 500,
+      body.code ?? "CAPABILITIES_UNAVAILABLE",
+      body.supportCode,
+    );
+  }
+  return body.capabilities;
+}
+
 export async function startMasterGeneration(jobId: string, signal: AbortSignal) {
   const response = await fetch(
     `/api/mascot/jobs/${encodeURIComponent(jobId)}/master-generations`,
@@ -96,11 +131,41 @@ export async function resumeGenerationJob(signal: AbortSignal) {
   return readResponse(response, true);
 }
 
+export async function deleteGenerationJob(jobId: string, signal: AbortSignal) {
+  const response = await fetch(`/api/mascot/jobs/${encodeURIComponent(jobId)}`, {
+    method: "DELETE",
+    signal,
+  });
+  const body = await response.json().catch(() => ({})) as { deleted?: boolean; message?: string; code?: string; supportCode?: string };
+  if (!response.ok || body.deleted !== true) {
+    throw new GenerationRequestError(
+      safeSupportMessage(body.message ?? "Não foi possível excluir este nascimento agora.", body.supportCode),
+      response.status >= 500,
+      body.code ?? "JOB_DELETE_FAILED",
+      body.supportCode,
+    );
+  }
+}
+
 export async function approveMaster(jobId: string, masterId: string, signal: AbortSignal) {
   const response = await fetch(
     `/api/mascot/jobs/${encodeURIComponent(jobId)}/masters/${encodeURIComponent(masterId)}/approve`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", signal },
   );
+  return await readResponse(response) as GenerationJob;
+}
+
+export async function updateMascotConfiguration(
+  jobId: string,
+  configuration: Partial<MascotConfiguration> & Pick<MascotConfiguration, "configurationRevision">,
+  signal: AbortSignal,
+) {
+  const response = await fetch(`/api/mascot/jobs/${encodeURIComponent(jobId)}/configuration`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(configuration),
+    signal,
+  });
   return await readResponse(response) as GenerationJob;
 }
 

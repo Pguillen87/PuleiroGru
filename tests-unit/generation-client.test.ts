@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createGenerationJob, pollGenerationJob, startPoseGeneration } from "@/lib/mascot-generation/client";
+import { createGenerationJob, deleteGenerationJob, pollGenerationJob, startPoseGeneration, updateMascotConfiguration } from "@/lib/mascot-generation/client";
 import type { GenerationJob } from "@/lib/mascot-generation/types";
 
 const job: GenerationJob = {
@@ -14,6 +14,15 @@ const job: GenerationJob = {
     normal: "normal_attentive",
     listening: "listening_focus",
     transcribing: "transcribing_fast",
+  },
+  configuration: {
+    displayName: "Mascote GRU",
+    poseChoices: {
+      normal: "normal_attentive",
+      listening: "listening_focus",
+      transcribing: "transcribing_fast",
+    },
+    configurationRevision: 0,
   },
   poses: [],
 };
@@ -101,5 +110,21 @@ describe("retomada durante consulta instável", () => {
     const photo = new File(["image"], "nova.jpg", { type: "image/jpeg" });
     await createGenerationJob(photo, job.subjectIdentity, new AbortController().signal, true);
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({ "X-Puleiro-New-Attempt": "true" });
+  });
+
+  it("salva configuração por PATCH sem reutilizar o POST publicado de poses", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ job }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateMascotConfiguration("job-1", { displayName: "Paulinho", configurationRevision: 0 }, new AbortController().signal);
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/mascot/jobs/job-1/configuration", expect.objectContaining({ method: "PATCH" }));
+  });
+
+  it("só aceita a confirmação explícita da exclusão do BFF", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ deleted: true }), { status: 202, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(deleteGenerationJob("job-1", new AbortController().signal)).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith("/api/mascot/jobs/job-1", expect.objectContaining({ method: "DELETE" }));
   });
 });

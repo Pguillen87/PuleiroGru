@@ -49,20 +49,42 @@ export async function findAttempt(client: SupabaseClient, userId: string, attemp
   return data;
 }
 
-export async function findLatestResumableAttempt(client: SupabaseClient, userId: string) {
+export async function findAttemptByJobId(client: SupabaseClient, userId: string, jobId: string) {
   const { data, error } = await client.from("mascot_attempts")
     .select("*")
     .eq("user_id", userId)
-    .in("status", RESUMABLE_ATTEMPT_STATUSES)
-    .order("updated_at", { ascending: false })
-    .limit(1)
+    .eq("modal_job_id", jobId)
     .maybeSingle<MascotAttempt>();
   if (error) throw new MascotAttemptStoreError();
   return data;
 }
 
+export async function findResumableAttempts(client: SupabaseClient, userId: string, limit = 10) {
+  const { data, error } = await client.from("mascot_attempts")
+    .select("*")
+    .eq("user_id", userId)
+    .in("status", RESUMABLE_ATTEMPT_STATUSES)
+    .order("updated_at", { ascending: false })
+    .limit(limit)
+    .returns<MascotAttempt[]>();
+  if (error) throw new MascotAttemptStoreError();
+  return data ?? [];
+}
+
+export function prioritizeAttempt(attempts: MascotAttempt[], attemptId: string | undefined) {
+  if (!attemptId) return attempts;
+  const preferred = attempts.find((attempt) => attempt.attempt_id === attemptId);
+  return preferred
+    ? [preferred, ...attempts.filter((attempt) => attempt.attempt_id !== attemptId)]
+    : attempts;
+}
+
 export function isResumableAttemptStatus(status: GenerationJobStatus) {
   return RESUMABLE_ATTEMPT_STATUSES.includes(status);
+}
+
+export function isDeletableAttemptStatus(status: GenerationJobStatus) {
+  return status === "registered" || status === "awaiting_generation_authorization";
 }
 
 export async function markAttemptReady(client: SupabaseClient, userId: string, attemptId: string) {
@@ -73,6 +95,17 @@ export async function markAttemptReady(client: SupabaseClient, userId: string, a
     .select("id")
     .maybeSingle<{ id: string }>();
   if (error || !data) throw new MascotAttemptStoreError();
+}
+
+export async function deleteAttempt(client: SupabaseClient, userId: string, attemptId: string, jobId: string) {
+  const { data, error } = await client.from("mascot_attempts")
+    .delete()
+    .eq("user_id", userId)
+    .eq("attempt_id", attemptId)
+    .eq("modal_job_id", jobId)
+    .select("id")
+    .maybeSingle<{ id: string }>();
+  if (error || !data) throw new MascotAttemptStoreError("Não foi possível excluir esta tentativa.");
 }
 
 export async function reserveAttempt(client: SupabaseClient, userId: string, attemptId: string) {
@@ -86,6 +119,9 @@ export async function reserveAttempt(client: SupabaseClient, userId: string, att
 
 export async function saveAttemptJob(client: SupabaseClient, userId: string, job: GenerationJob, trace?: MascotTraceContext) {
   const now = new Date().toISOString();
+  // Polling reconciles the same attempt repeatedly. Its start time belongs to
+  // the first durable write, never to the latest status observation.
+  const existing = await findAttempt(client, userId, job.attemptId);
   const { error } = await client.from("mascot_attempts").upsert({
     user_id: userId,
     attempt_id: job.attemptId,
@@ -95,7 +131,7 @@ export async function saveAttemptJob(client: SupabaseClient, userId: string, job
     ...(trace ? { puleiro_trace_id: trace.puleiroTraceId, operation_id: trace.operationId ?? null } : {}),
     current_stage: job.status,
     last_error_code: job.errorCode ?? null,
-    started_at: now,
+    started_at: existing?.started_at ?? now,
     ...(isTerminal(job.status) ? { completed_at: now } : {}),
     updated_at: now,
   }, { onConflict: "user_id,attempt_id" });

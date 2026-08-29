@@ -6,28 +6,38 @@ import type {
   AcceptedImageType,
   CreateMasterJobInput,
   GenerationJob,
+  GenerationCapabilities,
+  AssetQualityMetrics,
   JobIdentity,
   MascotGenerationProvider,
   MasterImage,
+  MascotConfiguration,
   PoseChoices,
   PoseRole,
   SubjectIdentity,
 } from "./types";
 import { ACCEPTED_IMAGE_TYPES } from "./types";
+import { POSE_CATALOG_VERSION } from "./pose-catalog";
 
 type ModalJob = {
   jobId: string;
   attemptId: string;
   status: GenerationJob["status"];
   generationScheduled: boolean;
-  masters?: Array<{ id: string }>;
+  masters?: Array<{ id: string; qc?: AssetQualityMetrics }>;
   approvedMasterId?: string;
   subjectIdentity?: SubjectIdentity;
   poseChoices?: PoseChoices;
-  poses?: Array<{ id: string; role: PoseRole; optionId: string; label: string }>;
+  configuration?: MascotConfiguration;
+  poses?: Array<{ id: string; role: PoseRole; optionId: string; label: string; sha256?: string; size?: number; templateVersion?: string; qc?: AssetQualityMetrics }>;
   error?: { code?: string; retryable?: boolean };
   operationId?: string;
   idempotentReplay?: boolean;
+};
+
+type ModalDeletion = {
+  deleted: boolean;
+  idempotent_replay?: boolean;
 };
 
 export class ModalProviderError extends Error {
@@ -43,6 +53,12 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
   constructor() {
     assertGenerationConfiguration();
     this.baseUrl = generationConfig.modalApiUrl;
+  }
+
+  async getCapabilities(identity: JobIdentity): Promise<GenerationCapabilities> {
+    const response = await this.request("/v2/mascot/capabilities", identity);
+    if (!response.ok) await this.throwResponse(response);
+    return response.json() as Promise<GenerationCapabilities>;
   }
 
   async createMasterJob(input: CreateMasterJobInput) {
@@ -93,6 +109,19 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
     return this.toGenerationJob(await this.readJob(response), response);
   }
 
+  async deleteJob(jobId: string, identity: JobIdentity) {
+    const response = await this.request(`/v2/mascot/jobs/${encodeURIComponent(jobId)}`, identity, {
+      method: "DELETE",
+      headers: {
+        ...this.operationHeaders(identity),
+        "X-Idempotency-Key": `delete:${identity.ownerId}:${identity.attemptId}:${jobId}`,
+      },
+    });
+    const payload = await this.readDeletion(response);
+    if (!payload.deleted) throw new ModalProviderError(503, "JOB_DELETE_FAILED", "A exclusão do nascimento não foi confirmada.");
+    return { deleted: true as const, idempotentReplay: payload.idempotent_replay === true };
+  }
+
   async approveMaster(jobId: string, masterId: string, identity: JobIdentity) {
     const path = `/v2/mascot/jobs/${encodeURIComponent(jobId)}/masters/${encodeURIComponent(masterId)}/approve`;
     const response = await this.request(path, identity, {
@@ -101,6 +130,27 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
         ...this.operationHeaders(identity),
         "X-Idempotency-Key": `approve:${identity.ownerId}:${identity.attemptId}:${jobId}:${masterId}`,
       },
+    });
+    return this.toGenerationJob(await this.readJob(response), response);
+  }
+
+  async updateConfiguration(
+    jobId: string,
+    configuration: Partial<MascotConfiguration> & Pick<MascotConfiguration, "configurationRevision">,
+    identity: JobIdentity,
+  ) {
+    const response = await this.request(`/v2/mascot/jobs/${encodeURIComponent(jobId)}/configuration`, identity, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...this.operationHeaders(identity),
+        "X-Idempotency-Key": `configuration:${identity.ownerId}:${identity.attemptId}:${jobId}:${configuration.configurationRevision}`,
+      },
+      body: JSON.stringify({
+        display_name: configuration.displayName,
+        pose_choices: configuration.poseChoices,
+        configuration_revision: configuration.configurationRevision,
+      }),
     });
     return this.toGenerationJob(await this.readJob(response), response);
   }
@@ -114,7 +164,7 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
         ...this.operationHeaders(identity),
         "X-Idempotency-Key": poseIdempotencyKey(identity, jobId, choices),
       },
-      body: JSON.stringify({ pose_choices: choices }),
+      body: JSON.stringify({ pose_choices: choices, catalog_version: POSE_CATALOG_VERSION }),
     });
     return this.toGenerationJob(await this.readJob(response), response);
   }
@@ -167,6 +217,11 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
     return response.json() as Promise<ModalJob>;
   }
 
+  private async readDeletion(response: Response) {
+    if (!response.ok) await this.throwResponse(response);
+    return response.json() as Promise<ModalDeletion>;
+  }
+
   private async throwResponse(response: Response): Promise<never> {
     const body = await response.json().catch(() => ({})) as {
       code?: string;
@@ -182,16 +237,15 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
   }
 
   private toGenerationJob(job: ModalJob, response?: Response): GenerationJob {
-    const masterIds = job.masters?.map(({ id }) => id)
-      ?? (job.approvedMasterId ? [job.approvedMasterId] : []);
+    const masterRecords = job.masters ?? (job.approvedMasterId ? [{ id: job.approvedMasterId }] : []);
     return {
       id: job.jobId,
       attemptId: job.attemptId,
       status: job.status,
       message: statusMessage(job.status),
       generationScheduled: job.generationScheduled,
-      masters: masterIds.map((id) => ({
-        id,
+      masters: masterRecords.map(({ id, qc }) => ({
+        id, qc,
         imageUrl: `/api/mascot/jobs/${encodeURIComponent(job.jobId)}/master/${encodeURIComponent(id)}`,
       })),
       approvedMasterId: job.approvedMasterId,
@@ -200,6 +254,15 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
         normal: "normal_attentive",
         listening: "listening_focus",
         transcribing: "transcribing_fast",
+      },
+      configuration: job.configuration ?? {
+        displayName: "Mascote GRU",
+        poseChoices: job.poseChoices ?? {
+          normal: "normal_attentive",
+          listening: "listening_focus",
+          transcribing: "transcribing_fast",
+        },
+        configurationRevision: 0,
       },
       poses: (job.poses ?? []).map((pose) => ({
         ...pose,
@@ -216,6 +279,7 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
 
 export function modalRequestTimeoutMs(path: string, method = "GET") {
   if (method === "POST" && path === "/v2/mascot/jobs") return 35_000;
+  if (method === "DELETE" && /^\/v2\/mascot\/jobs\/[^/?]+$/.test(path)) return 60_000;
   if (method === "POST") return 20_000;
   return 20_000;
 }
@@ -234,9 +298,12 @@ function statusMessage(status: GenerationJob["status"]) {
     awaiting_generation_authorization: "Aguardando autorização para iniciar o nascimento.",
     queued: "Conferindo sua foto…",
     generating_masters: "Criando três opções de mascote…",
+    validating_masters: "Conferindo fundo, recorte e qualidade das três opções…",
     awaiting_master_approval: "Escolha o mascote mestre que mais combina com você.",
+    validating_master: "Validando o mascote mestre escolhido…",
     master_approved: "Mascote mestre aprovado. Nenhuma pose foi iniciada.",
     generating_poses: "Preparando os jeitos do seu mascote…",
+    validating_poses: "Conferindo transparência e consistência das três poses…",
     awaiting_set_approval: "As poses estão prontas para revisão.",
     packaging: "Empacotando o mascote…",
     ready: "Seu mascote está pronto.",

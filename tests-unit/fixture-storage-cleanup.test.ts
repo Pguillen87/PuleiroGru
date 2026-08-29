@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { removeAndVerifyFixtureStorage } from "@/lib/mascot-generation/fixture-storage-cleanup";
+import { removeAndVerifyFixtureStorage, verifyExactFixtureStorage } from "@/lib/mascot-generation/fixture-storage-cleanup";
 
 const fixturePaths = [
   "fixture/item-a/normal.png",
@@ -44,5 +44,33 @@ describe("fixture storage cleanup", () => {
     expect(removeExact).toHaveBeenCalledWith([fixturePaths[0], fixturePaths[2]]);
     expect(objectExistsExact.mock.calls.map((args) => args[0] as string)).toEqual([fixturePaths[0], fixturePaths[2]]);
     expect(objectExistsExact).not.toHaveBeenCalledWith(fixturePaths[1]);
+  });
+});
+
+describe("fixture storage verification", () => {
+  it("reports three exact objects as removed when Storage returns 404", async () => {
+    const verifyExact = vi.fn<(path: string) => Promise<{ exists: boolean; httpStatus: number | null; errorCode: string | null }>>(async () => ({ exists: false, httpStatus: 404, errorCode: null }));
+    const result = await verifyExactFixtureStorage(fixturePaths, { verifyExact });
+    expect(result.map(({ result: status }) => status)).toEqual(["not_found", "not_found", "not_found"]);
+    expect(result.every((entry) => entry.httpStatus === 404 && entry.safeErrorCode === null)).toBe(true);
+    expect(verifyExact.mock.calls.map((args) => args[0] as string)).toEqual([...fixturePaths]);
+  });
+
+  it.each([
+    [true, 200, null, "exists", null],
+    [false, 401, "ignored", "verify_error", "FIXTURE_STORAGE_VERIFY_AUTH_FAILED"],
+    [false, 403, "ignored", "verify_error", "FIXTURE_STORAGE_VERIFY_AUTH_FAILED"],
+    [false, 503, "ignored", "verify_error", "FIXTURE_STORAGE_VERIFY_BACKEND_FAILED"],
+    [false, null, "FIXTURE_STORAGE_VERIFY_SDK_FAILED", "verify_error", "FIXTURE_STORAGE_VERIFY_SDK_FAILED"],
+  ] as const)("normalizes status %s", async (exists, httpStatus, errorCode, expectedResult, expectedCode) => {
+    const [result] = await verifyExactFixtureStorage([fixturePaths[0]], { verifyExact: async () => ({ exists, httpStatus, errorCode }) });
+    expect(result.result).toBe(expectedResult);
+    expect(result.safeErrorCode).toBe(expectedCode);
+  });
+
+  it("does not consult paths that are not registered", async () => {
+    const verifyExact = vi.fn<(path: string) => Promise<{ exists: boolean; httpStatus: number | null; errorCode: string | null }>>(async () => ({ exists: false, httpStatus: 404, errorCode: null }));
+    await verifyExactFixtureStorage([fixturePaths[0], fixturePaths[0], fixturePaths[2]], { verifyExact });
+    expect(verifyExact.mock.calls.map((args) => args[0] as string)).toEqual([fixturePaths[0], fixturePaths[2]]);
   });
 });

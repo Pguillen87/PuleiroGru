@@ -9,7 +9,7 @@ import { parseReadyManifest, publishMascotPackage, resolveMascotImportCode, type
 import { FixtureAudit, FixtureProviderFetchAudit, FixtureStageError, fixtureErrorResponse } from "@/lib/mascot-generation/fixture-observability";
 import { countFixtureSourceRoles, resolveFixtureSource, resolveProviderFixtureSource, type FixtureSource } from "@/lib/mascot-generation/fixture-source";
 import { fixtureSourceRoles, inspectPoseQc, poseSetVisualV2Thresholds, shortHash } from "@/lib/mascot-generation/fixture-source-inspection";
-import { removeAndVerifyFixtureStorage, type FixtureStorageCleanupResult } from "@/lib/mascot-generation/fixture-storage-cleanup";
+import { removeAndVerifyFixtureStorage, verifyExactFixtureStorage, type FixtureStorageCleanupResult } from "@/lib/mascot-generation/fixture-storage-cleanup";
 import { createFixtureRunRegistry, deleteFixtureRunRegistry, markFixtureRunCleanup, updateFixtureRunRegistry } from "@/lib/mascot-generation/fixture-run-registry";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import { jobIdentity } from "@/lib/mascot-generation/attempt";
@@ -35,6 +35,7 @@ export async function POST(request: Request) {
     if (identity.mode !== "supabase-session") return NextResponse.json({ code: "SESSION_REQUIRED" }, { status: 401 });
     await requireFixtureOwner();
     if (action === "inspect_source") return NextResponse.json(await inspectSource(identity.uid));
+    if (action === "inspect_previous_cleanup_storage") return NextResponse.json(await inspectPreviousCleanupStorage(identity.uid));
     if (action === "recover_previous_after_asset_1") return NextResponse.json(await recoverPreviousAfterAssetOne(identity.uid));
     return NextResponse.json(await runFixture(identity.uid, action));
   } catch (error) {
@@ -45,13 +46,40 @@ export async function POST(request: Request) {
   }
 }
 
-async function requestedAction(request: Request): Promise<PackageRecoveryStage | "inspect_source" | "recover_previous_after_asset_1"> {
+async function requestedAction(request: Request): Promise<PackageRecoveryStage | "inspect_source" | "inspect_previous_cleanup_storage" | "recover_previous_after_asset_1"> {
   const value = (await request.json().catch(() => null) as { checkpoint?: unknown; action?: unknown } | null);
   if (value?.action === "inspect_source") return "inspect_source";
+  if (value?.action === "inspect_previous_cleanup_storage") return "inspect_previous_cleanup_storage";
   if (value?.action === "recover_previous_after_asset_1") return "recover_previous_after_asset_1";
   const checkpoint = value?.checkpoint;
   if (typeof checkpoint !== "string" || !checkpoints.has(checkpoint as PackageRecoveryStage)) throw new Error("FIXTURE_CHECKPOINT_INVALID");
   return checkpoint as PackageRecoveryStage;
+}
+
+async function inspectPreviousCleanupStorage(userId: string) {
+  const admin = createAdminClient();
+  if (!admin) throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_STORAGE_UNAVAILABLE");
+  const { data, error } = await admin.from("staging_package_fixture_runs")
+    .select("storage_paths")
+    .eq("operation_id", PREVIOUS_AFTER_ASSET_1_OPERATION_ID)
+    .eq("user_id", userId)
+    .eq("source_job_id", FIXTURE_SOURCE_JOB_ID)
+    .maybeSingle<{ storage_paths: unknown }>();
+  const paths = fixtureRegistryPaths(data?.storage_paths);
+  if (error || paths.length !== fixtureSourceRoles.length) {
+    throw new FixtureStageError("FIXTURE_CLEANUP", "FIXTURE_RECOVERY_RECORD_INVALID");
+  }
+  const objects = await verifyExactFixtureStorage(paths, {
+    verifyExact: async (path) => {
+      const { data: exists, error: storageError } = await admin.storage.from("mascot-packages").exists(path);
+      return {
+        exists: exists === true,
+        httpStatus: storageError ? storageErrorStatus(storageError) : exists === true ? 200 : null,
+        errorCode: storageError ? "FIXTURE_STORAGE_VERIFY_SDK_FAILED" : null,
+      };
+    },
+  });
+  return { method: "exists", objects };
 }
 
 async function recoverPreviousAfterAssetOne(userId: string) {
@@ -366,4 +394,10 @@ async function cleanupFixture(
 function storageObjectWasRemoved(error: unknown) {
   if (!error || typeof error !== "object" || !("status" in error)) return false;
   return (error as { status?: unknown }).status === 404;
+}
+
+function storageErrorStatus(error: unknown) {
+  if (!error || typeof error !== "object" || !("status" in error)) return null;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" && Number.isInteger(status) ? status : null;
 }

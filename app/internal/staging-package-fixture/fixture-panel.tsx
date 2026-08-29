@@ -21,6 +21,13 @@ export default function FixturePanel() {
       setResult(JSON.stringify(await response.json(), null, 2));
     } finally { setRunning(false); }
   }
+  async function inspectPreviousCleanupStorage() {
+    setRunning(true); setResult("");
+    try {
+      const response = await fetch("/api/internal/staging-package-fixture", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "inspect_previous_cleanup_storage" }) });
+      setResult(JSON.stringify(await response.json(), null, 2));
+    } finally { setRunning(false); }
+  }
   async function recoverPreviousAfterAssetOne() {
     setRunning(true); setResult("");
     try {
@@ -30,6 +37,7 @@ export default function FixturePanel() {
   }
   return <main><h1>Validação interna de pacote</h1><p>Disponível apenas no Preview com sessão QA autorizada.</p>
     <button disabled={running} onClick={inspectSource}>Inspecionar fonte</button>
+    <button disabled={running} onClick={inspectPreviousCleanupStorage}>Diagnosticar Storage residual</button>
     <button disabled={running} onClick={recoverPreviousAfterAssetOne}>Recuperar execução residual</button>
     {checkpoints.map((checkpoint) => <button key={checkpoint} disabled={running} onClick={() => run(checkpoint)}>{checkpoint}</button>)}
     <pre aria-live="polite">{result}</pre>

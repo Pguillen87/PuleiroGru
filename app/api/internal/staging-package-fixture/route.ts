@@ -6,16 +6,19 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
 import { parseReadyManifest, publishMascotPackage, resolveMascotImportCode, type PackageAsset, type PackageRecoveryStage } from "@/lib/mascot-generation/package-store";
-import { FixtureAudit, FixtureStageError, fixtureErrorResponse } from "@/lib/mascot-generation/fixture-observability";
-import { resolveFixtureSource, type FixtureSource } from "@/lib/mascot-generation/fixture-source";
+import { FixtureAudit, FixtureProviderFetchAudit, FixtureStageError, fixtureErrorResponse } from "@/lib/mascot-generation/fixture-observability";
+import { countFixtureSourceRoles, resolveFixtureSource, resolveProviderFixtureSource, type FixtureSource } from "@/lib/mascot-generation/fixture-source";
 import { fixtureSourceRoles, inspectPoseQc, poseSetVisualV2Thresholds, shortHash } from "@/lib/mascot-generation/fixture-source-inspection";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import { jobIdentity } from "@/lib/mascot-generation/attempt";
 
 export const runtime = "nodejs";
 
-const ORIGINAL_QA_JOB_ID = "job_ad22b714e3547391e9654abf1ece384b";
-const INSPECTION_SOURCE_JOB_ID = "job_43136e0b5283358281bc1d4c6efa8c01";
+// The approved pose smoke is a Modal clone and deliberately has no separate
+// Supabase attempt row. This immutable QA anchor is the server-side owner and
+// attempt binding used to read that clone; browser input never participates.
+const ATTEMPT_ANCHOR_JOB_ID = "job_ad22b714e3547391e9654abf1ece384b";
+const FIXTURE_SOURCE_JOB_ID = "job_43136e0b5283358281bc1d4c6efa8c01";
 const checkpoints = new Set<PackageRecoveryStage>(["after_asset_1", "after_assets_3", "after_manifest", "after_code", "before_ready", "after_ready"]);
 
 class FixtureAbort extends Error {}
@@ -65,11 +68,13 @@ async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {
   let failure: unknown;
   try {
     audit.start("FIXTURE_PROVIDER_FETCH");
-    const source = await loadFixtureSource(admin, userId);
+    const providerAudit = new FixtureProviderFetchAudit(audit.operationId);
+    const source = await loadFixtureSource(admin, userId, providerAudit);
+    const resolvedSource = await inspectFixtureProviderSource(userId, source, providerAudit);
     audit.succeed();
     audit.start("FIXTURE_ITEM_CREATE");
     try {
-      item = await createFixtureItem(admin, userId, checkpoint, source);
+      item = await createFixtureItem(admin, userId, checkpoint, resolvedSource.source);
       audit.succeed();
     } catch (error) {
       throw audit.fail(error);
@@ -116,7 +121,7 @@ async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {
   if (!item || !result) throw audit.fail(new Error("fixture result"));
   try {
     const cleanup = await fixtureState(admin, userId, item.id, packageId, item.mascotCode);
-    const qa = await admin.from("mascot_library_items").select("id", { count: "exact", head: true }).eq("modal_job_id", ORIGINAL_QA_JOB_ID);
+    const qa = await admin.from("mascot_library_items").select("id", { count: "exact", head: true }).eq("modal_job_id", ATTEMPT_ANCHOR_JOB_ID);
     return {
       ...result,
       counts: { ...(result.counts as Record<string, number>), postCleanupItems: cleanup.items, postCleanupPackages: cleanup.packages, postCleanupCodes: cleanup.codes },
@@ -127,25 +132,37 @@ async function runFixture(userId: string, checkpoint: PackageRecoveryStage) {
   }
 }
 
-async function loadFixtureSource(admin: NonNullable<ReturnType<typeof createAdminClient>>, userId: string): Promise<FixtureSource> {
-  const { data, error } = await admin.from("mascot_attempts")
-    .select("user_id, attempt_id, selected_master_id")
-    .eq("modal_job_id", ORIGINAL_QA_JOB_ID)
-    .eq("user_id", userId)
-    .maybeSingle<{ user_id: string; attempt_id: string; selected_master_id: string | null }>();
-  const source = !error ? resolveFixtureSource(data, userId) : null;
-  if (!source) throw new Error("FIXTURE_SOURCE_UNAVAILABLE");
-  return source;
+async function loadFixtureSource(
+  admin: NonNullable<ReturnType<typeof createAdminClient>>,
+  userId: string,
+  audit: FixtureProviderFetchAudit,
+): Promise<FixtureSource> {
+  audit.start("PROVIDER_ATTEMPT_RESOLVE");
+  try {
+    const { data, error } = await admin.from("mascot_attempts")
+      .select("user_id, attempt_id, selected_master_id")
+      .eq("modal_job_id", ATTEMPT_ANCHOR_JOB_ID)
+      .eq("user_id", userId)
+      .maybeSingle<{ user_id: string; attempt_id: string; selected_master_id: string | null }>();
+    const source = !error ? resolveFixtureSource(data, userId, FIXTURE_SOURCE_JOB_ID) : null;
+    audit.succeed({ attemptPresent: Boolean(source) });
+    if (!source) throw new Error("FIXTURE_SOURCE_UNAVAILABLE");
+    return source;
+  } catch (error) {
+    if (error instanceof FixtureStageError) throw error;
+    throw audit.fail(error);
+  }
 }
 
 async function inspectSource(userId: string) {
   const admin = createAdminClient();
   if (!admin) throw new FixtureStageError("FIXTURE_PROVIDER_FETCH", "FIXTURE_STORAGE_UNAVAILABLE");
-  const reader = await loadFixtureSource(admin, userId);
+  const audit = new FixtureProviderFetchAudit(`fixture-inspect-${crypto.randomUUID()}`);
+  const reader = await loadFixtureSource(admin, userId, audit);
+  const resolved = await inspectFixtureProviderSource(userId, reader, audit);
+  const job = resolved.job;
   const provider = getMascotGenerationProvider();
-  const identity = jobIdentity(userId, reader.attemptId);
-  const job = await provider.getJob(INSPECTION_SOURCE_JOB_ID, identity);
-  if (!job) throw new FixtureStageError("FIXTURE_PROVIDER_FETCH", "FIXTURE_SOURCE_UNAVAILABLE");
+  const identity = jobIdentity(userId, resolved.source.attemptId);
   const poses = [];
   for (const role of fixtureSourceRoles) {
     const pose = job.poses.filter((entry) => entry.role === role);
@@ -172,12 +189,51 @@ async function inspectSource(userId: string) {
   };
 }
 
+async function inspectFixtureProviderSource(userId: string, source: FixtureSource, audit: FixtureProviderFetchAudit) {
+  try {
+    audit.start("PROVIDER_CLIENT_CREATE");
+    const provider = getMascotGenerationProvider();
+    audit.succeed();
+
+    audit.start("PROVIDER_AUTH_BUILD");
+    const identity = jobIdentity(userId, source.attemptId);
+    audit.succeed({ attemptPresent: Boolean(source.attemptId) });
+
+    audit.start("PROVIDER_JOB_FETCH");
+    const job = await provider.getJob(source.jobId, identity);
+    audit.succeed({ httpStatus: job ? 200 : 404, jobPresent: Boolean(job) });
+    if (!job) throw new Error("FIXTURE_SOURCE_UNAVAILABLE");
+
+    audit.start("PROVIDER_ATTEMPT_RESOLVE");
+    const resolvedSource = resolveProviderFixtureSource(source, job);
+    audit.succeed({ attemptPresent: Boolean(resolvedSource) });
+    if (!resolvedSource) throw new Error("FIXTURE_SOURCE_ATTEMPT_INVALID");
+
+    audit.start("PROVIDER_OWNERSHIP_VALIDATE");
+    // The BFF-issued JWT constrains this read to the authenticated owner;
+    // matching the server-resolved attempt prevents a permissive fallback.
+    audit.succeed({ jobPresent: true, attemptPresent: true });
+
+    audit.start("PROVIDER_RESPONSE_PARSE");
+    audit.succeed({ jobPresent: true, poseCount: job.poses.length });
+
+    audit.start("PROVIDER_POSE_SET_FETCH");
+    const poseCount = countFixtureSourceRoles(job.poses, fixtureSourceRoles);
+    audit.succeed({ poseCount });
+    if (poseCount !== fixtureSourceRoles.length) throw new Error("FIXTURE_SOURCE_POSES_INCOMPLETE");
+    return { job, source: resolvedSource };
+  } catch (error) {
+    if (error instanceof FixtureStageError) throw error;
+    throw audit.fail(error);
+  }
+}
+
 async function createFixtureItem(admin: NonNullable<ReturnType<typeof createAdminClient>>, userId: string, checkpoint: string, source: FixtureSource) {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const bytes = randomBytes(8);
   const code = `GRU-${[0, 4].map((offset) => Array.from(bytes.subarray(offset, offset + 4), (value) => alphabet[value % alphabet.length]).join("")).join("-")}`;
   const { data, error } = await admin.from("mascot_library_items").insert({
-    user_id: userId, attempt_id: source.attemptId, modal_job_id: ORIGINAL_QA_JOB_ID, master_id: source.masterId,
+    user_id: userId, attempt_id: source.attemptId, modal_job_id: source.jobId, master_id: source.masterId,
     display_name: `Fixture ${checkpoint}`, mascot_code: code, pose_snapshot: [],
   }).select("id, mascot_code").single<{ id: string; mascot_code: string }>();
   if (error || !data) throw new Error("FIXTURE_ITEM_CREATE_FAILED");

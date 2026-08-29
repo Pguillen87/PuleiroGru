@@ -13,6 +13,18 @@ export const fixtureStages = [
 export type FixtureStage = typeof fixtureStages[number];
 export type FixtureOutcome = "started" | "succeeded" | "failed";
 
+export const fixtureProviderFetchSubstages = [
+  "PROVIDER_CLIENT_CREATE",
+  "PROVIDER_AUTH_BUILD",
+  "PROVIDER_JOB_FETCH",
+  "PROVIDER_ATTEMPT_RESOLVE",
+  "PROVIDER_POSE_SET_FETCH",
+  "PROVIDER_OWNERSHIP_VALIDATE",
+  "PROVIDER_RESPONSE_PARSE",
+] as const;
+
+export type FixtureProviderFetchSubstage = typeof fixtureProviderFetchSubstages[number];
+
 const errorCodes: Record<FixtureStage, string> = {
   FIXTURE_ITEM_CREATE: "FIXTURE_ITEM_CREATE_FAILED",
   FIXTURE_PROVIDER_FETCH: "FIXTURE_PROVIDER_FETCH_FAILED",
@@ -94,4 +106,45 @@ export class FixtureAudit {
       ...(count === undefined ? {} : { count }),
     });
   }
+}
+
+/** Server-log-only diagnostics for the fixture provider boundary. */
+export class FixtureProviderFetchAudit {
+  private stage: FixtureProviderFetchSubstage = "PROVIDER_CLIENT_CREATE";
+  private startedAt = Date.now();
+
+  constructor(readonly operationId: string) {}
+
+  start(stage: FixtureProviderFetchSubstage) {
+    this.stage = stage;
+    this.startedAt = Date.now();
+    this.write("started");
+  }
+
+  succeed(details: { httpStatus?: number; jobPresent?: boolean; attemptPresent?: boolean; poseCount?: number } = {}) {
+    this.write("succeeded", undefined, details);
+  }
+
+  fail(error: unknown) {
+    const status = httpStatus(error);
+    this.write("failed", "FIXTURE_PROVIDER_FETCH_FAILED", status === undefined ? {} : { httpStatus: status });
+    return new FixtureStageError("FIXTURE_PROVIDER_FETCH", "FIXTURE_PROVIDER_FETCH_FAILED");
+  }
+
+  private write(outcome: FixtureOutcome, safeErrorCode?: string, details: { httpStatus?: number; jobPresent?: boolean; attemptPresent?: boolean; poseCount?: number } = {}) {
+    console.info("staging_package_fixture_provider_fetch", {
+      operationId: this.operationId,
+      substage: this.stage,
+      outcome,
+      safeErrorCode,
+      durationMs: Date.now() - this.startedAt,
+      ...details,
+    });
+  }
+}
+
+function httpStatus(error: unknown) {
+  if (!error || typeof error !== "object" || !("status" in error)) return undefined;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" && Number.isInteger(status) ? status : undefined;
 }

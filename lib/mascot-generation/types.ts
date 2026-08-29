@@ -91,6 +91,19 @@ export interface MascotLibraryItem {
   isFavorite: boolean;
   favoriteRank?: number;
   isPublic?: boolean;
+  finalization?: {
+    state: "not_started" | "packaging" | "ready" | "failed";
+    operationId?: string;
+    errorCode?: string;
+  };
+}
+
+/** Additive set-level gate; alpha QC on each asset is necessary but not sufficient. */
+export interface PoseSetVisualQualityMetrics {
+  status: "passed" | "failed";
+  code: string;
+  version: string;
+  safe_reasons: string[];
 }
 
 export interface CommunityMascot {
@@ -133,6 +146,7 @@ export interface GenerationJob {
   poseChoices: PoseChoices;
   configuration: MascotConfiguration;
   poses: GeneratedPose[];
+  poseSetQc?: PoseSetVisualQualityMetrics;
   errorCode?: string;
   retryable?: boolean;
   operationId?: string;

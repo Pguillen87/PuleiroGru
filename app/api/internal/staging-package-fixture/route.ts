@@ -9,7 +9,7 @@ import { parseReadyManifest, publishMascotPackage, resolveMascotImportCode, type
 import { FixtureAudit, FixtureProviderFetchAudit, FixtureStageError, fixtureErrorResponse } from "@/lib/mascot-generation/fixture-observability";
 import { countFixtureSourceRoles, resolveFixtureSource, resolveProviderFixtureSource, type FixtureSource } from "@/lib/mascot-generation/fixture-source";
 import { fixtureSourceRoles, inspectPoseQc, poseSetVisualV2Thresholds, shortHash } from "@/lib/mascot-generation/fixture-source-inspection";
-import { removeAndVerifyFixtureStorage, verifyExactFixtureStorage, type FixtureStorageCleanupResult } from "@/lib/mascot-generation/fixture-storage-cleanup";
+import { removeAndVerifyFixtureStorage, summarizeFixtureStorageVerification, verifyExactFixtureStorage, type FixtureStorageCleanupResult } from "@/lib/mascot-generation/fixture-storage-cleanup";
 import { createFixtureRunRegistry, deleteFixtureRunRegistry, markFixtureRunCleanup, updateFixtureRunRegistry } from "@/lib/mascot-generation/fixture-run-registry";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import { jobIdentity } from "@/lib/mascot-generation/attempt";
@@ -71,10 +71,10 @@ async function inspectPreviousCleanupStorage(userId: string) {
   }
   const objects = await verifyExactFixtureStorage(paths, {
     verifyExact: async (path) => {
-      const { data: metadata, error: storageError } = await admin.storage.from("mascot-packages").info(path);
+      const { data: exists, error: storageError } = await admin.storage.from("mascot-packages").exists(path);
       return {
-        exists: metadata !== null,
-        httpStatus: storageError ? storageErrorStatus(storageError) : metadata !== null ? 200 : null,
+        exists,
+        httpStatus: storageError ? storageErrorStatus(storageError) : exists === true ? 200 : null,
         errorCode: storageError ? "FIXTURE_STORAGE_VERIFY_SDK_FAILED" : null,
         errorName: storageError ? storageErrorName(storageError) : null,
         safeMessage: storageError ? storageErrorMessage(storageError) : null,
@@ -84,7 +84,7 @@ async function inspectPreviousCleanupStorage(userId: string) {
       };
     },
   });
-  return { method: "info", objects };
+  return { method: "exists", objects, ...summarizeFixtureStorageVerification(objects) };
 }
 
 async function recoverPreviousAfterAssetOne(userId: string) {

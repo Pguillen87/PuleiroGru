@@ -38,6 +38,12 @@ export type FixtureStorageVerificationResponse = {
   authPresent?: boolean;
 };
 
+export type FixtureStorageVerificationSummary = {
+  storageObjectsExpected: number;
+  storageObjectsRemaining: number;
+  storageCleanupVerified: boolean;
+};
+
 /**
  * Removes and verifies only the concrete paths created by one fixture run.
  * This deliberately has no list, prefix, owner, or pattern-based operation.
@@ -95,8 +101,10 @@ export function classifyFixtureStorageVerification(
   durationMs: number,
 ): FixtureStorageVerifyResult {
   const context = { errorName: verification.errorName ?? null, safeMessage: verification.safeMessage ?? null, pathPresent: verification.pathPresent ?? true, bucketPresent: verification.bucketPresent ?? true, authPresent: verification.authPresent ?? true };
-  if (verification.exists) return { objectIndex, operation: "verify", httpStatus: verification.httpStatus ?? 200, result: "exists", safeErrorCode: null, ...context, durationMs };
-  if (verification.httpStatus === 404) return { objectIndex, operation: "verify", httpStatus: 404, result: "not_found", safeErrorCode: null, ...context, durationMs };
+  if (verification.exists === true) return { objectIndex, operation: "verify", httpStatus: verification.httpStatus ?? 200, result: "exists", safeErrorCode: null, ...context, durationMs };
+  if (verification.exists === false && (verification.httpStatus === 400 || verification.httpStatus === 404)) {
+    return { objectIndex, operation: "verify", httpStatus: verification.httpStatus, result: "not_found", safeErrorCode: null, ...context, durationMs };
+  }
   return {
     objectIndex,
     operation: "verify",
@@ -105,6 +113,16 @@ export function classifyFixtureStorageVerification(
     safeErrorCode: fixtureStorageVerifyErrorCode(verification.httpStatus, verification.errorCode),
     ...context,
     durationMs,
+  };
+}
+
+export function summarizeFixtureStorageVerification(results: readonly FixtureStorageVerifyResult[]): FixtureStorageVerificationSummary {
+  const storageObjectsRemaining = results.filter((result) => result.result === "exists").length;
+  const hasVerifyError = results.some((result) => result.result === "verify_error");
+  return {
+    storageObjectsExpected: results.length,
+    storageObjectsRemaining,
+    storageCleanupVerified: !hasVerifyError && storageObjectsRemaining === 0,
   };
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { removeAndVerifyFixtureStorage, verifyExactFixtureStorage } from "@/lib/mascot-generation/fixture-storage-cleanup";
+import { removeAndVerifyFixtureStorage, summarizeFixtureStorageVerification, verifyExactFixtureStorage } from "@/lib/mascot-generation/fixture-storage-cleanup";
 
 const fixturePaths = [
   "fixture/item-a/normal.png",
@@ -58,19 +58,31 @@ describe("fixture storage verification", () => {
 
   it.each([
     [true, 200, null, "exists", null],
+    [false, 400, null, "not_found", null],
+    [false, 404, null, "not_found", null],
     [false, 401, "ignored", "verify_error", "FIXTURE_STORAGE_VERIFY_AUTH_FAILED"],
     [false, 403, "ignored", "verify_error", "FIXTURE_STORAGE_VERIFY_AUTH_FAILED"],
     [false, 503, "ignored", "verify_error", "FIXTURE_STORAGE_VERIFY_BACKEND_FAILED"],
     [false, null, "FIXTURE_STORAGE_VERIFY_SDK_FAILED", "verify_error", "FIXTURE_STORAGE_VERIFY_SDK_FAILED"],
-  ] as const)("normalizes exact Storage info status %s", async (exists, httpStatus, errorCode, expectedResult, expectedCode) => {
+  ] as const)("normalizes exact Storage exists status %s", async (exists, httpStatus, errorCode, expectedResult, expectedCode) => {
     const [result] = await verifyExactFixtureStorage([fixturePaths[0]], { verifyExact: async () => ({ exists, httpStatus, errorCode }) });
     expect(result.result).toBe(expectedResult);
     expect(result.safeErrorCode).toBe(expectedCode);
   });
 
-  it("consults Storage info only for registered exact paths", async () => {
+  it("consults Storage exists only for registered exact paths", async () => {
     const verifyExact = vi.fn<(path: string) => Promise<{ exists: boolean; httpStatus: number | null; errorCode: string | null }>>(async () => ({ exists: false, httpStatus: 404, errorCode: null }));
     await verifyExactFixtureStorage([fixturePaths[0], fixturePaths[0], fixturePaths[2]], { verifyExact });
     expect(verifyExact.mock.calls.map((args) => args[0] as string)).toEqual([fixturePaths[0], fixturePaths[2]]);
+  });
+
+  it("turns an SDK exception into a safe verification error", async () => {
+    const [result] = await verifyExactFixtureStorage([fixturePaths[0]], { verifyExact: async () => { throw new Error("unexpected"); } });
+    expect(result).toMatchObject({ result: "verify_error", safeErrorCode: "FIXTURE_STORAGE_VERIFY_SDK_FAILED" });
+  });
+
+  it("marks cleanup as verified only when all exact objects are not found", async () => {
+    const results = await verifyExactFixtureStorage(fixturePaths, { verifyExact: async () => ({ exists: false, httpStatus: 400, errorCode: null }) });
+    expect(summarizeFixtureStorageVerification(results)).toEqual({ storageObjectsExpected: 3, storageObjectsRemaining: 0, storageCleanupVerified: true });
   });
 });

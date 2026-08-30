@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Header } from "@/components/navigation/Header";
-import type { CommunityMascot, MascotLibraryItem } from "@/lib/mascot-generation/types";
+import type { CommunityMascot, IncubationSummary as IncubationRecord, MascotLibraryItem } from "@/lib/mascot-generation/types";
 
 type SortOption = "newest" | "oldest" | "code";
 type FilterOption = "all" | "favorites";
@@ -27,6 +27,7 @@ export function PersonalMascotLibrary() {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [libraryRevision, setLibraryRevision] = useState(0);
   const [footerFeedback, setFooterFeedback] = useState<{ message: string; tone: FeedbackTone } | null>(null);
+  const [incubations, setIncubations] = useState<IncubationRecord[]>([]);
 
   useEffect(() => {
     if (!footerFeedback) return;
@@ -60,6 +61,22 @@ export function PersonalMascotLibrary() {
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [filter, libraryRevision, query, sort]);
   useEffect(() => {
+    const controller = new AbortController();
+    let timer: number | undefined;
+    const load = async () => {
+      const response = await fetch("/api/mascot/incubations", { cache: "no-store", signal: controller.signal });
+      const body = await response.json().catch(() => ({})) as { incubations?: IncubationRecord[] };
+      if (!response.ok) return;
+      const next = body.incubations ?? [];
+      setIncubations(next);
+      if (next.some((item) => ["PREPARING", "INCUBATING"].includes(item.productState))) {
+        timer = window.setTimeout(() => void load(), 8_000);
+      }
+    };
+    void load();
+    return () => { controller.abort(); if (timer) window.clearTimeout(timer); };
+  }, []);
+  useEffect(() => {
     void fetch("/api/mascot/community/saved", { cache: "no-store" })
       .then(async (response) => {
         const body = await response.json().catch(() => ({})) as { items?: CommunityMascot[] };
@@ -92,6 +109,7 @@ export function PersonalMascotLibrary() {
         </div>
         <p className="library-count" aria-live="polite">{total} {total === 1 ? "mascote" : "mascotes"}</p>
       </section>
+      {incubations.length > 0 && <IncubatorShelf incubations={incubations} />}
       <LibraryControls filter={filter} query={query} sort={sort} onFilter={setFilter} onQuery={setQuery} onSort={setSort} />
       <p className="library-status" role="status" aria-live="polite">{message}</p>
       {visibleItems.length > 0 ? <ul className="library-grid" aria-label="Mascotes prontos">
@@ -141,6 +159,38 @@ export function PersonalMascotLibrary() {
       {footerFeedback && <p className={`library-footer-feedback library-footer-feedback--${footerFeedback.tone}`} role={footerFeedback.tone === "error" ? "alert" : "status"} aria-live="polite">{footerFeedback.message}</p>}
     </main>
   </div>;
+}
+
+function IncubatorShelf({ incubations }: { incubations: IncubationRecord[] }) {
+  return <section className="incubator-shelf" aria-labelledby="incubator-title">
+    <div className="incubator-shelf__heading"><div><span className="state-kicker">Incubadora</span><h2 id="incubator-title">Ovos e nascimentos em andamento</h2><p>Você pode sair e voltar depois. Cada estado vem do trabalho confirmado no servidor.</p></div><span>{incubations.length} {incubations.length === 1 ? "ovo" : "ovos"}</span></div>
+    <ul className="incubator-grid" aria-label="Nascimentos na Incubadora">
+      {incubations.map((incubation) => <li key={incubation.jobId}><article className="incubator-egg" data-state={incubation.productState}>
+        <div className="incubator-egg__illustration" aria-hidden="true"><span className="incubator-egg__shell" /><span className="incubator-egg__nest" /></div>
+        <div className="incubator-egg__body"><p>{incubationLabel(incubation)}</p><h3>Novo mascote</h3><time dateTime={incubation.updatedAt}>Atualizado {formatRelativeUpdate(incubation.updatedAt)}</time>
+          {incubation.productState === "FAILED" && <p className="incubator-egg__error">Não conseguimos terminar este mascote. Abra os detalhes antes de decidir tentar novamente.</p>}
+          {["READY_TO_HATCH", "HATCHED", "FAILED"].includes(incubation.productState) && <Link className="incubator-egg__action" href={`/incubadora/${encodeURIComponent(incubation.jobId)}`}>{incubation.productState === "READY_TO_HATCH" ? "Chocar ovo" : incubation.productState === "HATCHED" ? "Abrir Jornal" : "Ver detalhes"}</Link>}
+        </div>
+      </article></li>)}
+    </ul>
+  </section>;
+}
+
+function incubationLabel(incubation: IncubationRecord) {
+  if (incubation.productState === "READY_TO_HATCH") return "Pronto para chocar";
+  if (incubation.productState === "HATCHED") return "Jornal aberto";
+  if (incubation.productState === "FAILED") return "Nascimento interrompido";
+  if (incubation.phase === "generating_poses" || incubation.phase === "validating_poses") return "Preparando as poses…";
+  if (incubation.phase === "generating_masters" || incubation.phase === "validating_masters") return "Criando seu mascote…";
+  return "Preparando…";
+}
+
+function formatRelativeUpdate(value: string) {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1_000));
+  if (seconds < 60) return "agora";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `há ${minutes} min`;
+  return `às ${new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value))}`;
 }
 
 function SavedCommunityItem({ item }: { item: CommunityMascot }) {

@@ -20,6 +20,14 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
       master: { ready: generationConfig.masterGenerationEnabled, modelVersion: "mock-v1", promptVersion: "master-v4", reasons: generationConfig.masterGenerationEnabled ? [] : ["GENERATION_DISABLED"] },
       poses: { ready: generationConfig.poseGenerationEnabled, workerVersion: "mock-v1", catalogVersion: POSE_CATALOG_VERSION, templateVersion: POSE_CATALOG_VERSION, reasons: generationConfig.poseGenerationEnabled ? [] : ["GENERATION_DISABLED"] },
       poseCatalog: { normal: catalog("normal"), listening: catalog("listening"), transcribing: catalog("transcribing") },
+      incubator: {
+        ready: generationConfig.incubatorFlowEnabled && generationConfig.masterGenerationEnabled && generationConfig.poseGenerationEnabled,
+        enabled: generationConfig.incubatorFlowEnabled,
+        workflowVersion: "async_incubator_v1" as const,
+        rankerVersion: "master-ranker-v1",
+        subjectHintVersion: "subject-hint-v1",
+        encoder: { ready: true, reasonCode: null, version: "mock-v1" },
+      },
     };
   }
   async createMasterJob(input: CreateMasterJobInput) {

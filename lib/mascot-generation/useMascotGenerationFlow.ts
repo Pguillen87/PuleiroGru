@@ -15,6 +15,7 @@ export type FlowConfig = {
   technicalRegistrationOnly: boolean;
   masterGenerationEnabled: boolean;
   poseGenerationEnabled: boolean;
+  incubatorFlowEnabled: boolean;
   authenticationRequired: boolean;
 };
 

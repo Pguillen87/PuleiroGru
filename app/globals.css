@@ -2603,3 +2603,118 @@ footer span:first-child {
   .library-item__actions button { min-height: 2.75rem; }
   .library-item__identity code { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 }
+
+/* Incubadora — extensão do catálogo rural existente, não uma biblioteca falsa. */
+.incubator-entry-layout {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 72rem;
+  margin-inline: auto;
+}
+
+.incubation-review {
+  display: grid;
+  grid-template-columns: minmax(7rem, 10rem) minmax(0, 1fr);
+  gap: var(--space-5);
+  width: min(100%, 46rem);
+  text-align: left;
+}
+
+.incubation-review > img {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  border: var(--border-ink);
+  box-shadow: 6px 6px 0 color-mix(in srgb, var(--color-border) 20%, transparent);
+}
+
+.incubation-review dl { margin: 0; border-block: 1px solid var(--color-border); }
+.incubation-review dl > div { display: grid; grid-template-columns: 8rem 1fr; gap: var(--space-3); padding-block: var(--space-2); border-bottom: 1px solid color-mix(in srgb, var(--color-border) 35%, transparent); }
+.incubation-review dl > div:last-child { border-bottom: 0; }
+.incubation-review dt { font-weight: 800; }
+.incubation-review dd { margin: 0; }
+
+.incubator-shelf {
+  margin-block: clamp(1.5rem, 4vw, 3rem);
+  padding-block: clamp(1rem, 2.5vw, 1.75rem);
+  border-block: var(--border-ink);
+}
+
+.incubator-shelf__heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.incubator-shelf__heading h2 { margin: var(--space-1) 0 var(--space-2); font-size: clamp(1.75rem, 4vw, 3.5rem); max-width: 18ch; }
+.incubator-shelf__heading p { max-width: 65ch; margin: 0; }
+.incubator-shelf__heading > span { flex: 0 0 auto; font-weight: 800; }
+.incubator-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: var(--space-4); padding: 0; margin: 0; list-style: none; }
+
+.incubator-egg {
+  min-height: 17rem;
+  display: grid;
+  grid-template-rows: 9rem 1fr;
+  background: var(--color-paper);
+  border: var(--border-ink);
+  box-shadow: 7px 7px 0 color-mix(in srgb, var(--color-border) 25%, transparent);
+}
+
+.incubator-egg__illustration {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--color-editorial-red) 7%, var(--color-paper));
+  border-bottom: var(--border-ink);
+}
+
+.incubator-egg__shell {
+  position: relative;
+  z-index: 2;
+  width: 4.8rem;
+  height: 6.4rem;
+  border: 2px solid var(--color-border);
+  border-radius: 52% 52% 46% 46% / 62% 62% 38% 38%;
+  background: radial-gradient(circle at 36% 28%, #fffdf3 0 13%, #eee0b9 14% 100%);
+  transform: rotate(-2deg);
+}
+
+.incubator-egg[data-state="INCUBATING"] .incubator-egg__shell { animation: incubator-breathe 2.6s cubic-bezier(.22,.8,.32,1) infinite; }
+.incubator-egg[data-state="READY_TO_HATCH"] .incubator-egg__shell::after { /* impeccable-disable-line border-accent-on-rounded: intentional eggshell crack, not a card accent */ content: ""; position: absolute; inset: 1.7rem 1rem auto; height: 2.2rem; border-top: 3px solid var(--color-editorial-red); transform: rotate(-17deg) skewX(-24deg); }
+.incubator-egg[data-state="FAILED"] .incubator-egg__illustration { background: color-mix(in srgb, var(--color-editorial-red) 12%, var(--color-paper)); }
+.incubator-egg__nest { position: absolute; z-index: 1; bottom: 1rem; width: 8rem; height: 1.4rem; border: 2px solid var(--color-border); border-radius: 50%; background: #8b5a2b; box-shadow: 0 6px 0 #5e3c21; }
+.incubator-egg__body { padding: var(--space-4); }
+.incubator-egg__body > p:first-child { margin: 0 0 .25rem; color: var(--color-editorial-red-dark); font-weight: 800; }
+.incubator-egg__body h3 { margin: 0 0 .4rem; font-size: 1.35rem; }
+.incubator-egg__body time { font-size: .85rem; }
+.incubator-egg__error { margin-block: .75rem; }
+.incubator-egg__action { display: inline-flex; min-height: 3rem; align-items: center; margin-top: var(--space-3); padding-inline: var(--space-3); color: white; background: var(--color-editorial-red); border: var(--border-ink); font-weight: 800; }
+
+.journal-page { width: min(100% - 2rem, 74rem); margin-inline: auto; padding-block: clamp(1.5rem, 5vw, 4rem); }
+.journal-reveal { padding: clamp(1rem, 3vw, 2.5rem); border: var(--border-ink); background: var(--color-paper); box-shadow: 10px 10px 0 color-mix(in srgb, var(--color-editorial-red) 70%, var(--color-border)); }
+.journal-reveal__heading { max-width: 68ch; margin-bottom: clamp(1.5rem, 4vw, 3rem); }
+.journal-reveal__heading h1 { max-width: 14ch; margin-block: var(--space-2); font-size: clamp(2.4rem, 7vw, 5.5rem); letter-spacing: -.035em; line-height: .95; }
+.journal-pose-showcase { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: var(--space-3); align-items: stretch; }
+.journal-pose-showcase figure { margin: 0; display: grid; grid-template-rows: minmax(14rem, 1fr) auto; border: var(--border-ink); background: color-mix(in srgb, var(--color-paper) 80%, white); }
+.journal-pose-showcase img { width: 100%; height: 100%; max-height: 31rem; object-fit: contain; }
+.journal-pose-showcase figcaption { padding: var(--space-2); border-top: 1px solid var(--color-border); font-weight: 800; text-align: center; }
+.journal-reveal__action { margin-top: var(--space-5); }
+.journal-name-form { display: grid; gap: var(--space-2); max-width: 38rem; margin-top: clamp(1.5rem, 4vw, 3rem); padding-top: var(--space-4); border-top: var(--border-ink); }
+.journal-name-form label { font-weight: 800; }
+.journal-name-form input { min-height: 3.25rem; padding-inline: var(--space-3); border: var(--border-ink); font: inherit; background: #fff; }
+.journal-name-form p { margin: 0 0 var(--space-2); }
+
+@keyframes incubator-breathe {
+  0%, 100% { transform: rotate(-2deg) translateY(0); box-shadow: 0 0 0 transparent; }
+  50% { transform: rotate(2deg) translateY(-.3rem); box-shadow: 0 .6rem 1.2rem color-mix(in srgb, var(--color-editorial-red) 18%, transparent); }
+}
+
+@media (max-width: 40rem) {
+  .incubation-review { grid-template-columns: 1fr; }
+  .incubation-review > img { max-height: 14rem; aspect-ratio: 16 / 9; }
+  .incubator-shelf__heading { align-items: start; flex-direction: column; }
+  .journal-pose-showcase { grid-template-columns: 1fr 1fr; }
+  .journal-pose-showcase__hero { grid-column: 1 / -1; }
+}

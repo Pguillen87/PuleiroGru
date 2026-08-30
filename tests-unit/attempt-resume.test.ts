@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { incubationProductState, isDeletableAttemptStatus, isResumableAttemptStatus, prioritizeAttempt, type MascotAttempt } from "@/lib/mascot-generation/attempt-store";
+import { incubationProductState, isDeletableAttemptStatus, isResumableAttemptStatus, prioritizeAttempt, projectedIncubationProductState, type MascotAttempt } from "@/lib/mascot-generation/attempt-store";
 
 describe("isResumableAttemptStatus", () => {
   it("não retoma um mascote já guardado ou cancelado", () => {
@@ -61,5 +61,15 @@ describe("incubationProductState", () => {
     expect(incubationProductState(attempt({ status: "awaiting_set_approval", generation_ready_at: "2026-08-29T01:00:00Z", hatched_at: "2026-08-29T02:00:00Z" }))).toBe("HATCHED");
     expect(incubationProductState(attempt({ status: "ready" }))).toBe("PACKAGE_READY");
     expect(incubationProductState(attempt({ status: "failed" }))).toBe("FAILED");
+  });
+
+  it("mantém o hatch Web acima de um estado Modal atrasado", () => {
+    const hatched = attempt({
+      status: "awaiting_set_approval",
+      generation_ready_at: "2026-08-29T01:00:00Z",
+      hatched_at: "2026-08-29T02:00:00Z",
+    });
+    expect(projectedIncubationProductState(hatched, "READY_TO_HATCH")).toBe("HATCHED");
+    expect(projectedIncubationProductState(attempt({ status: "ready", hatched_at: "2026-08-29T02:00:00Z" }), "HATCHED")).toBe("PACKAGE_READY");
   });
 });

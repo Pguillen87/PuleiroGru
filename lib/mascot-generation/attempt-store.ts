@@ -100,11 +100,33 @@ export async function findIncubationAttempts(client: SupabaseClient, userId: str
 
 export function incubationProductState(attempt: MascotAttempt): IncubationProductState {
   if (attempt.status === "ready") return "PACKAGE_READY";
-  if (attempt.status === "failed" || attempt.status === "canceled") return "FAILED";
   if (attempt.hatched_at) return "HATCHED";
+  if (attempt.status === "failed" || attempt.status === "canceled") return "FAILED";
   if (attempt.generation_ready_at || attempt.status === "awaiting_set_approval") return "READY_TO_HATCH";
   if (["registered", "awaiting_generation_authorization", "queued"].includes(attempt.status)) return "PREPARING";
   return "INCUBATING";
+}
+
+/**
+ * Web owns the transitions that happen after Modal completes generation.
+ * Keep this projection shared so a hatched egg never regresses to a stale
+ * generation state returned by Modal.
+ */
+export function projectedIncubationProductState(
+  attempt: MascotAttempt,
+  modalState: IncubationProductState | undefined,
+): IncubationProductState {
+  const webState = incubationProductState(attempt);
+  if (["PACKAGE_READY", "HATCHED", "FAILED"].includes(webState)) return webState;
+  return modalState ?? webState;
+}
+
+export function projectIncubationJob(job: GenerationJob, attempt: MascotAttempt): GenerationJob {
+  return {
+    ...job,
+    productState: projectedIncubationProductState(attempt, job.productState),
+    hatchedAt: attempt.hatched_at ?? job.hatchedAt,
+  };
 }
 
 export function prioritizeAttempt(attempts: MascotAttempt[], attemptId: string | undefined) {
@@ -171,7 +193,7 @@ export async function reserveAttempt(
   attemptId: string,
   incubator?: { subjectIdentity: SubjectIdentity; poseChoices: PoseChoices; subjectHint?: SubjectHint },
 ) {
-  const { error } = await client.from("mascot_attempts").upsert({
+  const { data, error } = await client.from("mascot_attempts").upsert({
     user_id: userId,
     attempt_id: attemptId,
     status: "registered" satisfies GenerationJobStatus,
@@ -180,8 +202,13 @@ export async function reserveAttempt(
       incubation_config: { subjectIdentity: incubator.subjectIdentity, poseChoices: incubator.poseChoices },
       subject_hint: incubator.subjectHint ?? null,
     } : {}),
-  }, { onConflict: "user_id,attempt_id", ignoreDuplicates: true });
+  }, { onConflict: "user_id,attempt_id", ignoreDuplicates: true }).select("*").returns<MascotAttempt[]>();
   if (error) throw new MascotAttemptStoreError();
+  const inserted = data?.[0];
+  if (inserted) return { attempt: inserted, created: true };
+  const existing = await findAttempt(client, userId, attemptId);
+  if (!existing) throw new MascotAttemptStoreError();
+  return { attempt: existing, created: false };
 }
 
 export async function saveAttemptJob(client: SupabaseClient, userId: string, job: GenerationJob, trace?: MascotTraceContext) {

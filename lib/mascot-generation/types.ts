@@ -48,6 +48,35 @@ export interface SubjectIdentity {
 export type PoseRole = "normal" | "listening" | "transcribing";
 export type PoseChoices = Record<PoseRole, string>;
 
+export type MascotWorkflowMode = "legacy_manual" | "async_incubator_v1";
+export type IncubationProductState =
+  | "PREPARING"
+  | "INCUBATING"
+  | "READY_TO_HATCH"
+  | "FAILED"
+  | "HATCHED"
+  | "PACKAGE_READY";
+
+export interface SubjectHint {
+  version: string;
+  suggestedCategory: "human" | "animal" | "uncertain";
+  confidenceBand: "low" | "medium" | "high";
+  requiresConfirmation: boolean;
+  overrideConfirmed: boolean;
+}
+
+export interface MasterSelection {
+  rankerVersion: string;
+  selectedMasterId: string;
+  scores: Array<{
+    masterId: string;
+    identity: number;
+    category: number;
+    composition: number;
+    total: number;
+  }>;
+}
+
 export interface GenerationCapabilities {
   contractVersion: "v2";
   master: { ready: boolean; modelVersion: string; promptVersion: string; reasons: string[] };
@@ -59,6 +88,14 @@ export interface GenerationCapabilities {
     reasons: string[];
   };
   poseCatalog: Record<PoseRole, string[]>;
+  incubator?: {
+    ready: boolean;
+    enabled: boolean;
+    workflowVersion: MascotWorkflowMode;
+    rankerVersion: string;
+    subjectHintVersion: string;
+    encoder: { ready: boolean; reasonCode: string | null; version: string };
+  };
 }
 
 export interface MascotConfiguration {
@@ -152,6 +189,25 @@ export interface GenerationJob {
   operationId?: string;
   requestId?: string;
   idempotentReplay?: boolean;
+  workflowMode?: MascotWorkflowMode;
+  productState?: IncubationProductState;
+  generationReadyAt?: string;
+  hatchedAt?: string;
+  masterSelection?: MasterSelection;
+  subjectHint?: SubjectHint;
+}
+
+export interface IncubationSummary {
+  jobId: string;
+  attemptId: string;
+  productState: IncubationProductState;
+  phase: string;
+  updatedAt: string;
+  generationReadyAt?: string;
+  hatchedAt?: string;
+  errorCode?: string;
+  selectedMasterId?: string;
+  poseCount: number;
 }
 
 export interface JobIdentity {
@@ -169,6 +225,11 @@ export interface CreateMasterJobInput extends JobIdentity {
   subjectIdentity: SubjectIdentity;
 }
 
+export interface CreateIncubationInput extends CreateMasterJobInput {
+  poseChoices: PoseChoices;
+  subjectHint?: SubjectHint;
+}
+
 export interface MasterImage {
   bytes: Uint8Array;
   contentType: AcceptedImageType;
@@ -177,6 +238,8 @@ export interface MasterImage {
 export interface MascotGenerationProvider {
   getCapabilities(identity: JobIdentity): Promise<GenerationCapabilities>;
   createMasterJob(input: CreateMasterJobInput): Promise<GenerationJob>;
+  createIncubation?(input: CreateIncubationInput): Promise<GenerationJob>;
+  analyzeSubject?(input: Pick<CreateMasterJobInput, "bytes" | "contentType" | "ownerId" | "attemptId" | "correlationId"> & { selectedCategory: SubjectCategory }): Promise<SubjectHint>;
   startMasterGeneration(jobId: string, identity: JobIdentity): Promise<GenerationJob>;
   getJob(jobId: string, identity: JobIdentity): Promise<GenerationJob | null>;
   getJobByAttempt(identity: JobIdentity): Promise<GenerationJob | null>;

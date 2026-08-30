@@ -18,8 +18,10 @@ import { useMascotGenerationFlow, type FlowConfig } from "@/lib/mascot-generatio
 import { AccountGate } from "@/components/auth/AccountGate";
 import { StageButton } from "@/components/actions/StageButton";
 import { MascotConfigurationDialog } from "@/components/stage/MascotConfigurationDialog";
+import { IncubatorCreationExperience } from "@/components/incubator/IncubatorCreationExperience";
 
 export function PuleiroExperience({ config }: { config: FlowConfig }) {
+  if (config.incubatorFlowEnabled) return <IncubatorCreationExperience config={config} />;
   return (
     <AccountGate required={config.authenticationRequired}>
       <AuthenticatedPuleiroExperience config={config} />

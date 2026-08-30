@@ -1,6 +1,14 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { GenerationJob, GenerationJobStatus } from "./types";
+import type {
+  GenerationJob,
+  GenerationJobStatus,
+  IncubationProductState,
+  MascotWorkflowMode,
+  PoseChoices,
+  SubjectHint,
+  SubjectIdentity,
+} from "./types";
 import type { MascotTraceContext } from "@/lib/observability/mascot-trace";
 
 export type MascotAttempt = {
@@ -16,6 +24,12 @@ export type MascotAttempt = {
   last_error_code?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
+  workflow_mode?: MascotWorkflowMode | null;
+  incubation_config?: { subjectIdentity: SubjectIdentity; poseChoices: PoseChoices } | null;
+  subject_hint?: SubjectHint | null;
+  master_selection?: GenerationJob["masterSelection"] | null;
+  generation_ready_at?: string | null;
+  hatched_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -69,6 +83,50 @@ export async function findResumableAttempts(client: SupabaseClient, userId: stri
     .returns<MascotAttempt[]>();
   if (error) throw new MascotAttemptStoreError();
   return data ?? [];
+}
+
+export async function findIncubationAttempts(client: SupabaseClient, userId: string, limit = 24) {
+  const { data, error } = await client.from("mascot_attempts")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("workflow_mode", "async_incubator_v1")
+    .neq("status", "ready")
+    .order("updated_at", { ascending: false })
+    .limit(limit)
+    .returns<MascotAttempt[]>();
+  if (error) throw new MascotAttemptStoreError();
+  return data ?? [];
+}
+
+export function incubationProductState(attempt: MascotAttempt): IncubationProductState {
+  if (attempt.status === "ready") return "PACKAGE_READY";
+  if (attempt.hatched_at) return "HATCHED";
+  if (attempt.status === "failed" || attempt.status === "canceled") return "FAILED";
+  if (attempt.generation_ready_at || attempt.status === "awaiting_set_approval") return "READY_TO_HATCH";
+  if (["registered", "awaiting_generation_authorization", "queued"].includes(attempt.status)) return "PREPARING";
+  return "INCUBATING";
+}
+
+/**
+ * Web owns the transitions that happen after Modal completes generation.
+ * Keep this projection shared so a hatched egg never regresses to a stale
+ * generation state returned by Modal.
+ */
+export function projectedIncubationProductState(
+  attempt: MascotAttempt,
+  modalState: IncubationProductState | undefined,
+): IncubationProductState {
+  const webState = incubationProductState(attempt);
+  if (["PACKAGE_READY", "HATCHED", "FAILED"].includes(webState)) return webState;
+  return modalState ?? webState;
+}
+
+export function projectIncubationJob(job: GenerationJob, attempt: MascotAttempt): GenerationJob {
+  return {
+    ...job,
+    productState: projectedIncubationProductState(attempt, job.productState),
+    hatchedAt: attempt.hatched_at ?? job.hatchedAt,
+  };
 }
 
 export function prioritizeAttempt(attempts: MascotAttempt[], attemptId: string | undefined) {
@@ -129,13 +187,28 @@ export async function deleteAttempt(client: SupabaseClient, userId: string, atte
   if (error || !data) throw new MascotAttemptStoreError("Não foi possível excluir esta tentativa.");
 }
 
-export async function reserveAttempt(client: SupabaseClient, userId: string, attemptId: string) {
-  const { error } = await client.from("mascot_attempts").upsert({
+export async function reserveAttempt(
+  client: SupabaseClient,
+  userId: string,
+  attemptId: string,
+  incubator?: { subjectIdentity: SubjectIdentity; poseChoices: PoseChoices; subjectHint?: SubjectHint },
+) {
+  const { data, error } = await client.from("mascot_attempts").upsert({
     user_id: userId,
     attempt_id: attemptId,
     status: "registered" satisfies GenerationJobStatus,
-  }, { onConflict: "user_id,attempt_id", ignoreDuplicates: true });
+    ...(incubator ? {
+      workflow_mode: "async_incubator_v1" satisfies MascotWorkflowMode,
+      incubation_config: { subjectIdentity: incubator.subjectIdentity, poseChoices: incubator.poseChoices },
+      subject_hint: incubator.subjectHint ?? null,
+    } : {}),
+  }, { onConflict: "user_id,attempt_id", ignoreDuplicates: true }).select("*").returns<MascotAttempt[]>();
   if (error) throw new MascotAttemptStoreError();
+  const inserted = data?.[0];
+  if (inserted) return { attempt: inserted, created: true };
+  const existing = await findAttempt(client, userId, attemptId);
+  if (!existing) throw new MascotAttemptStoreError();
+  return { attempt: existing, created: false };
 }
 
 export async function saveAttemptJob(client: SupabaseClient, userId: string, job: GenerationJob, trace?: MascotTraceContext) {
@@ -152,11 +225,32 @@ export async function saveAttemptJob(client: SupabaseClient, userId: string, job
     ...(trace ? { puleiro_trace_id: trace.puleiroTraceId, operation_id: trace.operationId ?? null } : {}),
     current_stage: job.status,
     last_error_code: job.errorCode ?? null,
+    workflow_mode: job.workflowMode ?? existing?.workflow_mode ?? null,
+    subject_hint: job.subjectHint ?? existing?.subject_hint ?? null,
+    master_selection: job.masterSelection ?? existing?.master_selection ?? null,
+    ...(job.generationReadyAt || job.status === "awaiting_set_approval"
+      ? { generation_ready_at: job.generationReadyAt ?? existing?.generation_ready_at ?? now }
+      : {}),
+    ...(job.hatchedAt ? { hatched_at: job.hatchedAt } : {}),
     started_at: existing?.started_at ?? now,
     ...(isTerminal(job.status) ? { completed_at: now } : {}),
     updated_at: now,
   }, { onConflict: "user_id,attempt_id" });
   if (error) throw new MascotAttemptStoreError();
+}
+
+export async function markAttemptHatched(client: SupabaseClient, userId: string, attemptId: string, jobId: string) {
+  const now = new Date().toISOString();
+  const { data, error } = await client.from("mascot_attempts")
+    .update({ hatched_at: now, updated_at: now })
+    .eq("user_id", userId)
+    .eq("attempt_id", attemptId)
+    .eq("modal_job_id", jobId)
+    .not("generation_ready_at", "is", null)
+    .select("id,hatched_at")
+    .maybeSingle<{ id: string; hatched_at: string }>();
+  if (error || !data) throw new MascotAttemptStoreError("Este ovo ainda não está pronto para chocar.");
+  return data.hatched_at;
 }
 
 function isTerminal(status: GenerationJobStatus) {

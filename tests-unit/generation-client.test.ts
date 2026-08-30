@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createGenerationJob, deleteGenerationJob, pollGenerationJob, startPoseGeneration, updateMascotConfiguration } from "@/lib/mascot-generation/client";
+import { createGenerationJob, createIncubation, deleteGenerationJob, hatchIncubation, pollGenerationJob, startPoseGeneration, updateMascotConfiguration } from "@/lib/mascot-generation/client";
 import type { GenerationJob } from "@/lib/mascot-generation/types";
 
 const job: GenerationJob = {
@@ -119,6 +119,27 @@ describe("retomada durante consulta instável", () => {
     await updateMascotConfiguration("job-1", { displayName: "Paulinho", configurationRevision: 0 }, new AbortController().signal);
 
     expect(fetchMock).toHaveBeenCalledWith("/api/mascot/jobs/job-1/configuration", expect.objectContaining({ method: "PATCH" }));
+  });
+
+  it("registra a incubação com chave estável e exatamente três escolhas", async () => {
+    const asyncJob = { ...job, workflowMode: "async_incubator_v1" as const, productState: "PREPARING" as const };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ job: asyncJob }), { status: 202, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const photo = new File(["image"], "arara.png", { type: "image/png" });
+    const key = "4ba7e9e6-b83f-4d77-9f5d-8ce1a0db0b62";
+    await createIncubation(photo, { category: "animal", label: "arara", species: "arara", confirmed: true }, job.poseChoices, undefined, key, new AbortController().signal);
+    const [, request] = fetchMock.mock.calls[0]!;
+    const form = request.body as FormData;
+    expect(request.headers).toEqual({ "X-Puleiro-Incubation-Key": key });
+    expect(JSON.parse(String(form.get("poseChoices")))).toEqual(job.poseChoices);
+  });
+
+  it("chocar é uma mutação separada e não envia configuração nem foto", async () => {
+    const asyncJob = { ...job, workflowMode: "async_incubator_v1" as const, productState: "HATCHED" as const };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ job: asyncJob }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    await hatchIncubation("job-1", new AbortController().signal);
+    expect(fetchMock).toHaveBeenCalledWith("/api/mascot/incubations/job-1/hatch", expect.objectContaining({ method: "POST", body: "{}" }));
   });
 
   it("só aceita a confirmação explícita da exclusão do BFF", async () => {

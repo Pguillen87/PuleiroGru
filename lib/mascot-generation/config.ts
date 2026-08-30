@@ -25,6 +25,7 @@ export const generationConfig = {
   registrationEnabled: enabled(process.env.REGISTRATION_ENABLED, true),
   masterGenerationEnabled: enabled(process.env.MASTER_GENERATION_ENABLED, false),
   poseGenerationEnabled: enabled(process.env.POSE_GENERATION_ENABLED, false),
+  incubatorFlowEnabled: enabled(process.env.INCUBATOR_FLOW_ENABLED, false),
   allowDevTestIdentity: enabled(process.env.ALLOW_DEV_TEST_IDENTITY, false),
 };
 
@@ -54,6 +55,7 @@ export function publicGenerationConfig() {
     technicalRegistrationOnly: generationConfig.provider === "modal" && !generationConfig.masterGenerationEnabled,
     masterGenerationEnabled: generationConfig.masterGenerationEnabled,
     poseGenerationEnabled: generationConfig.poseGenerationEnabled,
+    incubatorFlowEnabled: generationConfig.incubatorFlowEnabled,
     authenticationRequired: generationConfig.provider === "modal" && !generationConfig.allowDevTestIdentity,
   };
 }

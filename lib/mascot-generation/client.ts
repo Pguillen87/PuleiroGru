@@ -1,4 +1,4 @@
-import type { GenerationCapabilities, GenerationJob, MascotConfiguration, PoseChoices, SubjectIdentity } from "./types";
+import type { GenerationCapabilities, GenerationJob, MascotConfiguration, PoseChoices, SubjectHint, SubjectIdentity, SubjectCategory } from "./types";
 import { DEFAULT_POSE_CHOICES } from "./pose-catalog";
 
 type JobResponse = { job?: GenerationJob | null; message?: string; code?: string; supportCode?: string; retryable?: boolean };
@@ -129,6 +129,55 @@ export async function startMasterGeneration(jobId: string, signal: AbortSignal) 
 export async function resumeGenerationJob(signal: AbortSignal) {
   const response = await fetch("/api/mascot/jobs/current", { cache: "no-store", signal });
   return readResponse(response, true);
+}
+
+export async function getSubjectHint(photo: File, selectedCategory: SubjectCategory, signal: AbortSignal) {
+  const form = new FormData();
+  form.set("photo", photo);
+  form.set("selectedCategory", selectedCategory);
+  const response = await fetch("/api/mascot/subject-hint", { method: "POST", body: form, signal });
+  const body = await response.json().catch(() => ({})) as { hint?: SubjectHint; message?: string; code?: string };
+  if (!response.ok || !body.hint) throw new GenerationRequestError(body.message ?? "Não foi possível conferir a foto.", response.status >= 500, body.code);
+  return body.hint;
+}
+
+export async function createIncubation(
+  photo: File,
+  subjectIdentity: SubjectIdentity,
+  poseChoices: PoseChoices,
+  subjectHint: SubjectHint | undefined,
+  idempotencyKey: string,
+  signal: AbortSignal,
+) {
+  const form = new FormData();
+  form.set("photo", photo);
+  form.set("subjectCategory", subjectIdentity.category);
+  form.set("subjectLabel", subjectIdentity.label);
+  if (subjectIdentity.species) form.set("subjectSpecies", subjectIdentity.species);
+  form.set("poseChoices", JSON.stringify(poseChoices));
+  if (subjectHint) form.set("subjectHint", JSON.stringify(subjectHint));
+  const response = await fetch("/api/mascot/incubations", {
+    method: "POST",
+    headers: { "X-Puleiro-Incubation-Key": idempotencyKey },
+    body: form,
+    signal,
+  });
+  return await readResponse(response) as GenerationJob;
+}
+
+export async function getIncubation(jobId: string, signal: AbortSignal) {
+  const response = await fetch(`/api/mascot/incubations/${encodeURIComponent(jobId)}`, { cache: "no-store", signal });
+  return await readResponse(response) as GenerationJob;
+}
+
+export async function hatchIncubation(jobId: string, signal: AbortSignal) {
+  const response = await fetch(`/api/mascot/incubations/${encodeURIComponent(jobId)}/hatch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    signal,
+  });
+  return await readResponse(response) as GenerationJob;
 }
 
 export async function deleteGenerationJob(jobId: string, signal: AbortSignal) {

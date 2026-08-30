@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { getAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
-import { markAttemptPackageFailed, markAttemptPackaging, markAttemptReady } from "@/lib/mascot-generation/attempt-store";
+import { findAttemptByJobId, markAttemptPackageFailed, markAttemptPackaging, markAttemptReady } from "@/lib/mascot-generation/attempt-store";
 import { saveLibraryItem } from "@/lib/mascot-generation/library-store";
 import { MascotPackageError, publishMascotPackage } from "@/lib/mascot-generation/package-store";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
@@ -27,10 +27,16 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     if (displayName.trim().length < 2 || displayName.trim().length > 32) {
       return NextResponse.json({ message: "Informe um nome de 2 a 32 caracteres para o mascote." }, { status: 400 });
     }
-    const [identity, attemptId] = await Promise.all([requireBrowserIdentity(request), getAttemptId()]);
-    if (!attemptId) return NextResponse.json({ message: "Nascimento não encontrado." }, { status: 404 });
+    const [identity, cookieAttemptId] = await Promise.all([requireBrowserIdentity(request), getAttemptId()]);
     if (identity.mode !== "supabase-session") {
       return NextResponse.json({ message: "Entre em sua conta para guardar o mascote.", code: "SESSION_REQUIRED" }, { status: 401 });
+    }
+    const supabase = await createClient();
+    const persisted = await findAttemptByJobId(supabase, identity.uid, jobId);
+    const attemptId = persisted?.workflow_mode === "async_incubator_v1" ? persisted.attempt_id : cookieAttemptId;
+    if (!attemptId) return NextResponse.json({ message: "Nascimento não encontrado." }, { status: 404 });
+    if (persisted?.workflow_mode === "async_incubator_v1" && !persisted.hatched_at) {
+      return NextResponse.json({ message: "Chocar o ovo é necessário antes de nomear o mascote.", code: "HATCH_REQUIRED" }, { status: 409 });
     }
     const job = await getMascotGenerationProvider().getJob(jobId, jobIdentity(identity.uid, attemptId));
     if (!job || job.status !== "awaiting_set_approval" || !job.approvedMasterId || !hasCompletePoseSet(job)) {
@@ -41,7 +47,6 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
       return NextResponse.json({ message, code }, { status: 409 });
     }
     await verifyPoseAssets(job, identity.uid, attemptId);
-    const supabase = await createClient();
     await reconcileAssetChecks(supabase, identity.uid, job);
     finalization = { userId: identity.uid, attemptId };
     await markAttemptPackaging(supabase, identity.uid, attemptId);

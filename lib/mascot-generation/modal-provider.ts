@@ -5,6 +5,7 @@ import { createModalAccessToken } from "./modal-auth";
 import type {
   AcceptedImageType,
   CreateMasterJobInput,
+  CreateIncubationInput,
   GenerationJob,
   GenerationCapabilities,
   AssetQualityMetrics,
@@ -16,6 +17,7 @@ import type {
   PoseChoices,
   PoseRole,
   SubjectIdentity,
+  SubjectHint,
 } from "./types";
 import { ACCEPTED_IMAGE_TYPES } from "./types";
 import { POSE_CATALOG_VERSION } from "./pose-catalog";
@@ -35,6 +37,12 @@ type ModalJob = {
   error?: { code?: string; retryable?: boolean };
   operationId?: string;
   idempotentReplay?: boolean;
+  workflowMode?: GenerationJob["workflowMode"];
+  productState?: GenerationJob["productState"];
+  generationReadyAt?: string;
+  hatchedAt?: string;
+  masterSelection?: GenerationJob["masterSelection"];
+  subjectHint?: SubjectHint;
 };
 
 type ModalDeletion = {
@@ -78,6 +86,42 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
         content_type: input.contentType,
         attempt_id: input.attemptId,
         subject_identity: input.subjectIdentity,
+      }),
+    });
+    return this.toGenerationJob(await this.readJob(response), response);
+  }
+
+  async analyzeSubject(
+    input: Pick<CreateMasterJobInput, "bytes" | "contentType" | "ownerId" | "attemptId" | "correlationId"> & { selectedCategory: SubjectIdentity["category"] },
+  ) {
+    const response = await this.request("/v2/mascot/subject-hint", input, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image_base64: Buffer.from(input.bytes).toString("base64"),
+        content_type: input.contentType,
+        selected_category: input.selectedCategory,
+      }),
+    });
+    if (!response.ok) await this.throwResponse(response);
+    return response.json() as Promise<SubjectHint>;
+  }
+
+  async createIncubation(input: CreateIncubationInput) {
+    const response = await this.request("/v2/mascot/incubations", input, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Idempotency-Key": input.idempotencyKey,
+        ...this.operationHeaders(input),
+      },
+      body: JSON.stringify({
+        image_base64: Buffer.from(input.bytes).toString("base64"),
+        content_type: input.contentType,
+        attempt_id: input.attemptId,
+        subject_identity: input.subjectIdentity,
+        pose_choices: input.poseChoices,
+        subject_hint: input.subjectHint,
       }),
     });
     return this.toGenerationJob(await this.readJob(response), response);
@@ -276,6 +320,12 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
       operationId: job.operationId ?? response?.headers.get("x-operation-id") ?? undefined,
       requestId: response?.headers.get("x-request-id") ?? undefined,
       idempotentReplay: job.idempotentReplay,
+      workflowMode: job.workflowMode,
+      productState: job.productState,
+      generationReadyAt: job.generationReadyAt,
+      hatchedAt: job.hatchedAt,
+      masterSelection: job.masterSelection,
+      subjectHint: job.subjectHint,
     };
   }
 }

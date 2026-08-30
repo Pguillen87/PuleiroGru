@@ -15,9 +15,11 @@ const CATEGORIES: Array<{ value: SubjectCategory; label: string; detail: string 
 export function SubjectConfirmationStage({
   onConfirm,
   onBack,
+  submitLabel = "Confirmar e começar",
 }: {
   onConfirm: (identity: SubjectIdentity) => void;
   onBack: () => void;
+  submitLabel?: string;
 }) {
   const [category, setCategory] = useState<SubjectCategory>();
   const [description, setDescription] = useState("");
@@ -75,7 +77,7 @@ export function SubjectConfirmationStage({
           </label>
         )}
         <div className="stage-actions">
-          <StageButton type="submit" disabled={!ready}>Confirmar e começar</StageButton>
+          <StageButton type="submit" disabled={!ready}>{submitLabel}</StageButton>
           <StageButton type="button" tone="secondary" onClick={onBack}>Voltar à foto</StageButton>
         </div>
       </form>

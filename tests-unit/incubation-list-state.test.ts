@@ -46,4 +46,11 @@ describe("GET /api/mascot/incubations state projection", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ incubations: [{ jobId: "job-1", productState: "HATCHED" }] });
   });
+
+  it("prioriza a espera de escolha humana sobre o estado Modal genérico", async () => {
+    findIncubationAttempts.mockResolvedValue([{ ...attempt, status: "awaiting_master_approval", generation_ready_at: null, hatched_at: null, master_selection: { decision: "NEEDS_HUMAN_SELECTION" } }]);
+    const { GET } = await import("@/app/api/mascot/incubations/route");
+    const response = await GET(new Request("https://puleiro.test/api/mascot/incubations"));
+    await expect(response.json()).resolves.toMatchObject({ incubations: [{ productState: "NEEDS_HUMAN_MASTER_SELECTION" }] });
+  });
 });

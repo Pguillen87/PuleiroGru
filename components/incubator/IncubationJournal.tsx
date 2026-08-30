@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/navigation/Header";
 import { StageButton } from "@/components/actions/StageButton";
-import { finalizeMascot, GenerationRequestError, getIncubation, hatchIncubation } from "@/lib/mascot-generation/client";
+import { finalizeMascot, GenerationRequestError, getIncubation, hatchIncubation, selectIncubatorMaster } from "@/lib/mascot-generation/client";
 import type { GenerationJob } from "@/lib/mascot-generation/types";
 import { POSE_ROLE_LABELS } from "@/lib/mascot-generation/pose-catalog";
 
@@ -48,9 +48,18 @@ export function IncubationJournal({ jobId }: { jobId: string }) {
     } finally { setBusy(false); }
   }
 
+  async function selectMaster(masterId: string) {
+    setBusy(true); setError("");
+    const controller = new AbortController();
+    try { setJob(await selectIncubatorMaster(jobId, masterId, controller.signal)); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível guardar esta escolha."); }
+    finally { setBusy(false); }
+  }
+
   return <div className="site-shell"><Header /><main className="journal-page">
     <section className="journal-reveal" aria-labelledby="journal-title">
-      <div className="journal-reveal__heading"><span className="state-kicker">Jornal do nascimento</span><h1 id="journal-title">{job?.productState === "HATCHED" ? "Seu mascote saiu do ovo." : "O ovo está pronto para chocar."}</h1><p>{job?.productState === "HATCHED" ? "Escolha o nome que seguirá com ele para a Biblioteca e para o GRU." : "As três poses passaram pelas conferências. Chocar não inicia uma nova geração."}</p></div>
+      <div className="journal-reveal__heading"><span className="state-kicker">{job?.productState === "NEEDS_HUMAN_MASTER_SELECTION" ? "Precisa de você" : "Jornal do nascimento"}</span><h1 id="journal-title">{job?.productState === "NEEDS_HUMAN_MASTER_SELECTION" ? "Escolha o mascote que mais parece com o seu." : job?.productState === "HATCHED" ? "Seu mascote saiu do ovo." : "O ovo está pronto para chocar."}</h1><p>{job?.productState === "NEEDS_HUMAN_MASTER_SELECTION" ? "Encontramos mais de uma opção boa. Sua escolha continuará o mesmo nascimento." : job?.productState === "HATCHED" ? "Escolha o nome que seguirá com ele para a Biblioteca e para o GRU." : "As três poses passaram pelas conferências. Chocar não inicia uma nova geração."}</p></div>
+      {job?.productState === "NEEDS_HUMAN_MASTER_SELECTION" && <div className="incubator-master-selector" role="group" aria-label="Escolha um mascote mestre">{job.masters.map((master) => <button type="button" key={master.id} disabled={busy} onClick={() => void selectMaster(master.id)}><Image unoptimized width={320} height={320} src={master.imageUrl} alt={`Escolher esta opção de mascote.`} /><span>Escolher mascote</span></button>)}</div>}
       {orderedPoses.length === 3 && <div className="journal-pose-showcase">
         {orderedPoses.map((pose, index) => <figure className={index === 0 ? "journal-pose-showcase__hero" : undefined} key={pose.id}><Image unoptimized width={720} height={720} src={pose.imageUrl} alt={`${POSE_ROLE_LABELS[pose.role]} do mascote gerado.`} /><figcaption>{POSE_ROLE_LABELS[pose.role]}</figcaption></figure>)}
       </div>}

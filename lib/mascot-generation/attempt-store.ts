@@ -102,6 +102,7 @@ export function incubationProductState(attempt: MascotAttempt): IncubationProduc
   if (attempt.status === "ready") return "PACKAGE_READY";
   if (attempt.hatched_at) return "HATCHED";
   if (attempt.status === "failed" || attempt.status === "canceled") return "FAILED";
+  if (attempt.status === "awaiting_master_approval" && attempt.master_selection?.decision === "NEEDS_HUMAN_SELECTION") return "NEEDS_HUMAN_MASTER_SELECTION";
   if (attempt.generation_ready_at || attempt.status === "awaiting_set_approval") return "READY_TO_HATCH";
   if (["registered", "awaiting_generation_authorization", "queued"].includes(attempt.status)) return "PREPARING";
   return "INCUBATING";
@@ -117,7 +118,7 @@ export function projectedIncubationProductState(
   modalState: IncubationProductState | undefined,
 ): IncubationProductState {
   const webState = incubationProductState(attempt);
-  if (["PACKAGE_READY", "HATCHED", "FAILED"].includes(webState)) return webState;
+  if (["PACKAGE_READY", "HATCHED", "FAILED", "NEEDS_HUMAN_MASTER_SELECTION"].includes(webState)) return webState;
   return modalState ?? webState;
 }
 

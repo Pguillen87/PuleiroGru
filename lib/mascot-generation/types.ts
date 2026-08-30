@@ -52,6 +52,7 @@ export type MascotWorkflowMode = "legacy_manual" | "async_incubator_v1";
 export type IncubationProductState =
   | "PREPARING"
   | "INCUBATING"
+  | "NEEDS_HUMAN_MASTER_SELECTION"
   | "READY_TO_HATCH"
   | "FAILED"
   | "HATCHED"
@@ -67,7 +68,14 @@ export interface SubjectHint {
 
 export interface MasterSelection {
   rankerVersion: string;
-  selectedMasterId: string;
+  selectedMasterId?: string;
+  selectionSource?: "auto" | "human" | null;
+  decision?: "AUTO_SELECTED" | "NEEDS_HUMAN_SELECTION" | "HUMAN_SELECTED" | "RANKING_FAILED";
+  decisionReason?: string;
+  masterRankerPolicyVersion?: string;
+  top1Score?: number;
+  top2Score?: number;
+  margin?: number;
   scores: Array<{
     masterId: string;
     identity: number;
@@ -245,6 +253,7 @@ export interface MascotGenerationProvider {
   getJobByAttempt(identity: JobIdentity): Promise<GenerationJob | null>;
   deleteJob(jobId: string, identity: JobIdentity): Promise<{ deleted: true; idempotentReplay: boolean }>;
   approveMaster(jobId: string, masterId: string, identity: JobIdentity): Promise<GenerationJob>;
+  selectIncubatorMaster(jobId: string, masterId: string, identity: JobIdentity): Promise<GenerationJob>;
   updateConfiguration(jobId: string, configuration: Partial<MascotConfiguration> & Pick<MascotConfiguration, "configurationRevision">, identity: JobIdentity): Promise<GenerationJob>;
   startPoseGeneration(jobId: string, choices: PoseChoices, identity: JobIdentity): Promise<GenerationJob>;
   getMasterImage?(jobId: string, masterId: string, identity: JobIdentity): Promise<MasterImage | null>;

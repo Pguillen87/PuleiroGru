@@ -4,6 +4,7 @@ const requireBrowserIdentity = vi.fn();
 const createClient = vi.fn();
 const findIncubationAttempts = vi.fn();
 const getMascotGenerationProvider = vi.fn();
+const saveAttemptJob = vi.fn();
 
 vi.mock("@/lib/auth/browser-auth", () => ({
   authErrorResponse: vi.fn(() => null),
@@ -13,6 +14,7 @@ vi.mock("@/lib/supabase/server", () => ({ createClient }));
 vi.mock("@/lib/mascot-generation/attempt-store", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/mascot-generation/attempt-store")>(),
   findIncubationAttempts,
+  saveAttemptJob,
 }));
 vi.mock("@/lib/mascot-generation/provider", () => ({ getMascotGenerationProvider }));
 
@@ -52,5 +54,41 @@ describe("GET /api/mascot/incubations state projection", () => {
     const { GET } = await import("@/app/api/mascot/incubations/route");
     const response = await GET(new Request("https://puleiro.test/api/mascot/incubations"));
     await expect(response.json()).resolves.toMatchObject({ incubations: [{ productState: "NEEDS_HUMAN_MASTER_SELECTION" }] });
+  });
+
+  it("repara o vínculo ausente pelo mesmo attempt e projeta REGISTERED como PREPARING", async () => {
+    const orphan = { ...attempt, modal_job_id: null, status: "registered", current_stage: "registered", hatched_at: null, generation_ready_at: null };
+    const recovered = { id: "job-recovered", attemptId: orphan.attempt_id, status: "registered", productState: "PREPARING", poses: [] };
+    findIncubationAttempts.mockResolvedValue([orphan]);
+    const getJobByAttempt = vi.fn().mockResolvedValue(recovered);
+    getMascotGenerationProvider.mockReturnValue({ getJob: vi.fn(), getJobByAttempt });
+    const { GET } = await import("@/app/api/mascot/incubations/route");
+
+    const response = await GET(new Request("https://puleiro.test/api/mascot/incubations"));
+    await expect(response.json()).resolves.toMatchObject({ incubations: [{ jobId: "job-recovered", productState: "PREPARING" }] });
+    expect(getJobByAttempt).toHaveBeenCalledOnce();
+    expect(saveAttemptJob).toHaveBeenCalledOnce();
+  });
+
+  it("mantém a lista segura quando o lookup retorna null e não cria nada", async () => {
+    const orphan = { ...attempt, modal_job_id: null, status: "registered", current_stage: "registered", hatched_at: null, generation_ready_at: null };
+    findIncubationAttempts.mockResolvedValue([orphan]);
+    const provider = { getJob: vi.fn(), getJobByAttempt: vi.fn().mockResolvedValue(null), createIncubation: vi.fn() };
+    getMascotGenerationProvider.mockReturnValue(provider);
+    const { GET } = await import("@/app/api/mascot/incubations/route");
+    const response = await GET(new Request("https://puleiro.test/api/mascot/incubations"));
+    await expect(response.json()).resolves.toEqual({ incubations: [] });
+    expect(provider.createIncubation).not.toHaveBeenCalled();
+    expect(saveAttemptJob).not.toHaveBeenCalled();
+  });
+
+  it("não persiste job de attempt divergente", async () => {
+    const orphan = { ...attempt, modal_job_id: null, status: "registered", current_stage: "registered", hatched_at: null, generation_ready_at: null };
+    findIncubationAttempts.mockResolvedValue([orphan]);
+    getMascotGenerationProvider.mockReturnValue({ getJob: vi.fn(), getJobByAttempt: vi.fn().mockResolvedValue({ id: "wrong", attemptId: "other-attempt", status: "registered", poses: [] }) });
+    const { GET } = await import("@/app/api/mascot/incubations/route");
+    const response = await GET(new Request("https://puleiro.test/api/mascot/incubations"));
+    await expect(response.json()).resolves.toEqual({ incubations: [] });
+    expect(saveAttemptJob).not.toHaveBeenCalled();
   });
 });

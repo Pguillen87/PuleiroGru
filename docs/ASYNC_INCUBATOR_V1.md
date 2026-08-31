@@ -6,6 +6,24 @@ O fluxo `async_incubator_v1` é aditivo e fica desligado por padrão com
 `INCUBATOR_FLOW_ENABLED=false`. Ele não altera Android V1: o pacote final
 continua contendo exclusivamente `NORMAL`, `LISTENING` e `TRANSCRIBING`.
 
+O contrato de `subjectHint` aceita explicitamente `subject-hint-policy-v2`,
+publicado pelo Modal atual, e mantém `subject-hint-v1` apenas para o produtor
+mock/fallback compatível. Versões desconhecidas continuam inválidas.
+
+O preflight de capabilities é somente leitura e não exige um attempt anterior:
+o Web usa uma identidade BFF transitória, sem criar tentativa, job ou reserva.
+`INCUBATOR_FLOW_ENABLED` controla se um ovo pode ser registrado; `master.ready`
+e `poses.ready` descrevem a capacidade de executar geração paga e não bloqueiam
+o registro. Com as flags de geração desligadas, o POST de incubação registra o
+ovo e o reconciliador o mantém recuperável sem iniciar GPU.
+
+Ao abrir a Incubadora, attempts `async_incubator_v1` owner-scoped sem
+`modal_job_id` são reconciliados uma única vez por requisição usando
+`getJobByAttempt(owner, attempt)`. Um job encontrado só é vinculado depois de
+confirmar o mesmo `attempt_id`; 404, ausência ou divergência não criam job nem
+alteram o attempt. O recovery também não reenvia foto, reserva GPU ou inicia
+geração, e chamadas posteriores usam o vínculo persistido.
+
 ## Estados de produto
 
 O estado é uma projeção de `mascot_attempts` e do job Modal, nunca uma segunda

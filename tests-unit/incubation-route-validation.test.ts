@@ -47,7 +47,7 @@ describe("POST /api/mascot/incubations input validation", () => {
     const { POST } = await import("@/app/api/mascot/incubations/route");
     const response = await POST(requestWith({
       subjectCategory: "animal", subjectLabel: "arara", subjectSpecies: "arara", poseChoices: "{}",
-      subjectHint: JSON.stringify({ version: "subject-hint-v1", suggestedCategory: "human", confidenceBand: "high", requiresConfirmation: true, overrideConfirmed: false }),
+      subjectHint: JSON.stringify({ version: "subject-hint-policy-v2", suggestedCategory: "human", confidenceBand: "high", requiresConfirmation: true, overrideConfirmed: false }),
     }));
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({ code: "SUBJECT_MISMATCH_CONFIRMATION_REQUIRED" });

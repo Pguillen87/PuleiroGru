@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AccountGate } from "@/components/auth/AccountGate";
 import { Header } from "@/components/navigation/Header";
 import { StageButton } from "@/components/actions/StageButton";
@@ -32,27 +32,41 @@ function AuthenticatedIncubatorCreation({ config }: { config: FlowConfig }) {
   const [hint, setHint] = useState<SubjectHint>();
   const [choices, setChoices] = useState<PoseChoices>(DEFAULT_POSE_CHOICES);
   const [error, setError] = useState("");
-  const [workshopReady, setWorkshopReady] = useState(false);
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [canRegisterIncubation, setCanRegisterIncubation] = useState(config.incubatorFlowEnabled);
+  const [capabilitiesError, setCapabilitiesError] = useState(false);
+  const [subjectHintPending, setSubjectHintPending] = useState(false);
+  const [incubationSubmitting, setIncubationSubmitting] = useState(false);
+  const subjectHintInFlight = useRef(false);
+  const incubationSubmitInFlight = useRef(false);
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
 
   useEffect(() => () => { if (photoUrl) URL.revokeObjectURL(photoUrl); }, [photoUrl]);
   useEffect(() => {
     const controller = new AbortController();
     void getGenerationCapabilities(controller.signal).then((value) => {
-      setWorkshopReady(Boolean(value.master.ready && value.poses.ready && value.incubator?.ready));
-    }).catch(() => setWorkshopReady(false));
+      setCapabilitiesError(false);
+      setCanRegisterIncubation(config.incubatorFlowEnabled && value.incubator?.enabled === true);
+    }).catch(() => {
+      setCapabilitiesError(true);
+      // Capabilities is a generation preflight. The POST remains the
+      // authority for accepting an egg while paid workers are fail-closed.
+      setCanRegisterIncubation(config.incubatorFlowEnabled);
+    });
     return () => controller.abort();
-  }, []);
+  }, [config.incubatorFlowEnabled]);
 
   function selectPhoto(file: File) {
     if (photoUrl) URL.revokeObjectURL(photoUrl);
+    setIdempotencyKey(crypto.randomUUID());
     setPhoto(file);
     setPhotoUrl(URL.createObjectURL(file));
     setStep("preview");
   }
 
   async function confirmIdentity(value: SubjectIdentity) {
-    if (!photo) return;
+    if (!photo || subjectHintInFlight.current) return;
+    subjectHintInFlight.current = true;
+    setSubjectHintPending(true);
     setIdentity(value);
     const controller = new AbortController();
     try {
@@ -62,11 +76,16 @@ function AuthenticatedIncubatorCreation({ config }: { config: FlowConfig }) {
     } catch {
       setHint({ version: "subject-hint-v1", suggestedCategory: "uncertain", confidenceBand: "low", requiresConfirmation: false, overrideConfirmed: false });
       setStep("normal");
+    } finally {
+      subjectHintInFlight.current = false;
+      setSubjectHintPending(false);
     }
   }
 
   async function submit() {
-    if (!photo || !identity || !workshopReady) return;
+    if (!photo || !identity || !canRegisterIncubation || incubationSubmitInFlight.current) return;
+    incubationSubmitInFlight.current = true;
+    setIncubationSubmitting(true);
     setError("");
     setStep("submitting");
     const controller = new AbortController();
@@ -76,11 +95,17 @@ function AuthenticatedIncubatorCreation({ config }: { config: FlowConfig }) {
     } catch (cause) {
       setError(cause instanceof GenerationRequestError ? cause.message : "Não foi possível colocar este ovo na Incubadora.");
       setStep("error");
+    } finally {
+      incubationSubmitInFlight.current = false;
+      setIncubationSubmitting(false);
     }
   }
 
+  // The refs are read only by event handlers; stepContent receives those
+  // handlers so render never reads mutable ref state.
+  // eslint-disable-next-line react-hooks/refs
   const content = stepContent({
-    step, photoUrl, identity, hint, choices, workshopReady, error,
+    step, photoUrl, identity, hint, choices, canRegisterIncubation, capabilitiesError, subjectHintPending, incubationSubmitting, error,
     maxUploadBytes: config.maxUploadBytes,
     setStep, setChoices, setHint, selectPhoto, confirmIdentity, submit,
   });
@@ -92,7 +117,7 @@ function AuthenticatedIncubatorCreation({ config }: { config: FlowConfig }) {
 }
 
 function stepContent(input: {
-  step: Step; photoUrl: string; identity?: SubjectIdentity; hint?: SubjectHint; choices: PoseChoices; workshopReady: boolean; error: string;
+  step: Step; photoUrl: string; identity?: SubjectIdentity; hint?: SubjectHint; choices: PoseChoices; canRegisterIncubation: boolean; capabilitiesError: boolean; subjectHintPending: boolean; incubationSubmitting: boolean; error: string;
   maxUploadBytes: number; setStep: (step: Step) => void; setChoices: React.Dispatch<React.SetStateAction<PoseChoices>>;
   setHint: React.Dispatch<React.SetStateAction<SubjectHint | undefined>>; selectPhoto: (file: File) => void;
   confirmIdentity: (identity: SubjectIdentity) => Promise<void>; submit: () => Promise<void>;
@@ -100,13 +125,13 @@ function stepContent(input: {
   if (input.step === "entry") return <EntryStage onStart={() => input.setStep("photo")} />;
   if (input.step === "photo") return <PhotoSelectionStage maxUploadBytes={input.maxUploadBytes} onSelect={input.selectPhoto} />;
   if (input.step === "preview") return <PhotoPreviewStage photoUrl={input.photoUrl} onConfirm={() => input.setStep("subject")} onReplace={() => input.setStep("photo")} onRemove={() => input.setStep("photo")} />;
-  if (input.step === "subject") return <SubjectConfirmationStage submitLabel="Confirmar e escolher poses" onConfirm={(value) => void input.confirmIdentity(value)} onBack={() => input.setStep("preview")} />;
+  if (input.step === "subject") return <SubjectConfirmationStage submitLabel="Confirmar e escolher poses" pending={input.subjectHintPending} onConfirm={(value) => void input.confirmIdentity(value)} onBack={() => input.setStep("preview")} />;
   if (input.step === "mismatch" && input.identity && input.hint) return <MismatchConfirmation identity={input.identity} hint={input.hint} onBack={() => input.setStep("subject")} onContinue={() => { input.setHint((current) => current ? { ...current, overrideConfirmed: true } : current); input.setStep("normal"); }} />;
   if (["normal", "listening", "transcribing"].includes(input.step) && input.identity) {
     const role = input.step as PoseRole;
     return <PoseSelectionStage role={role} category={input.identity.category} selected={input.choices[role]} onSelect={(option) => input.setChoices((current) => ({ ...current, [role]: option }))} onContinue={() => input.setStep(nextRole[role])} onBack={() => input.setStep(role === "normal" ? "subject" : role === "listening" ? "normal" : "listening")} />;
   }
-  if (input.step === "summary" && input.identity) return <IncubationSummary photoUrl={input.photoUrl} identity={input.identity} choices={input.choices} ready={input.workshopReady} onBack={() => input.setStep("transcribing")} onSubmit={() => void input.submit()} />;
+  if (input.step === "summary" && input.identity) return <IncubationSummary photoUrl={input.photoUrl} identity={input.identity} choices={input.choices} canRegister={input.canRegisterIncubation} capabilitiesError={input.capabilitiesError} submitting={input.incubationSubmitting} onBack={() => input.setStep("transcribing")} onSubmit={() => void input.submit()} />;
   if (input.step === "submitting") return <PreparingStage title="Colocando o ovo na Incubadora" message="Registrando foto, tipo e três poses com segurança…" />;
   if (input.step === "done") return <><span className="state-kicker">Ovo registrado</span><h2 id="state-title">A Incubadora cuidará do resto.</h2><p>Você pode fechar esta página. O nascimento continuará no servidor e reaparecerá em Meus mascotes.</p><div className="stage-actions"><a className="stage-button stage-button--primary" href="/meus-mascotes">Abrir Incubadora</a></div></>;
   if (input.step === "error") return <><span className="state-kicker">O ovo continua com você</span><h2 id="state-title">Não conseguimos iniciar.</h2><p className="stage-error" role="alert">{input.error}</p><div className="stage-actions"><StageButton onClick={() => input.setStep("summary")}>Tentar registrar novamente</StageButton></div></>;
@@ -119,9 +144,9 @@ function MismatchConfirmation({ identity, hint, onBack, onContinue }: { identity
   return <><span className="state-kicker">Confirmação importante</span><h2 id="state-title">A foto parece mostrar {suggested}.</h2><p>Você selecionou <strong>{selected}</strong>. Essa escolha muda como o mascote será criado. Deseja continuar assim?</p><div className="stage-actions"><StageButton onClick={onContinue}>Sim, continuar como {selected}</StageButton><StageButton tone="secondary" onClick={onBack}>Corrigir o tipo</StageButton></div></>;
 }
 
-function IncubationSummary({ photoUrl, identity, choices, ready, onBack, onSubmit }: { photoUrl: string; identity: SubjectIdentity; choices: PoseChoices; ready: boolean; onBack: () => void; onSubmit: () => void }) {
+function IncubationSummary({ photoUrl, identity, choices, canRegister, capabilitiesError, submitting, onBack, onSubmit }: { photoUrl: string; identity: SubjectIdentity; choices: PoseChoices; canRegister: boolean; capabilitiesError: boolean; submitting: boolean; onBack: () => void; onSubmit: () => void }) {
   const options = useMemo(() => Object.fromEntries(POSE_OPTIONS.map((option) => [option.id, option])), []);
-  return <><span className="state-kicker">Tudo decidido antes da geração</span><h2 id="state-title">Revise o ovo antes da Incubadora</h2><div className="incubation-review"><Image unoptimized width={320} height={320} src={photoUrl} alt="Foto principal escolhida." /><dl><div><dt>Tipo</dt><dd>{identity.category === "human" ? "Pessoa" : identity.category === "animal" ? `Animal · ${identity.species}` : identity.label}</dd></div>{(Object.keys(choices) as PoseRole[]).map((role) => <div key={role}><dt>{POSE_ROLE_LABELS[role]}</dt><dd>{options[choices[role]]?.label}</dd></div>)}</dl></div><p className="pose-reference-note">As poses são referências de movimento. O sistema criará o mascote completo em segundo plano, sem pedir decisões no meio.</p><div className="stage-actions"><StageButton disabled={!ready} onClick={onSubmit}>Colocar na Incubadora</StageButton><StageButton tone="secondary" onClick={onBack}>Rever poses</StageButton></div>{!ready && <p className="stage-guidance">A oficina precisa estar pronta antes de receber um novo ovo.</p>}</>;
+  return <><span className="state-kicker">Tudo decidido antes da geração</span><h2 id="state-title">Revise o ovo antes da Incubadora</h2><div className="incubation-review"><Image unoptimized width={320} height={320} src={photoUrl} alt="Foto principal escolhida." /><dl><div><dt>Tipo</dt><dd>{identity.category === "human" ? "Pessoa" : identity.category === "animal" ? `Animal · ${identity.species}` : identity.label}</dd></div>{(Object.keys(choices) as PoseRole[]).map((role) => <div key={role}><dt>{POSE_ROLE_LABELS[role]}</dt><dd>{options[choices[role]]?.label}</dd></div>)}</dl></div><p className="pose-reference-note">As poses são referências de movimento. O sistema criará o mascote completo em segundo plano, sem pedir decisões no meio.</p><div className="stage-actions"><StageButton disabled={!canRegister || submitting} aria-busy={submitting} onClick={onSubmit}>{submitting ? "Guardando o ovo…" : "Colocar na Incubadora"}</StageButton><StageButton tone="secondary" onClick={onBack} disabled={submitting}>Rever poses</StageButton></div>{!canRegister && <p className="stage-guidance" role="status">A Incubadora não consegue receber novos ovos agora. Tente novamente em instantes.</p>}{canRegister && capabilitiesError && <p className="stage-guidance" role="status">O ovo pode ser guardado; a criação continuará quando a oficina estiver disponível.</p>}</>;
 }
 
 function mapStage(step: Step) {

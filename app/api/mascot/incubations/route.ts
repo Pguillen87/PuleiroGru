@@ -5,12 +5,13 @@ import { findIncubationAttempts, projectedIncubationProductState, reserveAttempt
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { generationConfig } from "@/lib/mascot-generation/config";
 import { IncubationInputError, parseIncubationPoseChoices, parseIncubationSubjectHint } from "@/lib/mascot-generation/incubation-input";
-import { IncubationRecoveryError, resolveIncubationCreation } from "@/lib/mascot-generation/incubation-recovery";
+import { IncubationRecoveryError, recoverIncubationJob, resolveIncubationCreation } from "@/lib/mascot-generation/incubation-recovery";
 import { ModalProviderError } from "@/lib/mascot-generation/modal-provider";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
+import type { GenerationJob } from "@/lib/mascot-generation/types";
 import { parseSubjectIdentity, SubjectIdentityError } from "@/lib/mascot-generation/subject-identity";
 import { validateAndSanitizeImage } from "@/lib/mascot-generation/validation";
-import { createTraceContext } from "@/lib/observability/mascot-trace";
+import { createTraceContext, mascotLog } from "@/lib/observability/mascot-trace";
 import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
 import { createClient } from "@/lib/supabase/server";
 
@@ -25,11 +26,26 @@ export async function GET(request: Request) {
     const provider = getMascotGenerationProvider();
     const eggs = await Promise.all(attempts.map(async (attempt) => {
       const trace = createTraceContext(attempt.attempt_id, false);
-      const job = attempt.modal_job_id
-        ? await provider.getJob(attempt.modal_job_id, jobIdentity(identity.uid, attempt.attempt_id, trace)).catch(() => null)
-        : null;
+      let job: GenerationJob | null = null;
+      try {
+        job = await recoverIncubationJob({
+          attemptId: attempt.attempt_id,
+          existingJobId: attempt.modal_job_id,
+          getJob: (jobId) => provider.getJob(jobId, jobIdentity(identity.uid, attempt.attempt_id, trace)),
+          getJobByAttempt: () => provider.getJobByAttempt(jobIdentity(identity.uid, attempt.attempt_id, trace)),
+          persist: (candidate) => saveAttemptJob(supabase, identity.uid, candidate, trace),
+        });
+      } catch (error) {
+        mascotLog("incubation_link_recovery_failed", {
+          ...trace,
+          jobId: attempt.modal_job_id ?? undefined,
+          result: "recovery_failed",
+          stage: attempt.status,
+          safeErrorCode: error instanceof IncubationRecoveryError ? error.code : "INCUBATION_RECOVERY_FAILED",
+        });
+      }
       return {
-        jobId: attempt.modal_job_id,
+        jobId: job?.id ?? attempt.modal_job_id,
         attemptId: attempt.attempt_id,
         productState: projectedIncubationProductState(attempt, job?.productState),
         phase: job?.status ?? attempt.current_stage ?? attempt.status,

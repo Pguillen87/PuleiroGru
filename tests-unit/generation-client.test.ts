@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createGenerationJob, createIncubation, deleteGenerationJob, hatchIncubation, pollGenerationJob, startPoseGeneration, updateMascotConfiguration } from "@/lib/mascot-generation/client";
+import { createGenerationJob, createIncubation, deleteGenerationJob, getSubjectHint, hatchIncubation, pollGenerationJob, startPoseGeneration, updateMascotConfiguration } from "@/lib/mascot-generation/client";
 import type { GenerationJob } from "@/lib/mascot-generation/types";
 
 const job: GenerationJob = {
@@ -132,6 +132,16 @@ describe("retomada durante consulta instável", () => {
     const form = request.body as FormData;
     expect(request.headers).toEqual({ "X-Puleiro-Incubation-Key": key });
     expect(JSON.parse(String(form.get("poseChoices")))).toEqual(job.poseChoices);
+  });
+
+  it("não repete automaticamente um subject-hint 503", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      message: "Não foi possível conferir a foto agora.", code: "MODAL_REQUEST_FAILED",
+    }), { status: 503, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const photo = new File(["image"], "arara.png", { type: "image/png" });
+    await expect(getSubjectHint(photo, "animal", new AbortController().signal)).rejects.toMatchObject({ code: "MODAL_REQUEST_FAILED" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("chocar é uma mutação separada e não envia configuração nem foto", async () => {

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { getAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
+import { findAttempt, findAttemptByJobId } from "@/lib/mascot-generation/attempt-store";
+import { createClient } from "@/lib/supabase/server";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import type { PoseRole } from "@/lib/mascot-generation/types";
@@ -17,13 +19,26 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
     return NextResponse.json({ message: "Identificador inválido." }, { status: 400 });
   }
   try {
-    const [{ uid }, attemptId] = await Promise.all([requireBrowserIdentity(request), getAttemptId()]);
+    const [identity, cookieAttemptId] = await Promise.all([requireBrowserIdentity(request), getAttemptId()]);
+    let attemptId = cookieAttemptId;
+    if (identity.mode === "supabase-session") {
+      const client = await createClient();
+      const linkedAttempt = await findAttemptByJobId(client, identity.uid, jobId);
+      if (linkedAttempt?.workflow_mode === "async_incubator_v1") {
+        attemptId = linkedAttempt.attempt_id;
+      } else if (!linkedAttempt && cookieAttemptId) {
+        const legacyAttempt = await findAttempt(client, identity.uid, cookieAttemptId);
+        if (!legacyAttempt || legacyAttempt.modal_job_id !== jobId) attemptId = undefined;
+      } else if (!linkedAttempt) {
+        attemptId = undefined;
+      }
+    }
     if (!attemptId) return new NextResponse(null, { status: 404 });
     const provider = getMascotGenerationProvider();
     if (!provider.getPoseImage) return new NextResponse(null, { status: 404 });
     const sourceImage = await getCachedMascotAsset(
-      `pose:${uid}:${attemptId}:${jobId}:${role}`,
-      () => provider.getPoseImage!(jobId, role as PoseRole, jobIdentity(uid, attemptId)),
+      `pose:${identity.uid}:${attemptId}:${jobId}:${role}`,
+      () => provider.getPoseImage!(jobId, role as PoseRole, jobIdentity(identity.uid, attemptId)),
     );
     const image = sourceImage ? await prepareMascotDisplayAsset(sourceImage) : null;
     if (!image) return new NextResponse(null, { status: 404 });

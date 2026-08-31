@@ -2708,6 +2708,7 @@ footer span:first-child {
 .incubator-master-selector { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-block: var(--space-5); }
 .incubator-master-selector button { display: grid; gap: var(--space-2); min-height: 48px; padding: var(--space-2); color: var(--color-ink); background: var(--color-paper); border: var(--border-ink); font: inherit; font-weight: 800; cursor: pointer; }
 .incubator-master-selector button:hover { border-color: var(--color-editorial-red); }
+.incubator-master-selector button[data-selected] { border-color: var(--color-editorial-red); box-shadow: 5px 5px 0 color-mix(in srgb, var(--color-editorial-red) 68%, var(--color-border)); }
 .incubator-master-selector button:focus-visible { outline: 3px solid var(--color-editorial-red); outline-offset: 3px; }
 .incubator-master-selector button:disabled { opacity: .6; cursor: wait; }
 .incubator-master-selector img { width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; background: var(--color-paper); }

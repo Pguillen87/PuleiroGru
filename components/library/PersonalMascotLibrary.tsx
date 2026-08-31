@@ -64,13 +64,17 @@ export function PersonalMascotLibrary() {
     const controller = new AbortController();
     let timer: number | undefined;
     const load = async () => {
-      const response = await fetch("/api/mascot/incubations", { cache: "no-store", signal: controller.signal });
-      const body = await response.json().catch(() => ({})) as { incubations?: IncubationRecord[] };
-      if (!response.ok) return;
-      const next = body.incubations ?? [];
-      setIncubations(next);
-      if (next.some((item) => ["PREPARING", "INCUBATING"].includes(item.productState))) {
-        timer = window.setTimeout(() => void load(), 8_000);
+      try {
+        const response = await fetch("/api/mascot/incubations", { cache: "no-store", signal: controller.signal });
+        const body = await response.json().catch(() => ({})) as { incubations?: IncubationRecord[] };
+        if (!response.ok) return;
+        const next = body.incubations ?? [];
+        setIncubations(next);
+        if (next.some((item) => ["PREPARING", "INCUBATING"].includes(item.productState))) {
+          timer = window.setTimeout(() => void load(), 8_000);
+        }
+      } catch {
+        if (!controller.signal.aborted) setIncubations([]);
       }
     };
     void load();

@@ -73,9 +73,9 @@ export interface MasterSelection {
   decision?: "AUTO_SELECTED" | "NEEDS_HUMAN_SELECTION" | "HUMAN_SELECTED" | "RANKING_FAILED";
   decisionReason?: string;
   masterRankerPolicyVersion?: string;
-  top1Score?: number;
-  top2Score?: number;
-  margin?: number;
+  top1Score?: number | null;
+  top2Score?: number | null;
+  margin?: number | null;
   scores: Array<{
     masterId: string;
     identity: number;

@@ -6,6 +6,13 @@ O fluxo `async_incubator_v1` é aditivo e fica desligado por padrão com
 `INCUBATOR_FLOW_ENABLED=false`. Ele não altera Android V1: o pacote final
 continua contendo exclusivamente `NORMAL`, `LISTENING` e `TRANSCRIBING`.
 
+O preflight de capabilities é somente leitura e não exige um attempt anterior:
+o Web usa uma identidade BFF transitória, sem criar tentativa, job ou reserva.
+`INCUBATOR_FLOW_ENABLED` controla se um ovo pode ser registrado; `master.ready`
+e `poses.ready` descrevem a capacidade de executar geração paga e não bloqueiam
+o registro. Com as flags de geração desligadas, o POST de incubação registra o
+ovo e o reconciliador o mantém recuperável sem iniciar GPU.
+
 ## Estados de produto
 
 O estado é uma projeção de `mascot_attempts` e do job Modal, nunca uma segunda

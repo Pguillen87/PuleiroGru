@@ -16,10 +16,12 @@ export function SubjectConfirmationStage({
   onConfirm,
   onBack,
   submitLabel = "Confirmar e começar",
+  pending = false,
 }: {
   onConfirm: (identity: SubjectIdentity) => void;
   onBack: () => void;
   submitLabel?: string;
+  pending?: boolean;
 }) {
   const [category, setCategory] = useState<SubjectCategory>();
   const [description, setDescription] = useState("");
@@ -58,6 +60,7 @@ export function SubjectConfirmationStage({
                 value={item.value}
                 checked={category === item.value}
                 onChange={() => setCategory(item.value)}
+                disabled={pending}
               />
               <span><strong>{item.label}</strong><small>{item.detail}</small></span>
             </label>
@@ -69,6 +72,7 @@ export function SubjectConfirmationStage({
             <input
               value={description}
               onChange={(event) => setDescription(event.target.value)}
+              disabled={pending}
               maxLength={64}
               autoComplete="off"
               placeholder={category === "animal" ? "Ex.: cachorro, gato, arara" : "Ex.: bicicleta vermelha"}
@@ -77,9 +81,10 @@ export function SubjectConfirmationStage({
           </label>
         )}
         <div className="stage-actions">
-          <StageButton type="submit" disabled={!ready}>{submitLabel}</StageButton>
-          <StageButton type="button" tone="secondary" onClick={onBack}>Voltar à foto</StageButton>
+          <StageButton type="submit" disabled={!ready || pending} aria-busy={pending}>{pending ? "Conferindo a foto…" : submitLabel}</StageButton>
+          <StageButton type="button" tone="secondary" onClick={onBack} disabled={pending}>Voltar à foto</StageButton>
         </div>
+        {pending && <p className="stage-guidance" role="status" aria-live="polite">Conferindo a foto…</p>}
       </form>
     </>
   );

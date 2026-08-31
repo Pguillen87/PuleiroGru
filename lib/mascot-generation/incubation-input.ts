@@ -1,6 +1,8 @@
 import type { PoseChoices, SubjectHint } from "./types";
 import { DEFAULT_POSE_CHOICES, POSE_OPTIONS } from "./pose-catalog";
 
+export const SUPPORTED_SUBJECT_HINT_VERSIONS = ["subject-hint-v1", "subject-hint-policy-v2"] as const;
+
 export class IncubationInputError extends Error {
   constructor(
     readonly code: "POSE_CHOICES_INVALID" | "SUBJECT_HINT_INVALID" | "INCUBATION_FORM_INVALID",
@@ -22,17 +24,24 @@ export function parseIncubationPoseChoices(value: FormDataEntryValue | null): Po
 
 export function parseIncubationSubjectHint(value: FormDataEntryValue | null): SubjectHint | undefined {
   if (!value) return undefined;
-  const parsed = parseJson(value, "SUBJECT_HINT_INVALID") as SubjectHint;
+  const parsed = parseJson(value, "SUBJECT_HINT_INVALID");
   if (
-    parsed.version !== "subject-hint-v1"
+    !isRecord(parsed)
+    || !SUPPORTED_SUBJECT_HINT_VERSIONS.includes(parsed.version as typeof SUPPORTED_SUBJECT_HINT_VERSIONS[number])
+    || typeof parsed.suggestedCategory !== "string"
     || !["human", "animal", "uncertain"].includes(parsed.suggestedCategory)
+    || typeof parsed.confidenceBand !== "string"
     || !["low", "medium", "high"].includes(parsed.confidenceBand)
     || typeof parsed.requiresConfirmation !== "boolean"
     || typeof parsed.overrideConfirmed !== "boolean"
   ) {
     throw new IncubationInputError("SUBJECT_HINT_INVALID", "A confirmação da foto é inválida.");
   }
-  return parsed;
+  return parsed as unknown as SubjectHint;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parseJson(value: FormDataEntryValue | null, code: "POSE_CHOICES_INVALID" | "SUBJECT_HINT_INVALID") {

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { getAttemptId, jobIdentity } from "@/lib/mascot-generation/attempt";
+import { findAttempt, findAttemptByJobId } from "@/lib/mascot-generation/attempt-store";
+import { createClient } from "@/lib/supabase/server";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import { createTraceContext, mascotLog, traceResponse, type MascotTraceContext } from "@/lib/observability/mascot-trace";
@@ -14,12 +16,25 @@ export async function GET(request: Request, context: { params: Promise<{ jobId: 
   let trace: MascotTraceContext | undefined;
   if (!validId(jobId) || !validId(masterId)) return NextResponse.json({ message: "Identificador inválido." }, { status: 400 });
   try {
-    const [{ uid }, attemptId] = await Promise.all([requireBrowserIdentity(request), getAttemptId()]);
+    const [identity, cookieAttemptId] = await Promise.all([requireBrowserIdentity(request), getAttemptId()]);
+    let attemptId = cookieAttemptId;
+    if (identity.mode === "supabase-session") {
+      const client = await createClient();
+      const linkedAttempt = await findAttemptByJobId(client, identity.uid, jobId);
+      if (linkedAttempt?.workflow_mode === "async_incubator_v1") {
+        attemptId = linkedAttempt.attempt_id;
+      } else if (!linkedAttempt && cookieAttemptId) {
+        const legacyAttempt = await findAttempt(client, identity.uid, cookieAttemptId);
+        if (!legacyAttempt || legacyAttempt.modal_job_id !== jobId) attemptId = undefined;
+      } else if (!linkedAttempt) {
+        attemptId = undefined;
+      }
+    }
     if (!attemptId) return new NextResponse(null, { status: 404 });
     trace = createTraceContext(attemptId);
     const provider = getMascotGenerationProvider();
     if (!provider.getMasterImage) return new NextResponse(null, { status: 404 });
-    const sourceImage = await provider.getMasterImage(jobId, masterId, jobIdentity(uid, attemptId));
+    const sourceImage = await provider.getMasterImage(jobId, masterId, jobIdentity(identity.uid, attemptId, trace));
     // Modal promotes only the separately QC-approved RGBA derivative into
     // this endpoint. Do not repair or silently fall back to a raw Master in
     // the BFF: an invalid derivative must remain observable and fail closed.

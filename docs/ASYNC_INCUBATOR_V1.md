@@ -54,3 +54,18 @@ de poses existentes.
 4. Publicar Web e ativar inicialmente só para a conta QA.
 5. Para rollback, desligar a flag para novos ovos; o reconciliador continua
    finalizando ovos existentes. Não remover a migration nem excluir ovos ativos.
+# Política de confiança do Master
+
+`master-ranker-policy-v1` avalia somente Masters que já passaram os hard gates
+de QC. Como a amostra real ainda é pequena, os thresholds são conservadores e
+versionados: `top1 >= 0.82` e `margin >= 0.04`. O resultado é
+`AUTO_SELECTED`, `NEEDS_HUMAN_SELECTION` ou `RANKING_FAILED`.
+
+No resultado ambíguo, o produto exibe `NEEDS_HUMAN_MASTER_SELECTION` ("Precisa
+de você"). Não há reserva, spawn ou retry de poses. A escolha owner-scoped é
+idempotente, persiste `selectionSource=human` e retoma o mesmo job. Scores e
+decisões são sanitizados; embeddings não são persistidos.
+
+Os limites não representam calibração estatística de Production. Se
+`INCUBATOR_AUTO_RANKING_ENABLED=false`, o fluxo permanece em shadow mode e não
+seleciona Master nem enfileira poses.

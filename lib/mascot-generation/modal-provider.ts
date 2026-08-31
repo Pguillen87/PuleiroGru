@@ -180,6 +180,14 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
     return this.toGenerationJob(await this.readJob(response), response);
   }
 
+  async selectIncubatorMaster(jobId: string, masterId: string, identity: JobIdentity) {
+    const response = await this.request(`/v2/mascot/incubations/${encodeURIComponent(jobId)}/masters/${encodeURIComponent(masterId)}/select`, identity, {
+      method: "POST",
+      headers: { ...this.operationHeaders(identity), "X-Idempotency-Key": `incubator-select:${identity.ownerId}:${identity.attemptId}:${jobId}:${masterId}` },
+    });
+    return this.toGenerationJob(await this.readJob(response), response);
+  }
+
   async updateConfiguration(
     jobId: string,
     configuration: Partial<MascotConfiguration> & Pick<MascotConfiguration, "configurationRevision">,

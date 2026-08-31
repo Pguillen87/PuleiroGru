@@ -125,6 +125,10 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
     return approved;
   }
 
+  async selectIncubatorMaster(jobId: string, masterId: string, identity: JobIdentity) {
+    return this.approveMaster(jobId, masterId, identity);
+  }
+
   async updateConfiguration(
     jobId: string,
     configuration: Partial<MascotConfiguration> & Pick<MascotConfiguration, "configurationRevision">,

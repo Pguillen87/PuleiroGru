@@ -180,6 +180,13 @@ export async function hatchIncubation(jobId: string, signal: AbortSignal) {
   return await readResponse(response) as GenerationJob;
 }
 
+export async function selectIncubatorMaster(jobId: string, masterId: string, signal: AbortSignal) {
+  const response = await fetch(`/api/mascot/incubations/${encodeURIComponent(jobId)}/masters/${encodeURIComponent(masterId)}/select`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", signal,
+  });
+  return await readResponse(response) as GenerationJob;
+}
+
 export async function deleteGenerationJob(jobId: string, signal: AbortSignal) {
   const response = await fetch(`/api/mascot/jobs/${encodeURIComponent(jobId)}`, {
     method: "DELETE",

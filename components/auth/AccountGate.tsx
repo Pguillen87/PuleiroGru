@@ -12,13 +12,14 @@ type AccountMode = "login" | "signup" | "recovery";
 type GateStatus = "checking" | "signed-out" | "signed-in";
 export function AccountGate({ required, children }: { required: boolean; children: React.ReactNode }) {
   const router = useRouter();
+  const devTestIdentity = process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_ALLOW_DEV_TEST_IDENTITY === "true";
   const configured = isSupabaseConfigured();
   const supabase = useMemo(
     () => (required && configured ? createClient() : null),
     [configured, required],
   );
   const [status, setStatus] = useState<GateStatus>(
-    required && configured ? "checking" : required ? "signed-out" : "signed-in",
+    required && devTestIdentity ? "signed-in" : required && configured ? "checking" : required ? "signed-out" : "signed-in",
   );
   const [message, setMessage] = useState(
     configured
@@ -27,7 +28,7 @@ export function AccountGate({ required, children }: { required: boolean; childre
   );
 
   useEffect(() => {
-    if (!required || !supabase) return;
+    if (!required || devTestIdentity || !supabase) return;
 
     let active = true;
     void supabase.auth
@@ -61,7 +62,7 @@ export function AccountGate({ required, children }: { required: boolean; childre
       active = false;
       data.subscription.unsubscribe();
     };
-  }, [required, supabase]);
+  }, [devTestIdentity, required, supabase]);
 
   useEffect(() => {
     if (!required) return;

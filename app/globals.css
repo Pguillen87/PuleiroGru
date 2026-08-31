@@ -2705,6 +2705,13 @@ footer span:first-child {
 .journal-name-form label { font-weight: 800; }
 .journal-name-form input { min-height: 3.25rem; padding-inline: var(--space-3); border: var(--border-ink); font: inherit; background: #fff; }
 .journal-name-form p { margin: 0 0 var(--space-2); }
+.incubator-master-selector { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-block: var(--space-5); }
+.incubator-master-selector button { display: grid; gap: var(--space-2); min-height: 48px; padding: var(--space-2); color: var(--color-ink); background: var(--color-paper); border: var(--border-ink); font: inherit; font-weight: 800; cursor: pointer; }
+.incubator-master-selector button:hover { border-color: var(--color-editorial-red); }
+.incubator-master-selector button[data-selected] { border-color: var(--color-editorial-red); box-shadow: 5px 5px 0 color-mix(in srgb, var(--color-editorial-red) 68%, var(--color-border)); }
+.incubator-master-selector button:focus-visible { outline: 3px solid var(--color-editorial-red); outline-offset: 3px; }
+.incubator-master-selector button:disabled { opacity: .6; cursor: wait; }
+.incubator-master-selector img { width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; background: var(--color-paper); }
 
 @keyframes incubator-breathe {
   0%, 100% { transform: rotate(-2deg) translateY(0); box-shadow: 0 0 0 transparent; }
@@ -2717,4 +2724,5 @@ footer span:first-child {
   .incubator-shelf__heading { align-items: start; flex-direction: column; }
   .journal-pose-showcase { grid-template-columns: 1fr 1fr; }
   .journal-pose-showcase__hero { grid-column: 1 / -1; }
+  .incubator-master-selector { grid-template-columns: 1fr; }
 }

@@ -64,13 +64,17 @@ export function PersonalMascotLibrary() {
     const controller = new AbortController();
     let timer: number | undefined;
     const load = async () => {
-      const response = await fetch("/api/mascot/incubations", { cache: "no-store", signal: controller.signal });
-      const body = await response.json().catch(() => ({})) as { incubations?: IncubationRecord[] };
-      if (!response.ok) return;
-      const next = body.incubations ?? [];
-      setIncubations(next);
-      if (next.some((item) => ["PREPARING", "INCUBATING"].includes(item.productState))) {
-        timer = window.setTimeout(() => void load(), 8_000);
+      try {
+        const response = await fetch("/api/mascot/incubations", { cache: "no-store", signal: controller.signal });
+        const body = await response.json().catch(() => ({})) as { incubations?: IncubationRecord[] };
+        if (!response.ok) return;
+        const next = body.incubations ?? [];
+        setIncubations(next);
+        if (next.some((item) => ["PREPARING", "INCUBATING"].includes(item.productState))) {
+          timer = window.setTimeout(() => void load(), 8_000);
+        }
+      } catch {
+        if (!controller.signal.aborted) setIncubations([]);
       }
     };
     void load();
@@ -169,7 +173,7 @@ function IncubatorShelf({ incubations }: { incubations: IncubationRecord[] }) {
         <div className="incubator-egg__illustration" aria-hidden="true"><span className="incubator-egg__shell" /><span className="incubator-egg__nest" /></div>
         <div className="incubator-egg__body"><p>{incubationLabel(incubation)}</p><h3>Novo mascote</h3><time dateTime={incubation.updatedAt}>Atualizado {formatRelativeUpdate(incubation.updatedAt)}</time>
           {incubation.productState === "FAILED" && <p className="incubator-egg__error">Não conseguimos terminar este mascote. Abra os detalhes antes de decidir tentar novamente.</p>}
-          {["READY_TO_HATCH", "HATCHED", "FAILED"].includes(incubation.productState) && <Link className="incubator-egg__action" href={`/incubadora/${encodeURIComponent(incubation.jobId)}`}>{incubation.productState === "READY_TO_HATCH" ? "Chocar ovo" : incubation.productState === "HATCHED" ? "Abrir Jornal" : "Ver detalhes"}</Link>}
+          {["READY_TO_HATCH", "HATCHED", "FAILED", "NEEDS_HUMAN_MASTER_SELECTION"].includes(incubation.productState) && <Link className="incubator-egg__action" href={`/incubadora/${encodeURIComponent(incubation.jobId)}`}>{incubation.productState === "READY_TO_HATCH" ? "Chocar ovo" : incubation.productState === "HATCHED" ? "Abrir Jornal" : incubation.productState === "NEEDS_HUMAN_MASTER_SELECTION" ? "Escolher mascote" : "Ver detalhes"}</Link>}
         </div>
       </article></li>)}
     </ul>
@@ -180,6 +184,7 @@ function incubationLabel(incubation: IncubationRecord) {
   if (incubation.productState === "READY_TO_HATCH") return "Pronto para chocar";
   if (incubation.productState === "HATCHED") return "Jornal aberto";
   if (incubation.productState === "FAILED") return "Nascimento interrompido";
+  if (incubation.productState === "NEEDS_HUMAN_MASTER_SELECTION") return "Precisa de você";
   if (incubation.phase === "generating_poses" || incubation.phase === "validating_poses") return "Preparando as poses…";
   if (incubation.phase === "generating_masters" || incubation.phase === "validating_masters") return "Criando seu mascote…";
   return "Preparando…";

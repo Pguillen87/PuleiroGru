@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/navigation/Header";
 import { StageButton } from "@/components/actions/StageButton";
-import { finalizeMascot, GenerationRequestError, getIncubation, hatchIncubation } from "@/lib/mascot-generation/client";
+import { finalizeMascot, GenerationRequestError, getIncubation, hatchIncubation, selectIncubatorMaster } from "@/lib/mascot-generation/client";
 import type { GenerationJob } from "@/lib/mascot-generation/types";
 import { POSE_ROLE_LABELS } from "@/lib/mascot-generation/pose-catalog";
 
@@ -15,6 +15,8 @@ export function IncubationJournal({ jobId }: { jobId: string }) {
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [selectedMasterId, setSelectedMasterId] = useState<string>();
+  const selectionSubmitting = useRef(false);
   const orderedPoses = useMemo(() => job?.poses.toSorted((left, right) => {
     const order = { normal: 0, listening: 1, transcribing: 2 } as const;
     return order[left.role] - order[right.role];
@@ -22,7 +24,11 @@ export function IncubationJournal({ jobId }: { jobId: string }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    void getIncubation(jobId, controller.signal).then(setJob).catch((cause) => setError(cause instanceof Error ? cause.message : "Não foi possível abrir o Jornal."));
+    void getIncubation(jobId, controller.signal)
+      .then(setJob)
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Não foi possível abrir o Jornal.");
+      });
     return () => controller.abort();
   }, [jobId]);
 
@@ -48,9 +54,20 @@ export function IncubationJournal({ jobId }: { jobId: string }) {
     } finally { setBusy(false); }
   }
 
+  async function confirmMasterSelection() {
+    if (!selectedMasterId || selectionSubmitting.current) return;
+    selectionSubmitting.current = true;
+    setBusy(true); setError("");
+    const controller = new AbortController();
+    try { setJob(await selectIncubatorMaster(jobId, selectedMasterId, controller.signal)); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível guardar esta escolha."); }
+    finally { selectionSubmitting.current = false; setBusy(false); }
+  }
+
   return <div className="site-shell"><Header /><main className="journal-page">
     <section className="journal-reveal" aria-labelledby="journal-title">
-      <div className="journal-reveal__heading"><span className="state-kicker">Jornal do nascimento</span><h1 id="journal-title">{job?.productState === "HATCHED" ? "Seu mascote saiu do ovo." : "O ovo está pronto para chocar."}</h1><p>{job?.productState === "HATCHED" ? "Escolha o nome que seguirá com ele para a Biblioteca e para o GRU." : "As três poses passaram pelas conferências. Chocar não inicia uma nova geração."}</p></div>
+      <div className="journal-reveal__heading"><span className="state-kicker">{job?.productState === "NEEDS_HUMAN_MASTER_SELECTION" ? "Precisa de você" : "Jornal do nascimento"}</span><h1 id="journal-title">{job?.productState === "NEEDS_HUMAN_MASTER_SELECTION" ? "Escolha o mascote que mais parece com o seu." : job?.productState === "HATCHED" ? "Seu mascote saiu do ovo." : "O ovo está pronto para chocar."}</h1><p>{job?.productState === "NEEDS_HUMAN_MASTER_SELECTION" ? "Encontramos mais de uma opção boa. Sua escolha continuará o mesmo nascimento." : job?.productState === "HATCHED" ? "Escolha o nome que seguirá com ele para a Biblioteca e para o GRU." : "As três poses passaram pelas conferências. Chocar não inicia uma nova geração."}</p></div>
+      {job?.productState === "NEEDS_HUMAN_MASTER_SELECTION" && <div className="incubator-master-selection"><div className="incubator-master-selector" role="group" aria-label="Escolha um mascote mestre">{job.masters.map((master) => <button type="button" aria-pressed={selectedMasterId === master.id} key={master.id} disabled={busy} data-selected={selectedMasterId === master.id || undefined} onClick={() => { setSelectedMasterId(master.id); setError(""); }}><Image unoptimized width={320} height={320} src={master.imageUrl} alt={`Opção de mascote ${master.id.replace("master_", "")}.`} /><span>Selecionar esta opção</span></button>)}</div><div className="journal-reveal__action"><StageButton disabled={busy || !selectedMasterId} onClick={() => void confirmMasterSelection()}>{busy ? "Guardando escolha…" : "Confirmar escolha"}</StageButton></div></div>}
       {orderedPoses.length === 3 && <div className="journal-pose-showcase">
         {orderedPoses.map((pose, index) => <figure className={index === 0 ? "journal-pose-showcase__hero" : undefined} key={pose.id}><Image unoptimized width={720} height={720} src={pose.imageUrl} alt={`${POSE_ROLE_LABELS[pose.role]} do mascote gerado.`} /><figcaption>{POSE_ROLE_LABELS[pose.role]}</figcaption></figure>)}
       </div>}

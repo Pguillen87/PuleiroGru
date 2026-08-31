@@ -17,6 +17,13 @@ e `poses.ready` descrevem a capacidade de executar geração paga e não bloquei
 o registro. Com as flags de geração desligadas, o POST de incubação registra o
 ovo e o reconciliador o mantém recuperável sem iniciar GPU.
 
+Ao abrir a Incubadora, attempts `async_incubator_v1` owner-scoped sem
+`modal_job_id` são reconciliados uma única vez por requisição usando
+`getJobByAttempt(owner, attempt)`. Um job encontrado só é vinculado depois de
+confirmar o mesmo `attempt_id`; 404, ausência ou divergência não criam job nem
+alteram o attempt. O recovery também não reenvia foto, reserva GPU ou inicia
+geração, e chamadas posteriores usam o vínculo persistido.
+
 ## Estados de produto
 
 O estado é uma projeção de `mascot_attempts` e do job Modal, nunca uma segunda

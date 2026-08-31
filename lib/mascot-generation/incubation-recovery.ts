@@ -20,6 +20,35 @@ export type IncubationCreationDependencies = {
   persist: (job: GenerationJob) => Promise<void>;
 };
 
+export type IncubationJobRecoveryDependencies = {
+  attemptId: string;
+  existingJobId: string | null;
+  getJob: (jobId: string) => Promise<GenerationJob | null>;
+  getJobByAttempt: () => Promise<GenerationJob | null>;
+  persist: (job: GenerationJob) => Promise<void>;
+};
+
+/**
+ * Reconciles a previously registered owner-scoped attempt without creating
+ * anything. Missing links are repaired only from the same attempt identity.
+ */
+export async function recoverIncubationJob(
+  dependencies: IncubationJobRecoveryDependencies,
+): Promise<GenerationJob | null> {
+  if (dependencies.existingJobId) {
+    const job = await dependencies.getJob(dependencies.existingJobId);
+    if (!job) return null;
+    await assertExpectedAttempt(dependencies.attemptId, job);
+    return job;
+  }
+
+  const job = await dependencies.getJobByAttempt();
+  if (!job) return null;
+  await assertExpectedAttempt(dependencies.attemptId, job);
+  await dependencies.persist(job);
+  return job;
+}
+
 /**
  * Resolves a durable Modal job before creating one. Only the request that
  * inserted the owner-scoped attempt may call create; all replays reconcile.
@@ -60,10 +89,14 @@ export async function resolveIncubationCreation(
 }
 
 async function persistExpectedAttempt(dependencies: IncubationCreationDependencies, job: GenerationJob) {
-  if (job.attemptId !== dependencies.attemptId) {
+  await assertExpectedAttempt(dependencies.attemptId, job);
+  await dependencies.persist(job);
+}
+
+async function assertExpectedAttempt(attemptId: string, job: GenerationJob) {
+  if (job.attemptId !== attemptId) {
     throw new IncubationRecoveryError("INCUBATION_JOB_UNAVAILABLE", "O nascimento retornado não corresponde à tentativa registrada.");
   }
-  await dependencies.persist(job);
 }
 
 function isAmbiguousCreationFailure(error: unknown) {

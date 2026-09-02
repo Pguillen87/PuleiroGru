@@ -127,13 +127,19 @@ export function projectedIncubationProductState(
   return modalState ?? webState;
 }
 
-function hasCompletePoseSet(job: GenerationJob) {
+export function hasCompletePoseSet(job: GenerationJob) {
   return job.poses.length === 3
     && new Set(job.poses.map((pose) => pose.role)).size === 3
     && new Set(job.poses.map((pose) => pose.role)).size === new Set(["normal", "listening", "transcribing"]).size
     && ["normal", "listening", "transcribing"].every((role) => job.poses.some((pose) => pose.role === role))
     && job.poseSetQc?.status === "passed"
     && job.poseSetQc.version === "pose-set-visual-v3";
+}
+
+export function isHatchReadyJob(job: GenerationJob) {
+  return job.productState === "READY_TO_HATCH"
+    && job.status === "awaiting_set_approval"
+    && hasCompletePoseSet(job);
 }
 
 export function projectIncubationJob(job: GenerationJob, attempt: MascotAttempt): GenerationJob {

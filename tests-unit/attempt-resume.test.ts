@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { incubationProductState, isDeletableAttemptStatus, isResumableAttemptStatus, prioritizeAttempt, projectedIncubationProductState, type MascotAttempt } from "@/lib/mascot-generation/attempt-store";
+import { incubationProductState, isDeletableAttemptStatus, isHatchReadyJob, isResumableAttemptStatus, prioritizeAttempt, projectedIncubationProductState, type MascotAttempt } from "@/lib/mascot-generation/attempt-store";
 
 describe("isResumableAttemptStatus", () => {
   it("não retoma um mascote já guardado ou cancelado", () => {
@@ -95,5 +95,22 @@ describe("incubationProductState", () => {
       "READY_TO_HATCH",
       job,
     )).toBe("READY_TO_HATCH");
+  });
+
+  it("aplica todos os gates server-side do hatch", () => {
+    const base = {
+      productState: "READY_TO_HATCH",
+      status: "awaiting_set_approval",
+      poses: [{ role: "normal" }, { role: "listening" }, { role: "transcribing" }],
+      poseSetQc: { status: "passed", version: "pose-set-visual-v3" },
+    };
+    const ready = (value: object) => isHatchReadyJob(value as never);
+    expect(ready(base)).toBe(true);
+    expect(ready({ ...base, poses: [{ role: "normal" }, { role: "normal" }, { role: "transcribing" }] })).toBe(false);
+    expect(ready({ ...base, poses: [{ role: "normal" }, { role: "listening" }] })).toBe(false);
+    expect(ready({ ...base, poseSetQc: { status: "passed", version: "pose-set-visual-v2" } })).toBe(false);
+    expect(ready({ ...base, poseSetQc: { status: "passed" } })).toBe(false);
+    expect(ready({ ...base, productState: "INCUBATING" })).toBe(false);
+    expect(ready({ ...base, status: "generating_poses" })).toBe(false);
   });
 });

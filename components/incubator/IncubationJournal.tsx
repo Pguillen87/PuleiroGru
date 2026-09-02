@@ -1,23 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { Header } from "@/components/navigation/Header";
 import { StageButton } from "@/components/actions/StageButton";
-import { finalizeMascot, GenerationRequestError, getIncubation, hatchIncubation, selectIncubatorMaster } from "@/lib/mascot-generation/client";
+import { getIncubation, hatchIncubation, selectIncubatorMaster } from "@/lib/mascot-generation/client";
 import type { GenerationJob } from "@/lib/mascot-generation/types";
 import { POSE_ROLE_LABELS } from "@/lib/mascot-generation/pose-catalog";
 
+export function shouldPollIncubation(productState: GenerationJob["productState"] | undefined) {
+  return productState === "PREPARING" || productState === "INCUBATING";
+}
+
 export function IncubationJournal({ jobId }: { jobId: string }) {
-  const router = useRouter();
   const [job, setJob] = useState<GenerationJob>();
-  const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [selectedMasterId, setSelectedMasterId] = useState<string>();
   const selectionSubmitting = useRef(false);
   const hatchSubmitting = useRef(false);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const orderedPoses = useMemo(() => job?.poses.toSorted((left, right) => {
     const order = { normal: 0, listening: 1, transcribing: 2 } as const;
     return order[left.role] - order[right.role];
@@ -31,12 +33,29 @@ export function IncubationJournal({ jobId }: { jobId: string }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    void getIncubation(jobId, controller.signal)
-      .then(setJob)
-      .catch((cause) => {
-        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Não foi possível abrir o Jornal.");
-      });
-    return () => controller.abort();
+    let inFlight = false;
+    let lastJob: GenerationJob | undefined;
+    const isTransient = (value: GenerationJob | undefined) => shouldPollIncubation(value?.productState);
+    const schedule = () => {
+      if (!controller.signal.aborted && isTransient(lastJob)) pollTimer.current = setTimeout(() => void load(), 8_000);
+    };
+    const load = async () => {
+      if (inFlight || controller.signal.aborted) return;
+      inFlight = true;
+      try {
+        const next = await getIncubation(jobId, controller.signal);
+        lastJob = next;
+        setJob(next); setError("");
+        if (isTransient(next)) pollTimer.current = setTimeout(() => void load(), 8_000);
+      } catch (cause) {
+        if (!controller.signal.aborted) {
+          setError(cause instanceof Error ? cause.message : "Não foi possível abrir o Jornal.");
+          schedule();
+        }
+      } finally { inFlight = false; }
+    };
+    void load();
+    return () => { controller.abort(); if (pollTimer.current) clearTimeout(pollTimer.current); };
   }, [jobId]);
 
   async function hatch() {
@@ -47,20 +66,6 @@ export function IncubationJournal({ jobId }: { jobId: string }) {
     try { setJob(await hatchIncubation(jobId, controller.signal)); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível chocar este ovo."); }
     finally { hatchSubmitting.current = false; setBusy(false); }
-  }
-
-  async function complete(event: FormEvent) {
-    event.preventDefault();
-    if (!job || displayName.trim().length < 2) return;
-    setBusy(true); setError("");
-    const controller = new AbortController();
-    try {
-      await finalizeMascot(job.id, displayName.trim(), controller.signal);
-      router.push("/meus-mascotes");
-      router.refresh();
-    } catch (cause) {
-      setError(cause instanceof GenerationRequestError ? cause.message : "Não foi possível concluir este nascimento.");
-    } finally { setBusy(false); }
   }
 
   async function confirmMasterSelection() {
@@ -86,7 +91,7 @@ export function IncubationJournal({ jobId }: { jobId: string }) {
   const description = state === "NEEDS_HUMAN_MASTER_SELECTION"
     ? "Encontramos mais de uma opção boa. Sua escolha continuará o mesmo nascimento."
     : state === "HATCHED"
-      ? "Escolha o nome que seguirá com ele para a Biblioteca e para o GRU."
+      ? "O nascimento foi confirmado. As próximas etapas ficarão disponíveis quando forem liberadas."
       : isReadyToHatch
         ? "As três poses passaram pelas conferências. Chocar não inicia uma nova geração."
         : state === "FAILED"
@@ -103,7 +108,7 @@ export function IncubationJournal({ jobId }: { jobId: string }) {
       {!job && !error && <p role="status">Abrindo o Jornal…</p>}
       {error && <p className="stage-error" role="alert">{error}</p>}
       {isReadyToHatch && <div className="journal-reveal__action"><StageButton disabled={busy} onClick={() => void hatch()}>{busy ? "Chocando…" : "Chocar ovo"}</StageButton></div>}
-      {job?.productState === "HATCHED" && <form className="journal-name-form" onSubmit={complete}><label htmlFor="incubator-display-name">Nome do mascote</label><input id="incubator-display-name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} minLength={2} maxLength={32} autoComplete="off" required /><p>De 2 a 32 caracteres. O pacote Android só ficará pronto depois desta confirmação.</p><StageButton type="submit" disabled={busy || displayName.trim().length < 2}>{busy ? "Guardando…" : "Concluir nascimento"}</StageButton></form>}
+      {job?.productState === "HATCHED" && <p role="status" className="journal-reveal__confirmation">Nascimento confirmado.</p>}
     </section>
   </main></div>;
 }

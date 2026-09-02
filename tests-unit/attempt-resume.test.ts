@@ -72,4 +72,28 @@ describe("incubationProductState", () => {
     expect(projectedIncubationProductState(hatched, "READY_TO_HATCH")).toBe("HATCHED");
     expect(projectedIncubationProductState(attempt({ status: "ready", hatched_at: "2026-08-29T02:00:00Z" }), "HATCHED")).toBe("PACKAGE_READY");
   });
+
+  it("não projeta pronto quando o Modal informa conjunto incompleto", () => {
+    const job = {
+      poses: [],
+      poseSetQc: undefined,
+    } as never;
+    expect(projectedIncubationProductState(
+      attempt({ status: "awaiting_set_approval", generation_ready_at: "2026-08-29T01:00:00Z" }),
+      "READY_TO_HATCH",
+      job,
+    )).toBe("INCUBATING");
+  });
+
+  it("projeta pronto somente com as três roles e QC v3 aprovado", () => {
+    const job = {
+      poses: [{ role: "normal" }, { role: "listening" }, { role: "transcribing" }],
+      poseSetQc: { status: "passed", version: "pose-set-visual-v3" },
+    } as never;
+    expect(projectedIncubationProductState(
+      attempt({ status: "awaiting_set_approval", generation_ready_at: "2026-08-29T01:00:00Z" }),
+      "READY_TO_HATCH",
+      job,
+    )).toBe("READY_TO_HATCH");
+  });
 });

@@ -103,7 +103,10 @@ export function incubationProductState(attempt: MascotAttempt): IncubationProduc
   if (attempt.hatched_at) return "HATCHED";
   if (attempt.status === "failed" || attempt.status === "canceled") return "FAILED";
   if (attempt.status === "awaiting_master_approval" && attempt.master_selection?.decision === "NEEDS_HUMAN_SELECTION") return "NEEDS_HUMAN_MASTER_SELECTION";
-  if (attempt.generation_ready_at || attempt.status === "awaiting_set_approval") return "READY_TO_HATCH";
+  // The attempt row is only a projection. A ready state is granted after the
+  // Modal response proves the complete pose set and QC; status alone is not
+  // sufficient for an honest hatch CTA.
+  if (attempt.generation_ready_at && attempt.status === "awaiting_set_approval") return "READY_TO_HATCH";
   if (["registered", "awaiting_generation_authorization", "queued"].includes(attempt.status)) return "PREPARING";
   return "INCUBATING";
 }
@@ -116,16 +119,27 @@ export function incubationProductState(attempt: MascotAttempt): IncubationProduc
 export function projectedIncubationProductState(
   attempt: MascotAttempt,
   modalState: IncubationProductState | undefined,
+  job?: GenerationJob,
 ): IncubationProductState {
   const webState = incubationProductState(attempt);
   if (["PACKAGE_READY", "HATCHED", "FAILED", "NEEDS_HUMAN_MASTER_SELECTION"].includes(webState)) return webState;
+  if (modalState === "READY_TO_HATCH" && job && !hasCompletePoseSet(job)) return "INCUBATING";
   return modalState ?? webState;
+}
+
+function hasCompletePoseSet(job: GenerationJob) {
+  return job.poses.length === 3
+    && new Set(job.poses.map((pose) => pose.role)).size === 3
+    && new Set(job.poses.map((pose) => pose.role)).size === new Set(["normal", "listening", "transcribing"]).size
+    && ["normal", "listening", "transcribing"].every((role) => job.poses.some((pose) => pose.role === role))
+    && job.poseSetQc?.status === "passed"
+    && job.poseSetQc.version === "pose-set-visual-v3";
 }
 
 export function projectIncubationJob(job: GenerationJob, attempt: MascotAttempt): GenerationJob {
   return {
     ...job,
-    productState: projectedIncubationProductState(attempt, job.productState),
+    productState: projectedIncubationProductState(attempt, job.productState, job),
     hatchedAt: attempt.hatched_at ?? job.hatchedAt,
   };
 }

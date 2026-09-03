@@ -34,6 +34,11 @@ máquina persistida:
 `FAILED` é terminal e permanece visível. `mascot_packages.status=ready`
 continua sendo o único commit operacional do pacote Android.
 
+`READY_TO_HATCH` só é projetado quando o Modal comprova o Master aprovado e
+exatamente as três poses operacionais promovidas, com manifest/checksums,
+alpha QC e `pose-set-visual-v3` aprovados. `COMPLETED` isolado ou um conjunto
+incompleto continua em processamento e nunca libera o hatch.
+
 ## Segurança e idempotência
 
 - Toda rota exige sessão Supabase e ownership do owner+attempt+job.

@@ -59,7 +59,8 @@ de repositório e testes locais; não constitui aprovação de Production.
 - [x] `npx tsc --noEmit` — aprovado.
 - [x] `npm run lint` — aprovado.
 - [x] `npm audit --omit=dev` — `0 vulnerabilities`.
-- [ ] `git status` limpo e HEAD remoto confirmado após o commit documental.
+- [x] `git status` limpo e HEAD remoto confirmado em `9e5b8c4` após o commit
+      documental.
 
 ## Auditoria de integração com `main`
 
@@ -71,6 +72,9 @@ Verificação executada após `git fetch origin`, sem merge automático:
 - divergência: `origin/main...HEAD = 0 atrás / 13 à frente`;
 - `git merge-tree`: nenhuma entrada de conflito reportada;
 - merge real: não executado, conforme a restrição desta auditoria.
+
+O commit final desta auditoria (`9e5b8c4`) é documental; por isso, o estado
+corrente da branch passou a ser `origin/main...HEAD = 0 atrás / 14 à frente`.
 
 Checklist de integração:
 

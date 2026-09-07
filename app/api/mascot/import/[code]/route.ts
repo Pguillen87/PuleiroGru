@@ -27,8 +27,11 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
   if (!normal || assets.length !== 3) return NextResponse.json({ code: "INVALID_PACKAGE" }, { status: 409 });
   return NextResponse.json({
     schemaVersion: 1,
+    packageId: manifest.packageId,
     mascotId: manifest.mascotId,
     packageVersion: packageRow.package_version,
+    createdAt: manifest.createdAt,
+    publishedAt: manifest.publishedAt,
     displayName: manifest.displayName,
     visibility: manifest.visibility,
     preview: normal,

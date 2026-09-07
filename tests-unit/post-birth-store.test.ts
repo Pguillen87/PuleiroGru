@@ -20,11 +20,15 @@ type QueryResult = { data: unknown; error: { code?: string; message?: string } |
 function createQuery(result: QueryResult) {
   const query = {
     eq: vi.fn(() => query),
+    not: vi.fn(() => query),
+    order: vi.fn(() => query),
+    limit: vi.fn(() => query),
     select: vi.fn(() => query),
     insert: vi.fn(() => query),
     update: vi.fn(() => query),
     maybeSingle: vi.fn(async () => result),
     single: vi.fn(async () => result),
+    returns: vi.fn(async () => result),
   };
   return query;
 }
@@ -113,6 +117,20 @@ describe("post-birth profile store", () => {
       journal_config: { version: 1 },
       configuration_revision: 0,
     });
+  });
+
+  it("lists only active profiles within the authenticated owner scope", async () => {
+    const query = createQuery({ data: [profileRow({ state: "ACTIVE", display_name: "Pipoca" })], error: null });
+    const { listActivePostBirthProfiles } = await import("@/lib/mascot-generation/post-birth-store");
+
+    const result = await listActivePostBirthProfiles(createClient(query), USER_ID);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ state: "ACTIVE", displayName: "Pipoca" });
+    expect(query.eq).toHaveBeenCalledWith("user_id", USER_ID);
+    expect(query.eq).toHaveBeenCalledWith("state", "ACTIVE");
+    expect(query.not).toHaveBeenCalledWith("display_name", "is", null);
+    expect(query.limit).toHaveBeenCalledWith(24);
   });
 
   it("updates only a draft at the expected configuration revision", async () => {

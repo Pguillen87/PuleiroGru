@@ -9,6 +9,15 @@ import type { CommunityMascot, IncubationSummary as IncubationRecord, MascotLibr
 type SortOption = "newest" | "oldest" | "code";
 type FilterOption = "all" | "favorites";
 type FeedbackTone = "success" | "error";
+type PostBirthLibraryProfile = {
+  id: string;
+  attemptId: string;
+  modalJobId: string;
+  state: "DRAFT" | "ACTIVE";
+  displayName: string | null;
+  updatedAt: string;
+  activatedAt: string | null;
+};
 
 const sortLabels: Record<SortOption, string> = { newest: "Mais recentes", oldest: "Mais antigos", code: "Código do mascote" };
 const PAGE_SIZE = 24;
@@ -28,6 +37,7 @@ export function PersonalMascotLibrary() {
   const [libraryRevision, setLibraryRevision] = useState(0);
   const [footerFeedback, setFooterFeedback] = useState<{ message: string; tone: FeedbackTone } | null>(null);
   const [incubations, setIncubations] = useState<IncubationRecord[]>([]);
+  const [postBirthProfiles, setPostBirthProfiles] = useState<PostBirthLibraryProfile[]>([]);
 
   useEffect(() => {
     if (!footerFeedback) return;
@@ -44,11 +54,13 @@ export function PersonalMascotLibrary() {
           setItems([]);
           setTotal(0);
           setNextOffset(null);
+          setPostBirthProfiles([]);
           setMessage(page.error);
           return;
         }
         setItems(page.items);
         setPendingItems(page.pendingItems ?? []);
+        setPostBirthProfiles(page.postBirthProfiles ?? []);
         setTotal(page.total);
         setNextOffset(page.nextOffset);
         setMessage(page.items.length
@@ -88,6 +100,12 @@ export function PersonalMascotLibrary() {
       });
   }, []);
   const visibleItems = useMemo(() => selectLibraryItems(items, query, filter, sort), [filter, items, query, sort]);
+  const showPostBirthProfiles = filter === "all" && query.trim().length === 0;
+  const visiblePostBirthProfiles = showPostBirthProfiles ? postBirthProfiles : [];
+  const activePostBirthJobIds = new Set(postBirthProfiles.filter((profile) => profile.state === "ACTIVE").map((profile) => profile.modalJobId));
+  const visibleIncubations = incubations.filter((incubation) => !activePostBirthJobIds.has(incubation.jobId));
+  const visibleLibraryContent = visibleItems.length > 0 || visiblePostBirthProfiles.length > 0;
+  const displayedTotal = total + (showPostBirthProfiles ? postBirthProfiles.length : 0);
 
   async function loadMore() {
     if (nextOffset === null || loadingMore) return;
@@ -111,9 +129,10 @@ export function PersonalMascotLibrary() {
           <h1 id="library-title">Meus mascotes</h1>
           <p>Seus mascotes criados ficam aqui. Os favoritos que você salvar do Puleiro também aparecerão nesta coleção.</p>
         </div>
-        <p className="library-count" aria-live="polite">{total} {total === 1 ? "mascote" : "mascotes"}</p>
+        <p className="library-count" aria-live="polite">{displayedTotal} {displayedTotal === 1 ? "mascote" : "mascotes"}</p>
       </section>
-      {incubations.length > 0 && <IncubatorShelf incubations={incubations} />}
+      {visibleIncubations.length > 0 && <IncubatorShelf incubations={visibleIncubations} />}
+      {visiblePostBirthProfiles.length > 0 && <PostBirthProfileShelf profiles={visiblePostBirthProfiles} />}
       <LibraryControls filter={filter} query={query} sort={sort} onFilter={setFilter} onQuery={setQuery} onSort={setSort} />
       <p className="library-status" role="status" aria-live="polite">{message}</p>
       {visibleItems.length > 0 ? <ul className="library-grid" aria-label="Mascotes prontos">
@@ -142,7 +161,7 @@ export function PersonalMascotLibrary() {
             if (selectedItemId === itemId) setSelectedItemId(null);
           }}
         /></li>)}
-      </ul> : <LibraryEmptyState hasItems={total > 0 || Boolean(query) || filter === "favorites"} />}
+      </ul> : visibleLibraryContent ? null : <LibraryEmptyState hasItems={total > 0 || Boolean(query) || filter === "favorites"} />}
       {pendingItems.length > 0 && <section className="library-pending" aria-labelledby="library-pending-title">
         <div><span className="state-kicker">Finalizações pendentes</span><h2 id="library-pending-title">Ainda não prontos para usar</h2><p>Esses mascotes continuam privados. O código para Android só será liberado depois da conferência completa.</p></div>
         <ul className="library-grid" aria-label="Mascotes aguardando finalização">{pendingItems.map((item, index) => <li key={item.id}><LibraryItem item={item} priority={index < 2} catalogNumber={index + 1} selected={false} onSelect={() => undefined} onFavoriteUpdate={() => undefined} onCollectionRefresh={(nextMessage) => { setLibraryRevision((revision) => revision + 1); setMessage(nextMessage); }} onFeedback={(nextMessage, tone = "success") => setFooterFeedback({ message: nextMessage, tone })} onItemUpdate={(updated) => setPendingItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))} onItemRemove={(itemId) => setPendingItems((current) => current.filter((entry) => entry.id !== itemId))} /></li>)}</ul>
@@ -175,6 +194,18 @@ function IncubatorShelf({ incubations }: { incubations: IncubationRecord[] }) {
           {incubation.productState === "FAILED" && <p className="incubator-egg__error">Não conseguimos terminar este mascote. Abra os detalhes antes de decidir tentar novamente.</p>}
           {["READY_TO_HATCH", "HATCHED", "FAILED", "NEEDS_HUMAN_MASTER_SELECTION"].includes(incubation.productState) && <Link className="incubator-egg__action" href={`/incubadora/${encodeURIComponent(incubation.jobId)}`}>{incubation.productState === "READY_TO_HATCH" ? "Chocar ovo" : incubation.productState === "HATCHED" ? "Abrir Jornal" : incubation.productState === "NEEDS_HUMAN_MASTER_SELECTION" ? "Escolher mascote" : "Ver detalhes"}</Link>}
         </div>
+      </article></li>)}
+    </ul>
+  </section>;
+}
+
+function PostBirthProfileShelf({ profiles }: { profiles: PostBirthLibraryProfile[] }) {
+  return <section className="library-post-birth" aria-labelledby="post-birth-library-title">
+    <div className="library-post-birth__heading"><div><span className="state-kicker">Pós-nascimento</span><h2 id="post-birth-library-title">Mascotes pós-nascimento ativos</h2><p>Identidades confirmadas que você pode retomar pelo Jornal a qualquer momento.</p></div><span>{profiles.length} {profiles.length === 1 ? "mascote ativo" : "mascotes ativos"}</span></div>
+    <ul className="library-post-birth__grid" aria-label="Mascotes pós-nascimento ativos">
+      {profiles.map((profile) => <li key={profile.id}><article className="library-post-birth__card">
+        <div><span className="library-post-birth__state">{profile.state === "ACTIVE" ? "Ativo" : "Rascunho"}</span><h3>{profile.displayName ?? "Mascote sem nome"}</h3><p>Identidade pós-nascimento confirmada.</p></div>
+        <Link className="library-post-birth__action" href={`/incubadora/${encodeURIComponent(profile.modalJobId)}`}>Abrir Jornal</Link>
       </article></li>)}
     </ul>
   </section>;
@@ -553,7 +584,7 @@ function LibraryEmptyState({ hasItems }: { hasItems: boolean }) {
   </section>;
 }
 
-type LibraryPage = { items: MascotLibraryItem[]; pendingItems?: MascotLibraryItem[]; total: number; nextOffset: number | null; error?: string };
+type LibraryPage = { items: MascotLibraryItem[]; pendingItems?: MascotLibraryItem[]; postBirthProfiles?: PostBirthLibraryProfile[]; total: number; nextOffset: number | null; error?: string };
 
 async function loadLibrary({ query, filter, sort, offset = 0, signal }: {
   query: string; filter: FilterOption; sort: SortOption; offset?: number; signal?: AbortSignal;
@@ -563,7 +594,7 @@ async function loadLibrary({ query, filter, sort, offset = 0, signal }: {
     const response = await fetch(`/api/mascot/library?${parameters}`, { cache: "no-store", signal });
     const body = await response.json().catch(() => ({})) as Partial<LibraryPage> & { message?: string };
     if (!response.ok) throw new Error(body.message ?? "Não foi possível abrir sua biblioteca.");
-    return { items: body.items ?? [], pendingItems: body.pendingItems ?? [], total: body.total ?? 0, nextOffset: body.nextOffset ?? null };
+    return { items: body.items ?? [], pendingItems: body.pendingItems ?? [], postBirthProfiles: body.postBirthProfiles ?? [], total: body.total ?? 0, nextOffset: body.nextOffset ?? null };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") return null;
     return {

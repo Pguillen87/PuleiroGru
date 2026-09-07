@@ -85,6 +85,25 @@ export async function findPostBirthProfile(
   return data ? toPostBirthProfile(data) : null;
 }
 
+export async function listActivePostBirthProfiles(
+  client: SupabaseClient,
+  userId: string,
+  limit = 24,
+): Promise<PostBirthProfile[]> {
+  const { data, error } = await client
+    .from("mascot_post_birth_profiles")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("state", "ACTIVE")
+    .not("display_name", "is", null)
+    .order("activated_at", { ascending: false })
+    .limit(limit)
+    .returns<PostBirthProfileRow[]>();
+
+  if (error) throw new PostBirthStoreError("POST_BIRTH_PROFILE_READ_FAILED");
+  return (data ?? []).map(toPostBirthProfile);
+}
+
 export async function createPostBirthProfileDraft(
   client: SupabaseClient,
   userId: string,

@@ -972,6 +972,34 @@ main {
   color: var(--color-text-secondary);
 }
 
+.library-post-birth {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-4);
+  border: var(--border-ink);
+  background: var(--color-paper-raised);
+  box-shadow: 6px 6px 0 color-mix(in srgb, var(--color-leaf) 55%, var(--color-border));
+}
+
+.library-post-birth__heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.library-post-birth__heading h2 { margin: var(--space-2) 0; font-family: var(--font-display), Arial, sans-serif; font-size: clamp(1.5rem, 4vw, 2.4rem); letter-spacing: -.025em; line-height: 1; }
+.library-post-birth__heading p { max-width: 44rem; margin: 0; color: var(--color-text-secondary); }
+.library-post-birth__heading > span:last-child { flex: 0 0 auto; font-weight: 750; white-space: nowrap; }
+.library-post-birth__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.library-post-birth__card { display: flex; min-height: 10rem; flex-direction: column; justify-content: space-between; gap: var(--space-4); padding: var(--space-3); border: 2px solid var(--color-leaf); background: var(--color-paper); }
+.library-post-birth__state { color: var(--color-leaf); font-size: .78rem; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.library-post-birth__card h3 { margin: var(--space-2) 0; font-family: var(--font-display), Arial, sans-serif; font-size: clamp(1.35rem, 3vw, 2rem); line-height: 1; }
+.library-post-birth__card p { margin: 0; color: var(--color-text-secondary); font-size: .9rem; }
+.library-post-birth__action { display: inline-flex; min-height: 3rem; align-items: center; justify-content: center; border: 2px solid var(--color-border); padding: var(--space-2) var(--space-3); background: var(--color-leaf); color: #fff; font-weight: 800; text-decoration: none; }
+.library-post-birth__action:hover { background: color-mix(in srgb, var(--color-leaf) 80%, #000); }
+.library-post-birth__action:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
+
 .library-footer-feedback {
   position: fixed;
   z-index: 20;

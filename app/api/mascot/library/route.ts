@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { listLibraryItems } from "@/lib/mascot-generation/library-store";
+import { listActivePostBirthProfiles, PostBirthStoreError } from "@/lib/mascot-generation/post-birth-store";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
@@ -19,13 +20,14 @@ export async function GET(request: Request) {
     const filter = url.searchParams.get("filter") === "favorites" ? "favorites" : "all";
     const requestedSort = url.searchParams.get("sort");
     const sort = requestedSort === "oldest" || requestedSort === "code" ? requestedSort : "newest";
-    const page = await listLibraryItems(await createClient(), identity.uid, {
+    const supabase = await createClient();
+    const [page, postBirthProfiles] = await Promise.all([listLibraryItems(supabase, identity.uid, {
       offset,
       limit,
       query,
       favoritesOnly: filter === "favorites",
       sort,
-    });
+    }), listActivePostBirthProfiles(supabase, identity.uid)]);
     const nextOffset = offset + page.items.length < page.total ? offset + page.items.length : null;
     const admin = createAdminClient();
     const packageStates = admin ? await readFinalizationStates(admin, identity.uid, page.items) : new Map<string, MascotLibraryItem["finalization"]>();
@@ -35,8 +37,17 @@ export async function GET(request: Request) {
     const decorated = page.items.map((item) => ({ ...item, finalization: packageStates.get(item.id) ?? { state: "not_started" as const } }));
     const items = decorated.filter((item) => item.finalization?.state === "ready");
     const pendingItems = decorated.filter((item) => item.finalization?.state !== "ready");
-    return NextResponse.json({ items: items.map((item) => presentLibraryItem(item, publicIds.has(item.id))), pendingItems: pendingItems.map((item) => presentLibraryItem(item, false)), total: page.total, nextOffset });
+    return NextResponse.json({
+      items: items.map((item) => presentLibraryItem(item, publicIds.has(item.id))),
+      pendingItems: pendingItems.map((item) => presentLibraryItem(item, false)),
+      postBirthProfiles: postBirthProfiles.map(presentPostBirthProfile),
+      total: page.total,
+      nextOffset,
+    });
   } catch (error) {
+    if (error instanceof PostBirthStoreError) {
+      return NextResponse.json({ code: "LIBRARY_READ_FAILED", message: "Não foi possível abrir sua biblioteca agora." }, { status: 503 });
+    }
     return integrationErrorResponse(error, "LIBRARY_READ_FAILED", "Não foi possível abrir sua biblioteca agora.");
   }
 }
@@ -68,6 +79,18 @@ function presentLibraryItem(item: Awaited<ReturnType<typeof listLibraryItems>>["
       ...pose,
       imageUrl: `/api/mascot/library/${encodeURIComponent(item.id)}/pose/${encodeURIComponent(pose.role)}?variant=thumb&v=5`,
     })),
+  };
+}
+
+function presentPostBirthProfile(profile: Awaited<ReturnType<typeof listActivePostBirthProfiles>>[number]) {
+  return {
+    id: profile.id,
+    attemptId: profile.attemptId,
+    modalJobId: profile.modalJobId,
+    state: profile.state,
+    displayName: profile.displayName,
+    updatedAt: profile.updatedAt,
+    activatedAt: profile.activatedAt,
   };
 }
 

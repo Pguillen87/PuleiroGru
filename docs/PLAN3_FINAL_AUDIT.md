@@ -61,9 +61,36 @@ de repositório e testes locais; não constitui aprovação de Production.
 - [x] `npm audit --omit=dev` — `0 vulnerabilities`.
 - [ ] `git status` limpo e HEAD remoto confirmado após o commit documental.
 
+## Auditoria de integração com `main`
+
+Verificação executada após `git fetch origin`, sem merge automático:
+
+- `origin/main`: `41c7f4f131ceb7c53e405b4bdcac95e5cbdfe1a3`;
+- branch auditada: `fccf7ed26f4d6e5f1789b56ee7a1f0fb21b9e434`;
+- merge-base: `41c7f4f131ceb7c53e405b4bdcac95e5cbdfe1a3`;
+- divergência: `origin/main...HEAD = 0 atrás / 13 à frente`;
+- `git merge-tree`: nenhuma entrada de conflito reportada;
+- merge real: não executado, conforme a restrição desta auditoria.
+
+Checklist de integração:
+
+- [x] `git fetch origin` concluído.
+- [x] Base remota `main` identificada e branch comparada.
+- [x] Nenhum conflito de merge detectado.
+- [x] Suíte unitária executada em worktree limpo: 38 arquivos, 157/157.
+- [x] Suíte E2E executada com o servidor local: 204/204 em Chromium,
+      Firefox, WebKit e Edge.
+- [x] TypeScript e ESLint executados novamente sem erros.
+- [x] `npm audit` retornou `0 vulnerabilities` na rodada documental.
+- [x] Nenhum deploy, chamada GPU ou alteração remota em Production realizada.
+- [x] Contratos de observabilidade e ausência de segredos no log documentados.
+- [ ] Rate limiting/WAF da rota GET pública ainda é requisito bloqueador para
+      Production, mas não bloqueia a preparação para QA.
+
 ## Decisão
 
 Os artefatos funcionais dos três planos estão isolados e documentados para
-QA. As suítes locais estão verdes. A branch fica pronta para merge/QA após o
-commit desta documentação e a confirmação do push. Production permanece
-bloqueada até a proteção de abuso da rota pública ser implementada e validada.
+QA. As suítes locais estão verdes e a comparação com `origin/main` não revelou
+conflitos. A branch fica pronta para merge/QA após o commit desta atualização
+de auditoria e a confirmação do push. Production permanece bloqueada até a
+proteção de abuso da rota pública ser implementada e validada.

@@ -24,6 +24,7 @@ export default defineConfig({
       JOB_POLL_INTERVAL_MS: "100",
       JOB_TIMEOUT_MS: "1200",
       ALLOW_DEV_TEST_IDENTITY: "true",
+      NEXT_PUBLIC_ALLOW_DEV_TEST_IDENTITY: "true",
       REGISTRATION_ENABLED: "true",
       MASTER_GENERATION_ENABLED: "false",
       POSE_GENERATION_ENABLED: "false",

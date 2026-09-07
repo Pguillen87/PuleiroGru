@@ -2705,6 +2705,20 @@ footer span:first-child {
 .journal-name-form label { font-weight: 800; }
 .journal-name-form input { min-height: 3.25rem; padding-inline: var(--space-3); border: var(--border-ink); font: inherit; background: #fff; }
 .journal-name-form p { margin: 0 0 var(--space-2); }
+.post-birth-journal { display: grid; gap: var(--space-4); max-width: 46rem; margin-top: clamp(2rem, 5vw, 4rem); padding-top: clamp(1.5rem, 4vw, 3rem); border-top: var(--border-ink); }
+.post-birth-journal__heading { max-width: 60ch; }
+.post-birth-journal__heading h2 { max-width: 18ch; margin-block: var(--space-2); font-size: clamp(1.8rem, 4vw, 3.2rem); letter-spacing: -.025em; line-height: 1; }
+.post-birth-journal__heading p, .post-birth-journal__hint, .post-birth-journal__readonly, .post-birth-journal__feedback { margin: 0; }
+.post-birth-journal__form, .post-birth-journal__active { display: grid; gap: var(--space-2); max-width: 38rem; }
+.post-birth-journal__form label, .post-birth-journal__active label { font-weight: 800; }
+.post-birth-journal__form input, .post-birth-journal__active input { min-height: 3.25rem; padding-inline: var(--space-3); border: var(--border-ink); font: inherit; background: #fff; }
+.post-birth-journal__form input:focus-visible, .post-birth-journal__active input:focus-visible { outline: 3px solid var(--color-editorial-red); outline-offset: 3px; }
+.post-birth-journal__form input:disabled, .post-birth-journal__active input:disabled { color: var(--color-ink); opacity: .72; }
+.post-birth-journal__hint { font-size: .9rem; }
+.post-birth-journal__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-2); }
+.post-birth-journal__readonly { padding: var(--space-3); border-left: 4px solid var(--color-editorial-red); background: color-mix(in srgb, var(--color-editorial-red) 8%, var(--color-paper)); }
+.post-birth-journal__feedback { font-weight: 800; }
+.post-birth-journal__active { gap: var(--space-3); }
 .incubator-master-selector { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-block: var(--space-5); }
 .incubator-master-selector button { display: grid; gap: var(--space-2); min-height: 48px; padding: var(--space-2); color: var(--color-ink); background: var(--color-paper); border: var(--border-ink); font: inherit; font-weight: 800; cursor: pointer; }
 .incubator-master-selector button:hover { border-color: var(--color-editorial-red); }
@@ -2725,4 +2739,5 @@ footer span:first-child {
   .journal-pose-showcase { grid-template-columns: 1fr 1fr; }
   .journal-pose-showcase__hero { grid-column: 1 / -1; }
   .incubator-master-selector { grid-template-columns: 1fr; }
+  .post-birth-journal__actions, .post-birth-journal__actions .stage-button { width: 100%; }
 }

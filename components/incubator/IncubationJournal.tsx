@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { Header } from "@/components/navigation/Header";
 import { StageButton } from "@/components/actions/StageButton";
+import { PostBirthJournal } from "@/components/incubator/PostBirthJournal";
 import { getIncubation, hatchIncubation, selectIncubatorMaster } from "@/lib/mascot-generation/client";
 import type { GenerationJob } from "@/lib/mascot-generation/types";
 import { POSE_ROLE_LABELS } from "@/lib/mascot-generation/pose-catalog";
@@ -109,6 +110,7 @@ export function IncubationJournal({ jobId }: { jobId: string }) {
       {error && <p className="stage-error" role="alert">{error}</p>}
       {isReadyToHatch && <div className="journal-reveal__action"><StageButton disabled={busy} onClick={() => void hatch()}>{busy ? "Chocando…" : "Chocar ovo"}</StageButton></div>}
       {job?.productState === "HATCHED" && <p role="status" className="journal-reveal__confirmation">Nascimento confirmado.</p>}
+      {job?.productState === "HATCHED" && <PostBirthJournal jobId={jobId} />}
     </section>
   </main></div>;
 }

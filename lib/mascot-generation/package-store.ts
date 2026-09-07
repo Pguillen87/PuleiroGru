@@ -81,7 +81,6 @@ export async function publishMascotPackage(
   assertManifest(manifest, userId, packageRow.id);
   await savePendingManifest(admin, userId, packageRow.id, manifest);
   await putManifestObject(admin, userId, packageRow.id, manifest);
-  await ensureImportCode(admin, userId, packageRow.id, item.mascotCode);
   return { item, package: await promoteReady(admin, userId, packageRow.id, manifest), idempotentReplay: false };
 }
 
@@ -111,16 +110,6 @@ export async function refreshPackageDisplayName(userId: string, itemId: string, 
   void userId;
   void itemId;
   void displayName;
-}
-
-export async function resolveMascotImportCode(admin: SupabaseClient, code: string) {
-  const { data: codeRow, error } = await admin.from("mascot_import_codes")
-    .select("package_id, expires_at, revoked_at").eq("code_hash", hashCode(code))
-    .maybeSingle<{ package_id: string; expires_at: string | null; revoked_at: string | null }>();
-  if (error || !codeRow || codeRow.revoked_at || (codeRow.expires_at && new Date(codeRow.expires_at) <= new Date())) return null;
-  const { data } = await admin.from("mascot_packages").select("id, user_id, package_version, manifest, status")
-    .eq("id", codeRow.package_id).eq("status", "ready").maybeSingle<MascotPackageRow>();
-  return data ?? null;
 }
 
 export function parseReadyManifest(value: unknown): MascotPackageManifest | null {
@@ -248,20 +237,6 @@ export async function createSignedManifestUrl(admin: SupabaseClient, userId: str
   return { manifestUrl: signed.data.signedUrl, manifestExpiresIn: MANIFEST_URL_TTL_SECONDS };
 }
 
-async function ensureImportCode(admin: SupabaseClient, userId: string, packageId: string, mascotCode: string) {
-  const { data: current, error: lookupError } = await admin.from("mascot_import_codes").select("package_id")
-    .eq("package_id", packageId).maybeSingle<{ package_id: string }>();
-  if (lookupError) throw new MascotPackageError("IMPORT_CODE_LOOKUP_FAILED", "Não foi possível verificar o código de entrega.");
-  if (current) return;
-  const { error } = await admin.from("mascot_import_codes").insert({ package_id: packageId, user_id: userId, code_hash: hashCode(mascotCode) });
-  if (!error) return;
-  if (error.code === "23505") {
-    const { data: replay } = await admin.from("mascot_import_codes").select("package_id").eq("code_hash", hashCode(mascotCode)).maybeSingle<{ package_id: string }>();
-    if (replay?.package_id === packageId) return;
-  }
-  throw new MascotPackageError("IMPORT_CODE_REGISTRATION_FAILED", "Não foi possível registrar o código de entrega.");
-}
-
 async function promoteReady(admin: SupabaseClient, userId: string, packageId: string, manifest: MascotPackageManifest) {
   const { data, error } = await admin.from("mascot_packages").update({ manifest, status: "ready" })
     .eq("id", packageId).eq("user_id", userId).eq("status", "pending").select("id, package_version, manifest, status").maybeSingle<MascotPackageRow>();
@@ -309,7 +284,6 @@ function normalizeImageMime(value: string): PackageAsset["mimeType"] {
   throw new MascotPackageError("ASSET_MIME_INVALID", "A pose aprovada possui um tipo de arquivo incompatível.", 409);
 }
 function sha256(bytes: Uint8Array) { return createHash("sha256").update(bytes).digest("hex"); }
-function hashCode(code: string) { return sha256(Buffer.from(code.trim().toUpperCase(), "utf8")); }
 
 function formatToMime(format?: string) {
   if (format === "png") return "image/png";

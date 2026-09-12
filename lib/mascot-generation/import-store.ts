@@ -75,6 +75,21 @@ export async function createPostBirthImportCode(
   return createImportCode(admin, userId, item.id);
 }
 
+export async function createLibraryImportCode(
+  admin: SupabaseClient,
+  userId: string,
+  libraryItemId: string,
+) {
+  const { data, error } = await admin.from("mascot_packages")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("library_item_id", libraryItemId)
+    .maybeSingle<{ id: string }>();
+  if (error) throw new ImportCodeError("IMPORT_CODE_STORAGE_UNAVAILABLE");
+  if (!data) throw new ImportCodeError("IMPORT_PACKAGE_UNAVAILABLE", "O pacote do mascote ainda não está pronto.", 409);
+  return createImportCode(admin, userId, data.id);
+}
+
 export async function createImportCode(
   admin: SupabaseClient,
   userId: string,

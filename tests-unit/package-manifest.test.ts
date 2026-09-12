@@ -52,10 +52,10 @@ describe("package manifest v1", () => {
 
   it("normaliza o asset com Sharp e recalcula o checksum dos bytes publicados", async () => {
     const source = await sharp({
-      create: { width: 8, height: 6, channels: 3, background: "#d9b56d" },
-    }).jpeg({ quality: 80 }).toBuffer();
+      create: { width: 8, height: 6, channels: 4, background: { r: 217, g: 181, b: 109, alpha: 0.5 } },
+    }).png().toBuffer();
 
-    const result = await normalizePackageAsset(new Uint8Array(source), "image/jpeg");
+    const result = await normalizePackageAsset(new Uint8Array(source), "image/png");
 
     expect(result.mimeType).toBe("image/png");
     expect(result.width).toBe(8);
@@ -63,5 +63,16 @@ describe("package manifest v1", () => {
     expect(result.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(result.bytes).not.toEqual(source);
     await expect(sharp(result.bytes).metadata()).resolves.toMatchObject({ format: "png", width: 8, height: 6 });
+  });
+
+  it("rejeita um asset opaco mesmo quando pode ser convertido para PNG", async () => {
+    const source = await sharp({
+      create: { width: 8, height: 6, channels: 3, background: "#d9b56d" },
+    }).jpeg({ quality: 80 }).toBuffer();
+
+    await expect(normalizePackageAsset(new Uint8Array(source), "image/jpeg")).rejects.toMatchObject({
+      code: "ASSET_TRANSPARENCY_INVALID",
+      status: 409,
+    });
   });
 });

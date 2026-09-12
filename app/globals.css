@@ -2045,6 +2045,20 @@ main {
 
 .community-auth-note { max-width: 62ch; color: var(--color-text-secondary); }
 
+.library-item__copy-confirmation {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 0.9rem;
+  padding: 0.9rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-egg);
+}
+
+.library-item__copy-confirmation h2 { margin: 0; font-size: 1.1rem; }
+.library-item__copy-confirmation label { font-weight: 700; }
+.library-item__copy-confirmation input { width: 100%; min-height: 2.6rem; padding: 0.5rem; border: 1px solid var(--color-ink); background: var(--color-paper); }
+.library-item__copy-confirmation p { margin: 0; }
+
 .library-item--community .library-item__community-link {
   display: grid;
   min-height: 42px;

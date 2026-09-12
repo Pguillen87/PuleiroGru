@@ -40,10 +40,10 @@ test("a escolha humana exige confirmação explícita, preserva seleção em err
     return route.fulfill({ contentType: "application/json", body: JSON.stringify({ job: { ...ambiguousJob(), productState: "INCUBATING", status: "generating_poses" } }) });
   });
 
-  await page.goto("/meus-mascotes");
-  await expect(page.getByRole("heading", { name: "Ovos e nascimentos em andamento" })).toBeVisible();
-  await expect(page.getByText("Precisa de você")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Escolher mascote" })).toHaveAttribute("href", `/incubadora/${jobId}`);
+  await page.goto("/incubadora");
+  await expect(page.getByRole("heading", { name: "Incubadora" })).toBeVisible();
+  await expect(page.getByText("Exceção operacional")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Revisar exceção" })).toHaveAttribute("href", `/incubadora/${jobId}`);
   await page.screenshot({ path: testInfo.outputPath("incubator-needs-human-card.png"), fullPage: true });
 
   await page.goto(`/incubadora/${jobId}`);

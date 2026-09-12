@@ -10,6 +10,8 @@ import { prepareMascotDisplayAsset } from "@/lib/mascot-generation/display-asset
 import { getCachedMascotAsset } from "@/lib/mascot-generation/asset-cache";
 import { readLibraryThumbnail, saveLibraryThumbnail } from "@/lib/mascot-generation/library-thumbnail-store";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { readCopiedPoseAsset } from "@/lib/mascot-generation/copy-asset-store";
+import { readApprovedPoseAssets } from "@/lib/mascot-generation/approved-pose-store";
 
 export const runtime = "nodejs";
 const validId = (value: string) => /^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -23,17 +25,16 @@ export async function GET(request: Request, context: { params: Promise<{ itemId:
     if (identity.mode !== "supabase-session") return new NextResponse(null, { status: 401 });
     const item = await findLibraryItem(await createClient(), identity.uid, itemId);
     if (!item) return new NextResponse(null, { status: 404 });
-    const jobIdentityValue = jobIdentity(identity.uid, item.attemptId);
+    const admin = createAdminClient();
     const variant = new URL(request.url).searchParams.get("variant") === "thumb" ? "thumbnail" : "full";
     const storedThumbnail = variant === "thumbnail"
       ? await readLibraryThumbnail(identity.uid, item.id, role as PoseRole)
       : null;
     if (storedThumbnail) return imageResponse(storedThumbnail.bytes, storedThumbnail.contentType, "storage");
     const packageImage = await readPackagedPose(identity.uid, item.id, role as PoseRole);
-    const sourceImage = packageImage ?? await getCachedMascotAsset(
-      `pose:${identity.uid}:${item.attemptId}:${item.jobId}:${role}`,
-      () => getMascotGenerationProvider().getPoseImage?.(item.jobId, role as PoseRole, jobIdentityValue) ?? Promise.resolve(null),
-    );
+    const durableImage = admin && item.attemptId ? await readApprovedPoseImage(admin, identity.uid, item.attemptId, role as PoseRole) : null;
+    const sourceImage = packageImage ?? durableImage ?? await readCopiedPoseImage(item.origin === "public_copy" ? admin : null, identity.uid, item.id, role as PoseRole)
+      ?? await readGeneratedPoseImage(identity.uid, item.attemptId, item.jobId, role as PoseRole);
     const image = sourceImage ? await prepareMascotDisplayAsset(sourceImage, variant) : null;
     if (!image) return new NextResponse(null, { status: 404 });
     if (variant === "thumbnail") await saveLibraryThumbnail(identity.uid, item.id, role as PoseRole, image.bytes);
@@ -41,6 +42,28 @@ export async function GET(request: Request, context: { params: Promise<{ itemId:
   } catch (error) {
     return integrationErrorResponse(error, "LIBRARY_ASSET_READ_FAILED", "Imagem indisponível.");
   }
+}
+
+async function readApprovedPoseImage(admin: ReturnType<typeof createAdminClient>, userId: string, attemptId: string, role: PoseRole) {
+  if (!admin) return null;
+  const assets = await readApprovedPoseAssets(admin, userId, attemptId);
+  const asset = assets?.find((entry) => entry.role === role);
+  return asset ? { bytes: asset.bytes, contentType: asset.mimeType } : null;
+}
+
+async function readCopiedPoseImage(admin: ReturnType<typeof createAdminClient>, userId: string, itemId: string, role: PoseRole) {
+  if (!admin) return null;
+  const asset = await readCopiedPoseAsset(admin, userId, itemId, role);
+  return asset ? { bytes: asset.bytes, contentType: asset.mimeType } : null;
+}
+
+async function readGeneratedPoseImage(userId: string, attemptId: string | null, jobId: string | null, role: PoseRole) {
+  if (!attemptId || !jobId) return null;
+  const identity = jobIdentity(userId, attemptId);
+  return getCachedMascotAsset(
+    `pose:${userId}:${attemptId}:${jobId}:${role}`,
+    () => getMascotGenerationProvider().getPoseImage?.(jobId, role, identity) ?? Promise.resolve(null),
+  );
 }
 
 async function readPackagedPose(userId: string, itemId: string, role: PoseRole) {

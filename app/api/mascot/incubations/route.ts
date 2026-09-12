@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { attemptCookie, jobIdentity } from "@/lib/mascot-generation/attempt";
-import { findIncubationAttempts, projectedIncubationProductState, reserveAttempt, saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
+import { findIncubationAttempts, MascotAttemptStoreError, projectedIncubationProductState, reserveAttempt, saveAttemptJob } from "@/lib/mascot-generation/attempt-store";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { generationConfig } from "@/lib/mascot-generation/config";
 import { IncubationInputError, parseIncubationPoseChoices, parseIncubationSubjectHint } from "@/lib/mascot-generation/incubation-input";
@@ -57,7 +58,7 @@ export async function GET(request: Request) {
         poseCount: job?.poses.length ?? 0,
       };
     }));
-    return NextResponse.json({ incubations: eggs.filter((egg) => egg.jobId) });
+    return NextResponse.json({ incubations: eggs });
   } catch (error) {
     return integrationErrorResponse(error, "INCUBATION_LIST_FAILED", "Não foi possível abrir a Incubadora.");
   }
@@ -88,7 +89,13 @@ export async function POST(request: Request) {
     }
     const image = await validateAndSanitizeImage(photo, generationConfig.maxUploadBytes, generationConfig.maxImageDimension);
     const supabase = await createClient();
-    const reservation = await reserveAttempt(supabase, identity.uid, attemptId, { subjectIdentity, poseChoices, subjectHint: hint });
+    const sourceFingerprint = createHash("sha256").update(image.bytes).digest("hex");
+    const reservation = await reserveAttempt(supabase, identity.uid, attemptId, {
+      subjectIdentity,
+      poseChoices,
+      subjectHint: hint,
+      sourceFingerprint,
+    });
     const provider = getMascotGenerationProvider();
     const context = jobIdentity(identity.uid, attemptId, trace);
     const { job } = await resolveIncubationCreation({
@@ -123,6 +130,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: error.message, code: error.code }, {
         status: error.code === "INCUBATION_CREATION_IN_PROGRESS" ? 409 : 503,
       });
+    }
+    if (error instanceof MascotAttemptStoreError) {
+      return NextResponse.json({ message: error.message, code: error.code }, { status: error.status });
     }
     return integrationErrorResponse(error, "INCUBATION_CREATE_FAILED", "Não foi possível colocar este ovo na Incubadora.");
   }

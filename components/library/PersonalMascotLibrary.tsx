@@ -4,40 +4,27 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Header } from "@/components/navigation/Header";
-import type { CommunityMascot, IncubationSummary as IncubationRecord, MascotLibraryItem } from "@/lib/mascot-generation/types";
+import type { MascotLibraryItem } from "@/lib/mascot-generation/types";
 
 type SortOption = "newest" | "oldest" | "code";
 type FilterOption = "all" | "favorites";
 type FeedbackTone = "success" | "error";
-type PostBirthLibraryProfile = {
-  id: string;
-  attemptId: string;
-  modalJobId: string;
-  state: "DRAFT" | "ACTIVE";
-  displayName: string | null;
-  updatedAt: string;
-  activatedAt: string | null;
-};
-
+type ImportCodeDetails = { code: string; expiresAt: string };
 const sortLabels: Record<SortOption, string> = { newest: "Mais recentes", oldest: "Mais antigos", code: "Código do mascote" };
 const PAGE_SIZE = 24;
 
 export function PersonalMascotLibrary() {
   const [items, setItems] = useState<MascotLibraryItem[]>([]);
-  const [pendingItems, setPendingItems] = useState<MascotLibraryItem[]>([]);
   const [message, setMessage] = useState("Abrindo sua biblioteca privada…");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortOption>("newest");
   const [filter, setFilter] = useState<FilterOption>("all");
   const [total, setTotal] = useState(0);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
-  const [communityItems, setCommunityItems] = useState<CommunityMascot[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [libraryRevision, setLibraryRevision] = useState(0);
   const [footerFeedback, setFooterFeedback] = useState<{ message: string; tone: FeedbackTone } | null>(null);
-  const [incubations, setIncubations] = useState<IncubationRecord[]>([]);
-  const [postBirthProfiles, setPostBirthProfiles] = useState<PostBirthLibraryProfile[]>([]);
 
   useEffect(() => {
     if (!footerFeedback) return;
@@ -54,13 +41,10 @@ export function PersonalMascotLibrary() {
           setItems([]);
           setTotal(0);
           setNextOffset(null);
-          setPostBirthProfiles([]);
           setMessage(page.error);
           return;
         }
         setItems(page.items);
-        setPendingItems(page.pendingItems ?? []);
-        setPostBirthProfiles(page.postBirthProfiles ?? []);
         setTotal(page.total);
         setNextOffset(page.nextOffset);
         setMessage(page.items.length
@@ -72,40 +56,9 @@ export function PersonalMascotLibrary() {
     }, query ? 250 : 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [filter, libraryRevision, query, sort]);
-  useEffect(() => {
-    const controller = new AbortController();
-    let timer: number | undefined;
-    const load = async () => {
-      try {
-        const response = await fetch("/api/mascot/incubations", { cache: "no-store", signal: controller.signal });
-        const body = await response.json().catch(() => ({})) as { incubations?: IncubationRecord[] };
-        if (!response.ok) return;
-        const next = body.incubations ?? [];
-        setIncubations(next);
-        if (next.some((item) => ["PREPARING", "INCUBATING"].includes(item.productState))) {
-          timer = window.setTimeout(() => void load(), 8_000);
-        }
-      } catch {
-        if (!controller.signal.aborted) setIncubations([]);
-      }
-    };
-    void load();
-    return () => { controller.abort(); if (timer) window.clearTimeout(timer); };
-  }, []);
-  useEffect(() => {
-    void fetch("/api/mascot/community/saved", { cache: "no-store" })
-      .then(async (response) => {
-        const body = await response.json().catch(() => ({})) as { items?: CommunityMascot[] };
-        if (response.ok) setCommunityItems(body.items ?? []);
-      });
-  }, []);
   const visibleItems = useMemo(() => selectLibraryItems(items, query, filter, sort), [filter, items, query, sort]);
-  const showPostBirthProfiles = filter === "all" && query.trim().length === 0;
-  const visiblePostBirthProfiles = showPostBirthProfiles ? postBirthProfiles : [];
-  const activePostBirthJobIds = new Set(postBirthProfiles.filter((profile) => profile.state === "ACTIVE").map((profile) => profile.modalJobId));
-  const visibleIncubations = incubations.filter((incubation) => !activePostBirthJobIds.has(incubation.jobId));
-  const visibleLibraryContent = visibleItems.length > 0 || visiblePostBirthProfiles.length > 0;
-  const displayedTotal = total + (showPostBirthProfiles ? postBirthProfiles.length : 0);
+  const visibleLibraryContent = visibleItems.length > 0;
+  const displayedTotal = total;
 
   async function loadMore() {
     if (nextOffset === null || loadingMore) return;
@@ -127,12 +80,10 @@ export function PersonalMascotLibrary() {
         <div>
           <span className="state-kicker">Biblioteca pessoal</span>
           <h1 id="library-title">Meus mascotes</h1>
-          <p>Seus mascotes criados ficam aqui. Os favoritos que você salvar do Puleiro também aparecerão nesta coleção.</p>
+          <p>Seus mascotes concluídos e as cópias que você guardar ficam aqui. Favoritos e referências do Puleiro continuam na Biblioteca Geral.</p>
         </div>
         <p className="library-count" aria-live="polite">{displayedTotal} {displayedTotal === 1 ? "mascote" : "mascotes"}</p>
       </section>
-      {visibleIncubations.length > 0 && <IncubatorShelf incubations={visibleIncubations} />}
-      {visiblePostBirthProfiles.length > 0 && <PostBirthProfileShelf profiles={visiblePostBirthProfiles} />}
       <LibraryControls filter={filter} query={query} sort={sort} onFilter={setFilter} onQuery={setQuery} onSort={setSort} />
       <p className="library-status" role="status" aria-live="polite">{message}</p>
       {visibleItems.length > 0 ? <ul className="library-grid" aria-label="Mascotes prontos">
@@ -162,86 +113,12 @@ export function PersonalMascotLibrary() {
           }}
         /></li>)}
       </ul> : visibleLibraryContent ? null : <LibraryEmptyState hasItems={total > 0 || Boolean(query) || filter === "favorites"} />}
-      {pendingItems.length > 0 && <section className="library-pending" aria-labelledby="library-pending-title">
-        <div><span className="state-kicker">Finalizações pendentes</span><h2 id="library-pending-title">Ainda não prontos para usar</h2><p>Esses mascotes continuam privados. O código para Android só será liberado depois da conferência completa.</p></div>
-        <ul className="library-grid" aria-label="Mascotes aguardando finalização">{pendingItems.map((item, index) => <li key={item.id}><LibraryItem item={item} priority={index < 2} catalogNumber={index + 1} selected={false} onSelect={() => undefined} onFavoriteUpdate={() => undefined} onCollectionRefresh={(nextMessage) => { setLibraryRevision((revision) => revision + 1); setMessage(nextMessage); }} onFeedback={(nextMessage, tone = "success") => setFooterFeedback({ message: nextMessage, tone })} onItemUpdate={(updated) => setPendingItems((current) => current.map((entry) => entry.id === updated.id ? updated : entry))} onItemRemove={(itemId) => setPendingItems((current) => current.filter((entry) => entry.id !== itemId))} /></li>)}</ul>
-      </section>}
       {nextOffset !== null && <button className="library-load-more" type="button" disabled={loadingMore} onClick={() => void loadMore()}>
         {loadingMore ? "Carregando mascotes…" : "Carregar mais mascotes"}
       </button>}
-      {communityItems.length > 0 && <section className="library-community-saves" aria-labelledby="community-saves-title">
-        <div>
-          <span className="state-kicker">Guardados no Puleiro</span>
-          <h2 id="community-saves-title">Favoritos e mascotes salvos</h2>
-          <p>Personagens públicos que você guardou continuam acessíveis nesta conta.</p>
-        </div>
-        <ul className="library-grid" aria-label="Mascotes públicos salvos">
-          {communityItems.map((item) => <li key={item.id}><SavedCommunityItem item={item} /></li>)}
-        </ul>
-      </section>}
       {footerFeedback && <p className={`library-footer-feedback library-footer-feedback--${footerFeedback.tone}`} role={footerFeedback.tone === "error" ? "alert" : "status"} aria-live="polite">{footerFeedback.message}</p>}
     </main>
   </div>;
-}
-
-function IncubatorShelf({ incubations }: { incubations: IncubationRecord[] }) {
-  return <section className="incubator-shelf" aria-labelledby="incubator-title">
-    <div className="incubator-shelf__heading"><div><span className="state-kicker">Incubadora</span><h2 id="incubator-title">Ovos e nascimentos em andamento</h2><p>Você pode sair e voltar depois. Cada estado vem do trabalho confirmado no servidor.</p></div><span>{incubations.length} {incubations.length === 1 ? "ovo" : "ovos"}</span></div>
-    <ul className="incubator-grid" aria-label="Nascimentos na Incubadora">
-      {incubations.map((incubation) => <li key={incubation.jobId}><article className="incubator-egg" data-state={incubation.productState}>
-        <div className="incubator-egg__illustration" aria-hidden="true"><span className="incubator-egg__shell" /><span className="incubator-egg__nest" /></div>
-        <div className="incubator-egg__body"><p>{incubationLabel(incubation)}</p><h3>Novo mascote</h3><time dateTime={incubation.updatedAt}>Atualizado {formatRelativeUpdate(incubation.updatedAt)}</time>
-          {incubation.productState === "FAILED" && <p className="incubator-egg__error">Não conseguimos terminar este mascote. Abra os detalhes antes de decidir tentar novamente.</p>}
-          {["READY_TO_HATCH", "HATCHED", "FAILED", "NEEDS_HUMAN_MASTER_SELECTION"].includes(incubation.productState) && <Link className="incubator-egg__action" href={`/incubadora/${encodeURIComponent(incubation.jobId)}`}>{incubation.productState === "READY_TO_HATCH" ? "Chocar ovo" : incubation.productState === "HATCHED" ? "Abrir Jornal" : incubation.productState === "NEEDS_HUMAN_MASTER_SELECTION" ? "Escolher mascote" : "Ver detalhes"}</Link>}
-        </div>
-      </article></li>)}
-    </ul>
-  </section>;
-}
-
-function PostBirthProfileShelf({ profiles }: { profiles: PostBirthLibraryProfile[] }) {
-  return <section className="library-post-birth" aria-labelledby="post-birth-library-title">
-    <div className="library-post-birth__heading"><div><span className="state-kicker">Pós-nascimento</span><h2 id="post-birth-library-title">Mascotes pós-nascimento ativos</h2><p>Identidades confirmadas que você pode retomar pelo Jornal a qualquer momento.</p></div><span>{profiles.length} {profiles.length === 1 ? "mascote ativo" : "mascotes ativos"}</span></div>
-    <ul className="library-post-birth__grid" aria-label="Mascotes pós-nascimento ativos">
-      {profiles.map((profile) => <li key={profile.id}><article className="library-post-birth__card">
-        <div><span className="library-post-birth__state">{profile.state === "ACTIVE" ? "Ativo" : "Rascunho"}</span><h3>{profile.displayName ?? "Mascote sem nome"}</h3><p>Identidade pós-nascimento confirmada.</p></div>
-        <Link className="library-post-birth__action" href={`/incubadora/${encodeURIComponent(profile.modalJobId)}`}>Abrir Jornal</Link>
-      </article></li>)}
-    </ul>
-  </section>;
-}
-
-function incubationLabel(incubation: IncubationRecord) {
-  if (incubation.productState === "READY_TO_HATCH") return "Pronto para chocar";
-  if (incubation.productState === "HATCHED") return "Jornal aberto";
-  if (incubation.productState === "FAILED") return "Nascimento interrompido";
-  if (incubation.productState === "NEEDS_HUMAN_MASTER_SELECTION") return "Precisa de você";
-  if (incubation.phase === "generating_poses" || incubation.phase === "validating_poses") return "Preparando as poses…";
-  if (incubation.phase === "generating_masters" || incubation.phase === "validating_masters") return "Criando seu mascote…";
-  return "Preparando…";
-}
-
-function formatRelativeUpdate(value: string) {
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1_000));
-  if (seconds < 60) return "agora";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `há ${minutes} min`;
-  return `às ${new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value))}`;
-}
-
-function SavedCommunityItem({ item }: { item: CommunityMascot }) {
-  const imageUrl = item.poses.find((pose) => pose.role === "normal")?.imageUrl;
-  return <article className="library-item library-item--community">
-    <div className="library-item__preview">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={imageUrl} alt={`Prévia do mascote público ${item.mascotCode}.`} loading="lazy" decoding="async" width="320" height="400" />
-    </div>
-    <div className="library-item__body">
-      <div className="library-item__heading"><span>Mascote do Puleiro</span><strong>{item.mascotCode}</strong></div>
-      <p>{item.isFavorited ? "Favorito" : "Salvo"} · {item.favoriteCount} favoritos</p>
-      <Link href="/explorar" className="library-item__community-link">Ver na comunidade</Link>
-    </div>
-  </article>;
 }
 
 function LibraryControls({ filter, query, sort, onFilter, onQuery, onSort }: {
@@ -249,7 +126,7 @@ function LibraryControls({ filter, query, sort, onFilter, onQuery, onSort }: {
   onFilter: (value: FilterOption) => void; onQuery: (value: string) => void; onSort: (value: SortOption) => void;
 }) {
   return <section className="library-controls" aria-label="Organizar biblioteca">
-    <label className="library-search"><span className="sr-only">Buscar por código</span><input value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Buscar por código" type="search" /></label>
+    <label className="library-search"><span className="sr-only">Buscar por nome ou código</span><input value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Buscar por nome ou código" type="search" /></label>
     <div className="library-filter" role="group" aria-label="Filtrar biblioteca">
       <button type="button" aria-pressed={filter === "all"} onClick={() => onFilter("all")}>Todos</button>
       <button type="button" aria-pressed={filter === "favorites"} onClick={() => onFilter("favorites")}>Favoritos</button>
@@ -278,6 +155,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
   const [packaging, setPackaging] = useState(false);
   const [packageReady, setPackageReady] = useState(item.finalization?.state === "ready");
   const [packageSuccessOpen, setPackageSuccessOpen] = useState(false);
+  const [importCode, setImportCode] = useState<ImportCodeDetails>();
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(item.displayName);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
@@ -312,16 +190,16 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
     };
   }, [moreActionsOpen]);
 
-  async function copyCode() {
+  async function copyCatalogCode() {
     if (!operationalReady) {
-      onFeedback("O código será liberado quando a finalização do pacote estiver concluída.", "error");
+      onFeedback("O código de catálogo fica disponível depois da finalização do pacote.", "error");
       return;
     }
     try {
       if (!navigator.clipboard) throw new Error();
       await navigator.clipboard.writeText(item.mascotCode);
       setCopied(true);
-    } catch { onFeedback("Não foi possível copiar o código neste navegador.", "error"); }
+    } catch { onFeedback("Não foi possível copiar o código de catálogo neste navegador.", "error"); }
   }
 
   async function toggleFavorite() {
@@ -402,13 +280,24 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
   async function prepareAndroidPackage() {
     setPackaging(true);
     try {
-      const response = await fetch(`/api/mascot/library/${encodeURIComponent(item.id)}/package`, {
+      if (!operationalReady) {
+        const packageResponse = await fetch(`/api/mascot/library/${encodeURIComponent(item.id)}/package`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+        });
+        const packageBody = await packageResponse.json().catch(() => ({})) as { package?: unknown; message?: string };
+        if (!packageResponse.ok || !packageBody.package) throw new Error(packageBody.message ?? "Não foi possível preparar o pacote agora.");
+        setPackageReady(true);
+      }
+
+      const importResponse = await fetch(`/api/mascot/library/${encodeURIComponent(item.id)}/import-code`, {
         method: "POST",
         headers: { "content-type": "application/json" },
+        body: "{}",
       });
-      const body = await response.json().catch(() => ({})) as { code?: string; message?: string };
-      if (!response.ok || !body.code) throw new Error(body.message ?? "Não foi possível preparar o pacote agora.");
-      setPackageReady(true);
+      const importBody = await importResponse.json().catch(() => ({})) as { code?: string; expiresAt?: string; message?: string };
+      if (!importResponse.ok || !importBody.code || !importBody.expiresAt) throw new Error(importBody.message ?? "Não foi possível emitir um código temporário agora.");
+      setImportCode({ code: importBody.code, expiresAt: importBody.expiresAt });
       setPackageSuccessOpen(true);
     } catch (error) {
       onFeedback(error instanceof Error ? error.message : "Não foi possível preparar o pacote agora.", "error");
@@ -478,22 +367,22 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
         <code title={item.mascotCode}>{item.mascotCode}</code>
       </div>
       <div className="library-item__actions">
-        <button type="button" disabled={!operationalReady} onClick={() => void copyCode()} title={operationalReady ? undefined : "O código será liberado após a finalização do pacote."}>{copied ? "Código copiado" : "Copiar código"}</button>
+        <button type="button" disabled={!operationalReady} onClick={() => void copyCatalogCode()} title={operationalReady ? "Identificador do catálogo; não instala no Android." : "O código de catálogo será liberado após a finalização do pacote."}>{copied ? "Catálogo copiado" : "Copiar código de catálogo"}</button>
         <button
           type="button"
           className="library-item__open-gru"
-          disabled={saving || packaging || operationalReady}
+          disabled={saving || packaging}
           onClick={() => void prepareAndroidPackage()}
           title="Prepara o pacote privado para importação no aplicativo GRU."
-        >{operationalReady ? "Pronto para usar" : packaging ? "Finalizando…" : item.finalization?.state === "failed" ? "Tentar finalizar" : "Retomar finalização"}</button>
+        >{packaging ? "Preparando código…" : importCode ? "Gerar novo código do GRU" : operationalReady ? "Usar no GRU" : item.finalization?.state === "failed" ? "Tentar preparar para o GRU" : "Preparar para o GRU"}</button>
       </div>
       <time className="library-item__date" dateTime={item.createdAt}>{formatCreatedAt(item.createdAt)}</time>
     </div>
     {packageSuccessOpen && <PackageReadyDialog
-      mascotCode={item.mascotCode}
       closeRef={closeSuccessRef}
       onClose={() => setPackageSuccessOpen(false)}
-      onCopy={() => void copyCode()}
+      importCode={importCode!}
+      onCopy={() => void copyImportCode(importCode?.code ?? "", onFeedback)}
     />}
     {posesOpen && <MascotPosesDialog displayName={item.displayName} poses={item.poses} closeRef={closePosesRef} onClose={() => setPosesOpen(false)} />}
     {deleteDialogOpen && <MascotDeleteDialog displayName={item.displayName} saving={saving} onClose={() => setDeleteDialogOpen(false)} onDelete={deleteMascot} />}
@@ -512,8 +401,8 @@ function MoreIcon() {
   return <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="12" cy="19" r="1.6" /></svg>;
 }
 
-function PackageReadyDialog({ mascotCode, closeRef, onClose, onCopy }: {
-  mascotCode: string;
+function PackageReadyDialog({ importCode, closeRef, onClose, onCopy }: {
+  importCode: ImportCodeDetails;
   closeRef: React.RefObject<HTMLButtonElement | null>;
   onClose: () => void;
   onCopy: () => void;
@@ -523,14 +412,29 @@ function PackageReadyDialog({ mascotCode, closeRef, onClose, onCopy }: {
       <span className="package-success-dialog__seal" aria-hidden="true">✓</span>
       <p className="package-success-dialog__kicker">Pacote pronto</p>
       <h2 id="package-success-title">Seu mascote já pode viajar.</h2>
-      <p id="package-success-description">As três poses foram preparadas e conferidas. Cole este código no app GRU para trazê-lo ao celular.</p>
-      <strong className="package-success-dialog__code">{mascotCode}</strong>
+      <p id="package-success-description">As três poses foram preparadas e conferidas. Cole este código temporário no app GRU para trazê-lo ao celular.</p>
+      <strong className="package-success-dialog__code">{importCode.code}</strong>
+      <p>Válido até {formatImportCodeExpiry(importCode.expiresAt)}. Depois disso, gere outro código nesta página.</p>
       <div className="package-success-dialog__actions">
         <button type="button" onClick={onCopy}>Copiar código</button>
         <button ref={closeRef} type="button" onClick={onClose}>Continuar</button>
       </div>
     </section>
   </div>, document.body);
+}
+
+async function copyImportCode(code: string, onFeedback: (message: string, tone?: FeedbackTone) => void) {
+  try {
+    if (!navigator.clipboard || !code) throw new Error();
+    await navigator.clipboard.writeText(code);
+    onFeedback("Import Code copiado. Ele é temporário e serve para o app GRU.");
+  } catch {
+    onFeedback("Não foi possível copiar o Import Code neste navegador.", "error");
+  }
+}
+
+function formatImportCodeExpiry(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
 function CheckIcon() {
@@ -584,7 +488,7 @@ function LibraryEmptyState({ hasItems }: { hasItems: boolean }) {
   </section>;
 }
 
-type LibraryPage = { items: MascotLibraryItem[]; pendingItems?: MascotLibraryItem[]; postBirthProfiles?: PostBirthLibraryProfile[]; total: number; nextOffset: number | null; error?: string };
+type LibraryPage = { items: MascotLibraryItem[]; total: number; nextOffset: number | null; error?: string };
 
 async function loadLibrary({ query, filter, sort, offset = 0, signal }: {
   query: string; filter: FilterOption; sort: SortOption; offset?: number; signal?: AbortSignal;
@@ -594,7 +498,7 @@ async function loadLibrary({ query, filter, sort, offset = 0, signal }: {
     const response = await fetch(`/api/mascot/library?${parameters}`, { cache: "no-store", signal });
     const body = await response.json().catch(() => ({})) as Partial<LibraryPage> & { message?: string };
     if (!response.ok) throw new Error(body.message ?? "Não foi possível abrir sua biblioteca.");
-    return { items: body.items ?? [], pendingItems: body.pendingItems ?? [], postBirthProfiles: body.postBirthProfiles ?? [], total: body.total ?? 0, nextOffset: body.nextOffset ?? null };
+    return { items: body.items ?? [], total: body.total ?? 0, nextOffset: body.nextOffset ?? null };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") return null;
     return {
@@ -608,7 +512,7 @@ async function loadLibrary({ query, filter, sort, offset = 0, signal }: {
 
 function selectLibraryItems(items: MascotLibraryItem[], query: string, filter: FilterOption, sort: SortOption) {
   const normalizedQuery = query.trim().toUpperCase();
-  return items.filter((item) => (filter !== "favorites" || item.isFavorite) && (!normalizedQuery || item.mascotCode.includes(normalizedQuery))).toSorted((a, b) => {
+  return items.filter((item) => (filter !== "favorites" || item.isFavorite) && (!normalizedQuery || item.mascotCode.includes(normalizedQuery) || item.displayName.toUpperCase().includes(normalizedQuery))).toSorted((a, b) => {
     if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
     if (a.isFavorite && b.isFavorite && a.favoriteRank !== b.favoriteRank) return (a.favoriteRank ?? Number.MAX_SAFE_INTEGER) - (b.favoriteRank ?? Number.MAX_SAFE_INTEGER);
     if (sort === "code") return a.mascotCode.localeCompare(b.mascotCode, "pt-BR");

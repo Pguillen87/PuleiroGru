@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
-import { listLibraryItems } from "@/lib/mascot-generation/library-store";
-import { listActivePostBirthProfiles, PostBirthStoreError } from "@/lib/mascot-generation/post-birth-store";
+import { listLibraryItems, normalizeLibraryQuery } from "@/lib/mascot-generation/library-store";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
@@ -16,18 +15,18 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const offset = readInteger(url.searchParams.get("offset"), 0, 10_000);
     const limit = readInteger(url.searchParams.get("limit"), 24, 48);
-    const query = (url.searchParams.get("query") ?? "").replace(/[^A-Za-z0-9-]/g, "").slice(0, 32);
+    const query = normalizeLibraryQuery(url.searchParams.get("query") ?? "");
     const filter = url.searchParams.get("filter") === "favorites" ? "favorites" : "all";
     const requestedSort = url.searchParams.get("sort");
     const sort = requestedSort === "oldest" || requestedSort === "code" ? requestedSort : "newest";
     const supabase = await createClient();
-    const [page, postBirthProfiles] = await Promise.all([listLibraryItems(supabase, identity.uid, {
+    const page = await listLibraryItems(supabase, identity.uid, {
       offset,
       limit,
       query,
       favoritesOnly: filter === "favorites",
       sort,
-    }), listActivePostBirthProfiles(supabase, identity.uid)]);
+    });
     const nextOffset = offset + page.items.length < page.total ? offset + page.items.length : null;
     const admin = createAdminClient();
     const packageStates = admin ? await readFinalizationStates(admin, identity.uid, page.items) : new Map<string, MascotLibraryItem["finalization"]>();
@@ -35,19 +34,12 @@ export async function GET(request: Request) {
       ? new Set((await admin.from("mascot_public_mascots").select("source_item_id").in("source_item_id", page.items.map((item) => item.id))).data?.map((row: { source_item_id: string }) => row.source_item_id) ?? [])
       : new Set<string>();
     const decorated = page.items.map((item) => ({ ...item, finalization: packageStates.get(item.id) ?? { state: "not_started" as const } }));
-    const items = decorated.filter((item) => item.finalization?.state === "ready");
-    const pendingItems = decorated.filter((item) => item.finalization?.state !== "ready");
     return NextResponse.json({
-      items: items.map((item) => presentLibraryItem(item, publicIds.has(item.id))),
-      pendingItems: pendingItems.map((item) => presentLibraryItem(item, false)),
-      postBirthProfiles: postBirthProfiles.map(presentPostBirthProfile),
+      items: decorated.map((item) => presentLibraryItem(item, publicIds.has(item.id))),
       total: page.total,
       nextOffset,
     });
   } catch (error) {
-    if (error instanceof PostBirthStoreError) {
-      return NextResponse.json({ code: "LIBRARY_READ_FAILED", message: "Não foi possível abrir sua biblioteca agora." }, { status: 503 });
-    }
     return integrationErrorResponse(error, "LIBRARY_READ_FAILED", "Não foi possível abrir sua biblioteca agora.");
   }
 }
@@ -56,15 +48,16 @@ async function readFinalizationStates(admin: NonNullable<ReturnType<typeof creat
   const states = new Map<string, MascotLibraryItem["finalization"]>();
   if (!items.length) return states;
   const itemIds = items.map((item) => item.id);
-  const jobIds = items.map((item) => item.jobId);
-  const [{ data: packages }, { data: attempts }] = await Promise.all([
-    admin.from("mascot_packages").select("library_item_id, status").eq("user_id", userId).in("library_item_id", itemIds),
-    admin.from("mascot_attempts").select("modal_job_id, status, operation_id, last_error_code").eq("user_id", userId).in("modal_job_id", jobIds),
-  ]);
+  const jobIds = items.map((item) => item.jobId).filter((value): value is string => Boolean(value));
+  const packageQuery = admin.from("mascot_packages").select("library_item_id, status").eq("user_id", userId).in("library_item_id", itemIds);
+  const attemptsQuery = jobIds.length
+    ? admin.from("mascot_attempts").select("modal_job_id, status, operation_id, last_error_code").eq("user_id", userId).in("modal_job_id", jobIds)
+    : Promise.resolve({ data: [] as Array<{ modal_job_id: string; status: string; operation_id: string | null; last_error_code: string | null }> });
+  const [{ data: packages }, { data: attempts }] = await Promise.all([packageQuery, attemptsQuery]);
   const attemptsByJob = new Map((attempts ?? []).map((attempt: { modal_job_id: string; status: string; operation_id: string | null; last_error_code: string | null }) => [attempt.modal_job_id, attempt]));
   for (const item of items) {
     const packageRow = (packages ?? []).find((entry: { library_item_id: string }) => entry.library_item_id === item.id) as { status: string } | undefined;
-    const attempt = attemptsByJob.get(item.jobId);
+    const attempt = item.jobId ? attemptsByJob.get(item.jobId) : undefined;
     const state = packageRow?.status === "ready" ? "ready" : packageRow?.status === "pending" || attempt?.status === "packaging" ? "packaging" : attempt?.status === "failed" ? "failed" : "not_started";
     states.set(item.id, { state, operationId: attempt?.operation_id ?? undefined, errorCode: attempt?.last_error_code ?? undefined });
   }
@@ -79,18 +72,6 @@ function presentLibraryItem(item: Awaited<ReturnType<typeof listLibraryItems>>["
       ...pose,
       imageUrl: `/api/mascot/library/${encodeURIComponent(item.id)}/pose/${encodeURIComponent(pose.role)}?variant=thumb&v=5`,
     })),
-  };
-}
-
-function presentPostBirthProfile(profile: Awaited<ReturnType<typeof listActivePostBirthProfiles>>[number]) {
-  return {
-    id: profile.id,
-    attemptId: profile.attemptId,
-    modalJobId: profile.modalJobId,
-    state: profile.state,
-    displayName: profile.displayName,
-    updatedAt: profile.updatedAt,
-    activatedAt: profile.activatedAt,
   };
 }
 

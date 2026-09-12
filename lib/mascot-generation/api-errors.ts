@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authErrorResponse } from "@/lib/auth/browser-auth";
 import { ModalProviderError } from "./modal-provider";
+import { MascotAttemptStoreError } from "./attempt-store";
 import { MutationRequestRejected } from "@/lib/security/mutation-request";
 import { supportCode, traceResponse, type MascotTraceContext } from "@/lib/observability/mascot-trace";
 
@@ -18,6 +19,13 @@ export function integrationErrorResponse(
       code: error.code,
       ...(trace ? { supportCode: supportCode(trace) } : {}),
     }, { status: 403 }), trace);
+  }
+  if (error instanceof MascotAttemptStoreError) {
+    return traced(NextResponse.json({
+      message: error.message,
+      code: error.code,
+      ...(trace ? { supportCode: supportCode(trace) } : {}),
+    }, { status: error.status }), trace);
   }
   if (error instanceof ModalProviderError) {
     // The browser is not the caller authenticated by Modal v2. A rejected

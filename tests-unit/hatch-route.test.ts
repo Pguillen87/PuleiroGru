@@ -6,6 +6,7 @@ const requireBrowserIdentity = vi.fn();
 const createClient = vi.fn();
 const getMascotGenerationProvider = vi.fn();
 const providerGetJob = vi.fn();
+const createPostBirthProfileDraft = vi.fn();
 
 vi.mock("@/lib/auth/browser-auth", () => ({
   authErrorResponse: vi.fn(() => undefined),
@@ -13,6 +14,7 @@ vi.mock("@/lib/auth/browser-auth", () => ({
 }));
 vi.mock("@/lib/mascot-generation/provider", () => ({ getMascotGenerationProvider }));
 vi.mock("@/lib/supabase/server", () => ({ createClient }));
+vi.mock("@/lib/mascot-generation/post-birth-store", () => ({ createPostBirthProfileDraft }));
 
 const OWNER_ID = "owner-123";
 const OTHER_OWNER_ID = "other-owner-456";
@@ -159,6 +161,7 @@ describe("POST /api/mascot/incubations/[jobId]/hatch", () => {
     createClient.mockResolvedValue(createFakeSupabase(database));
     getMascotGenerationProvider.mockReturnValue({ getJob: providerGetJob });
     providerGetJob.mockResolvedValue(createJob());
+    createPostBirthProfileDraft.mockResolvedValue({ state: "DRAFT" });
   });
 
   it("choca um READY_TO_HATCH com as três roles e QC visual v3 aprovado", async () => {

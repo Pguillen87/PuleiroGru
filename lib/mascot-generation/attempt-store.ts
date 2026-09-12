@@ -25,7 +25,7 @@ export type MascotAttempt = {
   started_at?: string | null;
   completed_at?: string | null;
   workflow_mode?: MascotWorkflowMode | null;
-  incubation_config?: { subjectIdentity: SubjectIdentity; poseChoices: PoseChoices } | null;
+  incubation_config?: { subjectIdentity: SubjectIdentity; poseChoices: PoseChoices; sourceFingerprint?: string } | null;
   subject_hint?: SubjectHint | null;
   master_selection?: GenerationJob["masterSelection"] | null;
   generation_ready_at?: string | null;
@@ -35,7 +35,11 @@ export type MascotAttempt = {
 };
 
 export class MascotAttemptStoreError extends Error {
-  constructor(message = "Não foi possível preservar esta tentativa.") {
+  constructor(
+    message = "Não foi possível preservar esta tentativa.",
+    readonly code = "ATTEMPT_STORE_UNAVAILABLE",
+    readonly status: 409 | 503 = 503,
+  ) {
     super(message);
   }
 }
@@ -212,7 +216,7 @@ export async function reserveAttempt(
   client: SupabaseClient,
   userId: string,
   attemptId: string,
-  incubator?: { subjectIdentity: SubjectIdentity; poseChoices: PoseChoices; subjectHint?: SubjectHint },
+  incubator?: { subjectIdentity: SubjectIdentity; poseChoices: PoseChoices; subjectHint?: SubjectHint; sourceFingerprint?: string },
 ) {
   const { data, error } = await client.from("mascot_attempts").upsert({
     user_id: userId,
@@ -220,7 +224,11 @@ export async function reserveAttempt(
     status: "registered" satisfies GenerationJobStatus,
     ...(incubator ? {
       workflow_mode: "async_incubator_v1" satisfies MascotWorkflowMode,
-      incubation_config: { subjectIdentity: incubator.subjectIdentity, poseChoices: incubator.poseChoices },
+      incubation_config: {
+        subjectIdentity: incubator.subjectIdentity,
+        poseChoices: incubator.poseChoices,
+        ...(incubator.sourceFingerprint ? { sourceFingerprint: incubator.sourceFingerprint } : {}),
+      },
       subject_hint: incubator.subjectHint ?? null,
     } : {}),
   }, { onConflict: "user_id,attempt_id", ignoreDuplicates: true }).select("*").returns<MascotAttempt[]>();
@@ -229,6 +237,14 @@ export async function reserveAttempt(
   if (inserted) return { attempt: inserted, created: true };
   const existing = await findAttempt(client, userId, attemptId);
   if (!existing) throw new MascotAttemptStoreError();
+  const originalFingerprint = existing.incubation_config?.sourceFingerprint;
+  if (incubator?.sourceFingerprint && originalFingerprint && originalFingerprint !== incubator.sourceFingerprint) {
+    throw new MascotAttemptStoreError(
+      "Esta chave de criação já está vinculada a outra foto.",
+      "INCUBATION_IDEMPOTENCY_CONFLICT",
+      409,
+    );
+  }
   return { attempt: existing, created: false };
 }
 
@@ -237,7 +253,36 @@ export async function saveAttemptJob(client: SupabaseClient, userId: string, job
   // Polling reconciles the same attempt repeatedly. Its start time belongs to
   // the first durable write, never to the latest status observation.
   const existing = await findAttempt(client, userId, job.attemptId);
+  if (existing?.status === "ready") return;
+  const attemptUpdate = buildAttemptUpdate(userId, job, trace, existing, now);
+  if (existing) {
+    const { data, error } = await client.from("mascot_attempts")
+      .update(attemptUpdate)
+      .eq("user_id", userId)
+      .eq("attempt_id", job.attemptId)
+      .neq("status", "ready")
+      .select("id")
+      .maybeSingle<{ id: string }>();
+    if (error) throw new MascotAttemptStoreError();
+    if (data) return;
+    const current = await findAttempt(client, userId, job.attemptId);
+    if (current?.status === "ready") return;
+    throw new MascotAttemptStoreError();
+  }
   const { error } = await client.from("mascot_attempts").upsert({
+    ...attemptUpdate,
+  }, { onConflict: "user_id,attempt_id" });
+  if (error) throw new MascotAttemptStoreError();
+}
+
+function buildAttemptUpdate(
+  userId: string,
+  job: GenerationJob,
+  trace: MascotTraceContext | undefined,
+  existing: MascotAttempt | null | undefined,
+  now: string,
+) {
+  return {
     user_id: userId,
     attempt_id: job.attemptId,
     modal_job_id: job.id,
@@ -256,8 +301,7 @@ export async function saveAttemptJob(client: SupabaseClient, userId: string, job
     started_at: existing?.started_at ?? now,
     ...(isTerminal(job.status) ? { completed_at: now } : {}),
     updated_at: now,
-  }, { onConflict: "user_id,attempt_id" });
-  if (error) throw new MascotAttemptStoreError();
+  };
 }
 
 export async function markAttemptHatched(client: SupabaseClient, userId: string, attemptId: string, jobId: string) {

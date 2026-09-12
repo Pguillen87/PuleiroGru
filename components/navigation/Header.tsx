@@ -11,8 +11,9 @@ type HeaderProps = { onUnavailableNavigation?: (destination: string) => void };
 
 const destinations = [
   { label: "Criar", href: "/criar" },
-  { label: "Explorar", href: "/explorar" },
+  { label: "Incubadora", href: "/incubadora" },
   { label: "Meus mascotes", href: "/meus-mascotes" },
+  { label: "Biblioteca Geral", href: "/explorar" },
 ] as const;
 
 export function Header({ onUnavailableNavigation }: HeaderProps) {

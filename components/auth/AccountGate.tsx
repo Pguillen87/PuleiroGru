@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { StageButton } from "@/components/actions/StageButton";
 import { PuleiroWordmark } from "@/components/brand/PuleiroWordmark";
@@ -14,6 +15,7 @@ export function AccountGate({ required, children }: { required: boolean; childre
   const router = useRouter();
   const devTestIdentity = process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_ALLOW_DEV_TEST_IDENTITY === "true";
   const configured = isSupabaseConfigured();
+  const returnTo = useMemo(() => readReturnTo(), []);
   const supabase = useMemo(
     () => (required && configured ? createClient() : null),
     [configured, required],
@@ -85,20 +87,21 @@ export function AccountGate({ required, children }: { required: boolean; childre
   }, [required]);
 
   if (status === "checking") return <AccountStatus message={message} />;
-  if (status === "signed-out" && !configured) return <AccountStatus message={message} />;
+  if (status === "signed-out" && !configured) return <AccountStatus message={message} unavailable />;
   if (status === "signed-out") {
     return <AccountForm
       initialMessage={message}
       onSignedIn={() => {
         setStatus("signed-in");
-        router.refresh();
+        if (returnTo) router.replace(returnTo);
+        else router.refresh();
       }}
     />;
   }
   return children;
 }
 
-function AccountStatus({ message }: { message: string }) {
+function AccountStatus({ message, unavailable = false }: { message: string; unavailable?: boolean }) {
   return (
     <main className="account-gate">
       <span className="account-gate__scene" aria-hidden="true" />
@@ -107,6 +110,10 @@ function AccountStatus({ message }: { message: string }) {
         <p className="editorial-kicker">Entrada protegida</p>
         <h1>Seu lugar no Puleiro</h1>
         <p role="status" aria-live="polite">{message}</p>
+        {unavailable && <div className="stage-actions">
+          <StageButton onClick={() => window.location.reload()}>Tentar novamente</StageButton>
+          <Link className="stage-button stage-button--secondary" href="/">Voltar ao início</Link>
+        </div>}
       </div>
     </main>
   );
@@ -210,6 +217,13 @@ function callbackMessage() {
   if (reason === "expired") return "O link expirou. Solicite novas instruções para continuar.";
   if (reason === "invalid") return "Não foi possível validar esse link. Solicite novas instruções.";
   return null;
+}
+
+function readReturnTo() {
+  if (typeof window === "undefined") return null;
+  const value = new URLSearchParams(window.location.search).get("returnTo");
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return null;
+  return value;
 }
 
 function modeInstruction(mode: AccountMode) {

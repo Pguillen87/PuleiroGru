@@ -11,14 +11,16 @@ export function PuleiroHub() {
         <div>
           <p className="state-kicker">Central do Puleiro</p>
           <h1 id="hub-title">Todo mascote começa por aqui.</h1>
-          <p>Crie um novo companheiro, cuide da sua coleção e descubra personagens que ganharam lugar no Puleiro.</p>
+          <p>Crie um companheiro, acompanhe o nascimento, cuide da sua coleção e descubra personagens que ganharam lugar no Puleiro.</p>
           <Link className="stage-button stage-button--primary" href="/criar">Criar meu mascote</Link>
         </div>
         <span className="hub-stage__seal" aria-hidden="true">◌</span>
       </section>
       <section className="hub-doors" aria-label="Caminhos do Puleiro">
-        <Link href="/meus-mascotes"><strong>Minha biblioteca</strong><span>Seus mascotes, favoritos e códigos.</span></Link>
-        <Link href="/explorar"><strong>Explorar comunidade</strong><span>Personagens publicados por seus criadores.</span></Link>
+        <Link href="/incubadora"><strong>Incubadora</strong><span>Acompanhe trabalhos e abra mascotes prontos.</span></Link>
+        <Link href="/meus-mascotes"><strong>Meus Mascotes</strong><span>Organize seus mascotes concluídos e favoritos.</span></Link>
+        <Link href="/explorar"><strong>Biblioteca Geral</strong><span>Conheça mascotes publicados pela comunidade.</span></Link>
+        <Link href="/criar"><strong>Criar</strong><span>Envie uma foto e defina as referências uma vez.</span></Link>
       </section>
     </main>
   </div>;

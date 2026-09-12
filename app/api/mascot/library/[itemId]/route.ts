@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireBrowserIdentity } from "@/lib/auth/browser-auth";
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
-import { deleteLibraryItem, setLibraryItemDisplayName, setLibraryItemFavorite, setLibraryItemFavoriteRank } from "@/lib/mascot-generation/library-store";
+import { deleteLibraryItem, findLibraryItem, setLibraryItemDisplayName, setLibraryItemFavorite, setLibraryItemFavoriteRank } from "@/lib/mascot-generation/library-store";
 import { refreshPackageDisplayName } from "@/lib/mascot-generation/package-store";
 import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
 import { createClient } from "@/lib/supabase/server";
@@ -31,6 +31,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ itemI
     }
     if (isReorderingFavorite && (!Number.isInteger(favoriteRank) || favoriteRank < 1 || favoriteRank > 10_000)) {
       return NextResponse.json({ message: "Informe uma posição entre 1 e 10.000." }, { status: 400 });
+    }
+    if (!await findLibraryItem(client, identity.uid, itemId)) {
+      return NextResponse.json({ message: "Mascote não encontrado." }, { status: 404 });
     }
     const item = typeof body?.isFavorite === "boolean"
       ? await setLibraryItemFavorite(client, identity.uid, itemId, body.isFavorite)

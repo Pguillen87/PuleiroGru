@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.mts",
+    "qa:modal-dry-run": "node scripts/modal-request-dry-run.mjs",
     "test:e2e": "playwright test",
     "test:e2e:chromium": "playwright test --project=chromium"
   },

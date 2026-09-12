@@ -5,6 +5,7 @@ import type { CommunityMascot, GeneratedPose, MascotLibraryItem, PoseRole } from
 type PublicRow = { id: string; source_item_id: string; published_by: string; mascot_code: string; pose_snapshot: GeneratedPose[]; published_at: string; favorite_count: number; save_count: number };
 
 export async function publishMascot(client: SupabaseClient, ownerId: string, item: MascotLibraryItem) {
+  if (item.origin === "public_copy") throw new Error("PUBLIC_MASCOT_COPY_NOT_REPUBLISHABLE");
   const { data, error } = await client.from("mascot_public_mascots").upsert({
     source_item_id: item.id,
     published_by: ownerId,

@@ -7,5 +7,5 @@ import { publicGenerationConfig } from "@/lib/mascot-generation/config";
 export const dynamic = "force-dynamic";
 
 export default function CreateMascotPage() {
-  return <PuleiroExperience config={publicGenerationConfig()} />;
+  return <PuleiroExperience config={publicGenerationConfig()} mode="incubator" />;
 }

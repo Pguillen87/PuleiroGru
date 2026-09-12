@@ -10,6 +10,7 @@ export type PostBirthProfile = {
   displayName: string | null;
   journalConfig: PostBirthJournalConfig;
   configurationRevision: number;
+  libraryItemId: string | null;
   createdAt: string;
   updatedAt: string;
   activatedAt: string | null;
@@ -57,14 +58,14 @@ export async function updatePostBirthProfile(
 
 export async function activatePostBirthProfile(
   jobId: string,
-  configurationRevision: number,
+  input: { configurationRevision: number; displayName: string },
   idempotencyKey: string,
   signal: AbortSignal,
 ) {
   const response = await fetch(`/api/mascot/incubations/${encodeURIComponent(jobId)}/activate`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
-    body: JSON.stringify({ configurationRevision }),
+    body: JSON.stringify(input),
     signal,
   });
   return readProfileResponse(response);

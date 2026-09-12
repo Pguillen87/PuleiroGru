@@ -1,6 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AccountGate } from "@/components/auth/AccountGate";
 import { Header } from "@/components/navigation/Header";
@@ -19,12 +21,14 @@ import type { PoseChoices, PoseRole, SubjectHint, SubjectIdentity } from "@/lib/
 
 type Step = "entry" | "photo" | "preview" | "subject" | "mismatch" | "normal" | "listening" | "transcribing" | "summary" | "submitting" | "done" | "error";
 const nextRole: Record<PoseRole, Step> = { normal: "listening", listening: "transcribing", transcribing: "summary" };
+const INCUBATION_KEY_STORAGE = "puleiro:incubation-key";
 
 export function IncubatorCreationExperience({ config }: { config: FlowConfig }) {
   return <AccountGate required={config.authenticationRequired}><AuthenticatedIncubatorCreation config={config} /></AccountGate>;
 }
 
 function AuthenticatedIncubatorCreation({ config }: { config: FlowConfig }) {
+  const router = useRouter();
   const [step, setStep] = useState<Step>("entry");
   const [photo, setPhoto] = useState<File>();
   const [photoUrl, setPhotoUrl] = useState("");
@@ -38,9 +42,18 @@ function AuthenticatedIncubatorCreation({ config }: { config: FlowConfig }) {
   const [incubationSubmitting, setIncubationSubmitting] = useState(false);
   const subjectHintInFlight = useRef(false);
   const incubationSubmitInFlight = useRef(false);
-  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey, setIdempotencyKey] = useState(() => readOrCreateIncubationKey());
 
   useEffect(() => () => { if (photoUrl) URL.revokeObjectURL(photoUrl); }, [photoUrl]);
+  useEffect(() => {
+    const key = readOrCreateIncubationKey();
+    const controller = new AbortController();
+    void resumeIncubation(key, controller.signal).then((destination) => {
+      if (destination === "list") router.replace("/incubadora");
+      else if (destination) router.replace(`/incubadora/${encodeURIComponent(destination)}`);
+    }).catch(() => undefined);
+    return () => controller.abort();
+  }, [router]);
   useEffect(() => {
     const controller = new AbortController();
     void getGenerationCapabilities(controller.signal).then((value) => {
@@ -57,7 +70,9 @@ function AuthenticatedIncubatorCreation({ config }: { config: FlowConfig }) {
 
   function selectPhoto(file: File) {
     if (photoUrl) URL.revokeObjectURL(photoUrl);
-    setIdempotencyKey(crypto.randomUUID());
+    const nextKey = crypto.randomUUID();
+    window.sessionStorage.setItem(INCUBATION_KEY_STORAGE, nextKey);
+    setIdempotencyKey(nextKey);
     setPhoto(file);
     setPhotoUrl(URL.createObjectURL(file));
     setStep("preview");
@@ -83,7 +98,7 @@ function AuthenticatedIncubatorCreation({ config }: { config: FlowConfig }) {
   }
 
   async function submit() {
-    if (!photo || !identity || !canRegisterIncubation || incubationSubmitInFlight.current) return;
+    if (!photo || !identity || !idempotencyKey || !canRegisterIncubation || incubationSubmitInFlight.current) return;
     incubationSubmitInFlight.current = true;
     setIncubationSubmitting(true);
     setError("");
@@ -133,7 +148,7 @@ function stepContent(input: {
   }
   if (input.step === "summary" && input.identity) return <IncubationSummary photoUrl={input.photoUrl} identity={input.identity} choices={input.choices} canRegister={input.canRegisterIncubation} capabilitiesError={input.capabilitiesError} submitting={input.incubationSubmitting} onBack={() => input.setStep("transcribing")} onSubmit={() => void input.submit()} />;
   if (input.step === "submitting") return <PreparingStage title="Colocando o ovo na Incubadora" message="Registrando foto, tipo e três poses com segurança…" />;
-  if (input.step === "done") return <><span className="state-kicker">Ovo registrado</span><h2 id="state-title">A Incubadora cuidará do resto.</h2><p>Você pode fechar esta página. O nascimento continuará no servidor e reaparecerá em Meus mascotes.</p><div className="stage-actions"><a className="stage-button stage-button--primary" href="/meus-mascotes">Abrir Incubadora</a></div></>;
+  if (input.step === "done") return <><span className="state-kicker">Ovo registrado</span><h2 id="state-title">A Incubadora cuidará do resto.</h2><p>Você pode fechar esta página. O nascimento continuará no servidor e reaparecerá na Incubadora.</p><div className="stage-actions"><Link className="stage-button stage-button--primary" href="/incubadora">Abrir Incubadora</Link></div></>;
   if (input.step === "error") return <><span className="state-kicker">O ovo continua com você</span><h2 id="state-title">Não conseguimos iniciar.</h2><p className="stage-error" role="alert">{input.error}</p><div className="stage-actions"><StageButton onClick={() => input.setStep("summary")}>Tentar registrar novamente</StageButton></div></>;
   return <PreparingStage title="Preparando…" message="Conferindo o nascimento." />;
 }
@@ -154,4 +169,22 @@ function mapStage(step: Step) {
   if (step === "photo") return "photo-selection" as const;
   if (["preview", "subject", "mismatch", "normal", "listening", "transcribing", "summary"].includes(step)) return "photo-preview" as const;
   return "preparing" as const;
+}
+
+function readOrCreateIncubationKey() {
+  if (typeof window === "undefined") return crypto.randomUUID();
+  const existing = window.sessionStorage.getItem(INCUBATION_KEY_STORAGE);
+  if (existing && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(existing)) return existing;
+  const next = crypto.randomUUID();
+  window.sessionStorage.setItem(INCUBATION_KEY_STORAGE, next);
+  return next;
+}
+
+async function resumeIncubation(key: string, signal: AbortSignal): Promise<string | "list" | null> {
+  const response = await fetch("/api/mascot/incubations", { cache: "no-store", signal });
+  if (!response.ok) return null;
+  const body = await response.json().catch(() => ({})) as { incubations?: Array<{ attemptId?: string; jobId?: string | null }> };
+  const attemptId = `incubator_${key.replaceAll("-", "")}`;
+  const match = body.incubations?.find((item) => item.attemptId === attemptId);
+  return match ? match.jobId ?? "list" : null;
 }

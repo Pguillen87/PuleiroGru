@@ -128,9 +128,11 @@ export interface MascotLibraryItem {
   id: string;
   displayName: string;
   mascotCode: string;
-  jobId: string;
-  attemptId: string;
-  masterId: string;
+  jobId: string | null;
+  attemptId: string | null;
+  masterId: string | null;
+  origin?: "generated" | "public_copy";
+  sourcePublicMascotId?: string | null;
   poses: GeneratedPose[];
   createdAt: string;
   isFavorite: boolean;
@@ -206,7 +208,7 @@ export interface GenerationJob {
 }
 
 export interface IncubationSummary {
-  jobId: string;
+  jobId: string | null;
   attemptId: string;
   productState: IncubationProductState;
   phase: string;

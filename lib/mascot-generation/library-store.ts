@@ -7,11 +7,14 @@ type LibraryRow = {
   id: string;
   display_name: string;
   user_id: string;
-  attempt_id: string;
-  modal_job_id: string;
-  master_id: string;
+  attempt_id: string | null;
+  modal_job_id: string | null;
+  master_id: string | null;
   mascot_code: string;
   pose_snapshot: GeneratedPose[];
+  origin?: "generated" | "public_copy";
+  source_public_mascot_id?: string | null;
+  copy_state?: "pending" | "ready" | "failed";
   created_at: string;
   is_favorite: boolean;
   favorite_rank: number | null;
@@ -38,6 +41,7 @@ export async function saveLibraryItem(
   userId: string,
   item: Omit<MascotLibraryItem, "id" | "mascotCode" | "createdAt" | "isFavorite">,
 ) {
+  if (!item.jobId || !item.attemptId || !item.masterId) throw new MascotLibraryStoreError();
   const existing = await findLibraryItemByJob(client, userId, item.jobId);
   if (existing) return existing;
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -60,14 +64,25 @@ export async function saveLibraryItem(
 
 export async function findLibraryItemByJob(client: SupabaseClient, userId: string, jobId: string) {
   const { data, error } = await client.from("mascot_library_items")
-    .select("*").eq("user_id", userId).eq("modal_job_id", jobId).maybeSingle<LibraryRow>();
+    .select("*").eq("user_id", userId).eq("modal_job_id", jobId).eq("copy_state", "ready").maybeSingle<LibraryRow>();
   if (error) throw new MascotLibraryStoreError();
   return data ? toLibraryItem(data) : null;
 }
 
 export async function findLibraryItem(client: SupabaseClient, userId: string, itemId: string) {
   const { data, error } = await client.from("mascot_library_items")
-    .select("*").eq("user_id", userId).eq("id", itemId).maybeSingle<LibraryRow>();
+    .select("*").eq("user_id", userId).eq("id", itemId).eq("copy_state", "ready").maybeSingle<LibraryRow>();
+  if (error) throw new MascotLibraryStoreError();
+  return data ? toLibraryItem(data) : null;
+}
+
+export async function findLibraryItemByPublicSource(client: SupabaseClient, userId: string, sourcePublicMascotId: string) {
+  const { data, error } = await client.from("mascot_library_items")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("source_public_mascot_id", sourcePublicMascotId)
+    .eq("copy_state", "ready")
+    .maybeSingle<LibraryRow>();
   if (error) throw new MascotLibraryStoreError();
   return data ? toLibraryItem(data) : null;
 }
@@ -133,9 +148,11 @@ export async function deleteLibraryItem(client: SupabaseClient, userId: string, 
 export async function listLibraryItems(client: SupabaseClient, userId: string, options?: LibraryPageOptions) {
   let request = client.from("mascot_library_items")
     .select("*", { count: "exact" })
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("copy_state", "ready");
   if (options?.favoritesOnly) request = request.eq("is_favorite", true);
-  if (options?.query) request = request.ilike("mascot_code", `%${options.query}%`);
+  const query = options?.query ? normalizeLibraryQuery(options.query) : "";
+  if (query) request = request.or(`mascot_code.ilike.%${query}%,display_name.ilike.%${query}%`);
   const sort = options?.sort ?? "newest";
   request = request
     .order("is_favorite", { ascending: false })
@@ -156,6 +173,8 @@ function toLibraryItem(row: LibraryRow): MascotLibraryItem {
     jobId: row.modal_job_id,
     attemptId: row.attempt_id,
     masterId: row.master_id,
+    origin: row.origin ?? "generated",
+    sourcePublicMascotId: row.source_public_mascot_id ?? null,
     poses: row.pose_snapshot,
     createdAt: row.created_at,
     isFavorite: row.is_favorite,
@@ -169,7 +188,11 @@ function normalizeDisplayName(value: string) {
   return normalized;
 }
 
-function createMascotCode() {
+export function normalizeLibraryQuery(value: string) {
+  return value.replace(/[^\p{L}\p{N}\s-]/gu, "").replace(/\s+/g, " ").trim().slice(0, 32);
+}
+
+export function createMascotCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const bytes = randomBytes(8);
   const groups = [0, 4].map((offset) => Array.from(bytes.subarray(offset, offset + 4), (value) => alphabet[value % alphabet.length]).join(""));

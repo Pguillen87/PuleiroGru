@@ -1,14 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PostBirthStoreError } from "@/lib/mascot-generation/post-birth-store";
 
 const mocks = vi.hoisted(() => ({
   requireBrowserIdentity: vi.fn(),
   createClient: vi.fn(),
   createAdminClient: vi.fn(),
   listLibraryItems: vi.fn(),
-  listActivePostBirthProfiles: vi.fn(),
+  normalizeLibraryQuery: vi.fn((value: string) => value),
 }));
-const { requireBrowserIdentity, createClient, createAdminClient, listLibraryItems, listActivePostBirthProfiles } = mocks;
+const { requireBrowserIdentity, createClient, createAdminClient, listLibraryItems } = mocks;
 
 vi.mock("@/lib/auth/browser-auth", () => ({
   requireBrowserIdentity: mocks.requireBrowserIdentity,
@@ -22,31 +21,13 @@ vi.mock("@/lib/auth/browser-auth", () => ({
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: mocks.createClient }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: mocks.createAdminClient }));
-vi.mock("@/lib/mascot-generation/library-store", () => ({ listLibraryItems: mocks.listLibraryItems }));
-vi.mock("@/lib/mascot-generation/post-birth-store", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/mascot-generation/post-birth-store")>("@/lib/mascot-generation/post-birth-store");
-  return { ...actual, listActivePostBirthProfiles: mocks.listActivePostBirthProfiles };
-});
+vi.mock("@/lib/mascot-generation/library-store", () => ({
+  listLibraryItems: mocks.listLibraryItems,
+  normalizeLibraryQuery: mocks.normalizeLibraryQuery,
+}));
 
 const OWNER_ID = "owner-123";
 const client = {};
-
-function activeProfile(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "profile-1",
-    userId: OWNER_ID,
-    attemptId: "attempt-post-birth-0001",
-    modalJobId: "job-post-birth-0001",
-    state: "ACTIVE",
-    displayName: "Pipoca",
-    journalConfig: { version: 1 },
-    configurationRevision: 5,
-    createdAt: "2026-09-07T12:00:00.000Z",
-    updatedAt: "2026-09-07T12:05:00.000Z",
-    activatedAt: "2026-09-07T12:05:00.000Z",
-    ...overrides,
-  };
-}
 
 async function getLibrary() {
   const route = await import("@/app/api/mascot/library/route");
@@ -60,22 +41,21 @@ describe("GET /api/mascot/library post-birth projection", () => {
     createClient.mockResolvedValue(client);
     createAdminClient.mockReturnValue(null);
     listLibraryItems.mockResolvedValue({ items: [], total: 0 });
-    listActivePostBirthProfiles.mockResolvedValue([activeProfile()]);
   });
 
-  it("returns active post-birth profiles with owner-scoped data", async () => {
+  it("keeps the personal library focused on completed mascots", async () => {
     const response = await getLibrary();
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       items: [],
-      postBirthProfiles: [{ id: "profile-1", displayName: "Pipoca", state: "ACTIVE", modalJobId: "job-post-birth-0001" }],
+      total: 0,
+      nextOffset: null,
     });
-    expect(listActivePostBirthProfiles).toHaveBeenCalledWith(client, OWNER_ID);
   });
 
-  it("fails closed when the post-birth projection cannot be read", async () => {
-    listActivePostBirthProfiles.mockRejectedValueOnce(new PostBirthStoreError("POST_BIRTH_PROFILE_READ_FAILED"));
+  it("fails closed when the library projection cannot be read", async () => {
+    listLibraryItems.mockRejectedValueOnce(new Error("database unavailable"));
 
     const response = await getLibrary();
 

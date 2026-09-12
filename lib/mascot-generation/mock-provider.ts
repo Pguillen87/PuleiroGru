@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { generationConfig } from "./config";
-import type { CreateMasterJobInput, GenerationJob, JobIdentity, MascotConfiguration, MascotGenerationProvider, PoseChoices } from "./types";
+import type { CreateIncubationInput, CreateMasterJobInput, GenerationJob, JobIdentity, MascotConfiguration, MascotGenerationProvider, PoseChoices } from "./types";
 import { DEFAULT_POSE_CHOICES, POSE_CATALOG_VERSION, POSE_OPTIONS } from "./pose-catalog";
 
 type MockRecord = { createdAt: number; ownerId: string; job: GenerationJob };
@@ -52,6 +52,31 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
     return job;
   }
 
+  async createIncubation(input: CreateIncubationInput) {
+    const existing = [...jobs.values()].find(
+      ({ ownerId, job }) => ownerId === input.ownerId && job.attemptId === input.attemptId,
+    );
+    if (existing) return existing.job;
+
+    const job: GenerationJob = {
+      id: crypto.randomUUID(),
+      attemptId: input.attemptId,
+      status: "queued",
+      message: "Ovo registrado. A Incubadora continuará trabalhando em segundo plano.",
+      generationScheduled: true,
+      masters: [],
+      subjectIdentity: input.subjectIdentity,
+      poseChoices: input.poseChoices,
+      configuration: { displayName: "Mascote GRU", poseChoices: input.poseChoices, configurationRevision: 0 },
+      poses: [],
+      workflowMode: "async_incubator_v1",
+      productState: "PREPARING",
+      subjectHint: input.subjectHint,
+    };
+    jobs.set(job.id, { createdAt: Date.now(), ownerId: input.ownerId, job });
+    return job;
+  }
+
   async startMasterGeneration(jobId: string, identity: JobIdentity) {
     const record = jobs.get(jobId);
     if (!record || record.ownerId !== identity.ownerId) throw new Error("Nascimento não encontrado.");
@@ -63,6 +88,7 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
   async getJob(jobId: string, identity: JobIdentity) {
     const record = jobs.get(jobId);
     if (!record || record.ownerId !== identity.ownerId) return null;
+    if (record.job.workflowMode === "async_incubator_v1") return this.getIncubationJob(record);
     if (record.job.status === "generating_poses" && Date.now() - record.createdAt >= generationConfig.mockDelayMs) {
       const bytes = await readFile(join(process.cwd(), "public", "assets", "puleiro-reveal.jpg"));
       const sha256 = createHash("sha256").update(bytes).digest("hex");
@@ -97,6 +123,51 @@ export class MockMascotGenerationProvider implements MascotGenerationProvider {
         id: `mock-master-${suffix}`,
         imageUrl: "/assets/puleiro-reveal.jpg",
       })),
+    };
+  }
+
+  private async getIncubationJob(record: MockRecord) {
+    if (Date.now() - record.createdAt < generationConfig.mockDelayMs) {
+      return {
+        ...record.job,
+        status: "generating_masters" as const,
+        message: "A Incubadora está preparando o mascote automaticamente.",
+        productState: "INCUBATING" as const,
+      };
+    }
+
+    const bytes = await readFile(join(process.cwd(), "public", "assets", "puleiro-reveal.jpg"));
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const poses = (["normal", "listening", "transcribing"] as const).map((role, index) => ({
+      id: `incubator-pose-0${index + 1}`,
+      role,
+      optionId: record.job.poseChoices[role],
+      label: role,
+      imageUrl: "/assets/puleiro-reveal.jpg",
+      sha256,
+      size: bytes.byteLength,
+      templateVersion: POSE_CATALOG_VERSION,
+      qc: { status: "passed" as const, safe_reasons: [], alpha_ratio: 0.5, border_opaque_ratio: 0, foreground_components: 1, width: 1024, height: 1024 },
+    }));
+    return {
+      ...record.job,
+      status: "awaiting_set_approval" as const,
+      message: "Seu mascote está pronto para abrir.",
+      masters: [{ id: "mock-auto-master", imageUrl: "/assets/puleiro-reveal.jpg" }],
+      approvedMasterId: "mock-auto-master",
+      poses,
+      poseSetQc: { status: "passed" as const, code: "POSE_SET_VISUAL_QC_PASSED", version: "pose-set-visual-v3", safe_reasons: [] },
+      productState: "READY_TO_HATCH" as const,
+      generationReadyAt: new Date(record.createdAt + generationConfig.mockDelayMs).toISOString(),
+      masterSelection: {
+        rankerVersion: "mock-ranker-v1",
+        masterRankerPolicyVersion: "auto-v1",
+        selectedMasterId: "mock-auto-master",
+        selectionSource: "auto" as const,
+        decision: "AUTO_SELECTED" as const,
+        decisionReason: "Único candidato elegível no ambiente mock.",
+        scores: [],
+      },
     };
   }
 

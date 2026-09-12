@@ -5,12 +5,14 @@ import sharp from "sharp";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { jobIdentity } from "./attempt";
-import { findLibraryItem, findLibraryItemByJob, saveLibraryItem, setLibraryItemDisplayName } from "./library-store";
+import { createMascotCode, findLibraryItem } from "./library-store";
 import { getMascotGenerationProvider } from "./provider";
-import type { GeneratedPose, GenerationJob, MascotLibraryItem, PoseRole, PoseSetVisualQualityMetrics } from "./types";
+import type { GeneratedPose, MascotLibraryItem, PoseRole, PoseSetVisualQualityMetrics } from "./types";
 import { isPoseSetReadyForPackaging } from "./pose-set-qc";
 import { findHatchedPostBirthAttempt } from "./post-birth-route-context";
-import { findPostBirthProfile } from "./post-birth-store";
+import { completePostBirthProfile, findPostBirthProfile } from "./post-birth-store";
+import { readCopiedPoseAssets } from "./copy-asset-store";
+import { readApprovedPoseAssets } from "./approved-pose-store";
 
 const BUCKET = "mascot-packages";
 const PACKAGE_VERSION = "1.0.0";
@@ -75,7 +77,7 @@ export async function publishMascotPackage(
   }
   const packageRow = existing ?? await createPendingPackage(admin, userId, item);
   if (packageRow.status === "revoked") throw new MascotPackageError("PACKAGE_REVOKED", "Este pacote foi revogado e não pode ser preparado novamente.");
-  const sources = await loadApprovedPoseAssets(userId, item);
+  const sources = await loadApprovedPoseAssets(admin, userId, item);
   const assets = await storeAssetsExactly(admin, userId, packageRow.id, sources);
   const manifest = createManifest(item, packageRow.id, assets, displayName);
   assertManifest(manifest, userId, packageRow.id);
@@ -99,7 +101,16 @@ export async function publishPostBirthMascotPackage(client: SupabaseClient, user
   assertApprovedSet(job.poses, job.poseSetQc);
   if (!job.approvedMasterId) throw new MascotPackageError("PACKAGE_SOURCE_UNAVAILABLE", "Não foi possível confirmar o Master aprovado.", 409);
 
-  const item = await ensurePostBirthLibraryItem(client, userId, profile.displayName, job);
+  const completion = await completePostBirthProfile(client, userId, attempt.attempt_id, {
+    expectedRevision: profile.configurationRevision,
+    displayName: profile.displayName,
+    journalConfig: profile.journalConfig,
+    modalJobId: job.id,
+    masterId: job.approvedMasterId,
+    mascotCode: createMascotCode(),
+    poses: job.poses.map((pose) => ({ ...pose, imageUrl: "" })),
+  }, admin);
+  const item = completion.libraryItem;
   const result = await publishMascotPackage(client, userId, item.id, { displayName: profile.displayName });
   const signedManifest = await createSignedManifestUrl(admin, userId, result.package);
   return { ...result, ...signedManifest };
@@ -132,6 +143,10 @@ export async function normalizePackageAsset(bytes: Uint8Array, declaredMime: str
     }
     if (sourceMetadata.width > MAX_PACKAGE_ASSET_DIMENSION || sourceMetadata.height > MAX_PACKAGE_ASSET_DIMENSION) {
       throw new MascotPackageError("ASSET_DIMENSIONS_INVALID", "A pose aprovada excede as dimensões permitidas.", 409);
+    }
+    const sourceStats = await sharp(bytes, { failOn: "error" }).stats();
+    if (sourceStats.isOpaque) {
+      throw new MascotPackageError("ASSET_TRANSPARENCY_INVALID", "A pose aprovada não possui transparência real.", 409);
     }
     const normalized = await sharp(bytes, { failOn: "error" }).rotate().png({ compressionLevel: 9 }).toBuffer();
     if (normalized.byteLength === 0 || normalized.byteLength > MAX_PACKAGE_ASSET_BYTES) {
@@ -167,15 +182,24 @@ async function createPendingPackage(admin: SupabaseClient, userId: string, item:
   throw new MascotPackageError("PACKAGE_REGISTRATION_FAILED", "Não foi possível iniciar a finalização do pacote.");
 }
 
-async function loadApprovedPoseAssets(userId: string, item: MascotLibraryItem) {
+async function loadApprovedPoseAssets(admin: SupabaseClient, userId: string, item: MascotLibraryItem) {
+  if (item.origin === "public_copy") return loadCopiedPoseAssets(admin, userId, item);
+  if (item.attemptId) {
+    const durable = await readApprovedPoseAssets(admin, userId, item.attemptId);
+    if (durable) return loadDurablePoseAssets(item, durable);
+  }
+  if (!item.attemptId || !item.jobId || !item.masterId) {
+    throw new MascotPackageError("PACKAGE_SOURCE_UNAVAILABLE", "Não foi possível confirmar o conjunto aprovado.");
+  }
+  const jobId = item.jobId;
   const provider = getMascotGenerationProvider();
   const identity = jobIdentity(userId, item.attemptId);
-  const job = await provider.getJob(item.jobId, identity);
+  const job = await provider.getJob(jobId, identity);
   if (!job || job.approvedMasterId !== item.masterId) throw new MascotPackageError("PACKAGE_SOURCE_UNAVAILABLE", "Não foi possível confirmar o conjunto aprovado.");
   assertApprovedSet(job.poses, job.poseSetQc);
   return Promise.all(ROLES.map(async (role) => {
     const pose = job.poses.find((entry) => entry.role === role)!;
-    const source = await provider.getPoseImage?.(item.jobId, role, identity);
+    const source = await provider.getPoseImage?.(jobId, role, identity);
     if (!source) throw new MascotPackageError("ASSET_MISSING", `A pose ${role} não está disponível.`, 409);
     const bytes = new Uint8Array(source.bytes);
     const hash = sha256(bytes);
@@ -183,6 +207,31 @@ async function loadApprovedPoseAssets(userId: string, item: MascotLibraryItem) {
       throw new MascotPackageError("INVALID_CHECKSUM", `A pose ${role} não corresponde ao derivado aprovado.`, 409);
     }
     return { pose, role, ...(await normalizePackageAsset(bytes, source.contentType)) };
+  }));
+}
+
+async function loadDurablePoseAssets(item: MascotLibraryItem, durable: Awaited<ReturnType<typeof readApprovedPoseAssets>>) {
+  if (!durable || durable.length !== ROLES.length) {
+    throw new MascotPackageError("ASSET_MISSING", "Os três assets aprovados não estão completos.", 409);
+  }
+  return Promise.all(ROLES.map(async (role) => {
+    const stored = durable.find((asset) => asset.role === role);
+    const pose = item.poses.find((entry) => entry.role === role);
+    if (!stored || !pose) throw new MascotPackageError("ASSET_MISSING", `A pose ${role} não está disponível.`, 409);
+    return { pose, role, ...(await normalizePackageAsset(stored.bytes, stored.mimeType)) };
+  }));
+}
+
+async function loadCopiedPoseAssets(admin: SupabaseClient, userId: string, item: MascotLibraryItem) {
+  const assets = await readCopiedPoseAssets(admin, userId, item.id);
+  if (assets.length !== ROLES.length || new Set(assets.map((asset) => asset.role)).size !== ROLES.length) {
+    throw new MascotPackageError("ASSET_MISSING", "Os assets desta cópia não estão completos.", 409);
+  }
+  return Promise.all(ROLES.map(async (role) => {
+    const stored = assets.find((asset) => asset.role === role);
+    const pose = item.poses.find((entry) => entry.role === role);
+    if (!stored || !pose) throw new MascotPackageError("ASSET_MISSING", `A pose ${role} não está disponível.`, 409);
+    return { pose, role, ...(await normalizePackageAsset(stored.bytes, stored.mimeType)) };
   }));
 }
 
@@ -299,23 +348,6 @@ function isTimestamp(value: unknown) {
 function packageErrorStatus(code: string): 400 | 404 | 409 | 503 {
   if (code === "DISPLAY_NAME_REQUIRED") return 400;
   if (code === "POST_BIRTH_PROFILE_NOT_AVAILABLE" || code === "POST_BIRTH_PROFILE_NOT_FOUND" || code === "MASCOT_NOT_FOUND") return 404;
-  if (code === "POST_BIRTH_PROFILE_NOT_ACTIVE" || code === "INVALID_CHECKSUM" || code === "ASSET_MISSING" || code === "MANIFEST_INVALID" || code === "PACKAGE_DISPLAY_NAME_CONFLICT") return 409;
+  if (code === "POST_BIRTH_PROFILE_NOT_ACTIVE" || code === "INVALID_CHECKSUM" || code === "ASSET_MISSING" || code === "ASSET_TRANSPARENCY_INVALID" || code === "MANIFEST_INVALID" || code === "PACKAGE_DISPLAY_NAME_CONFLICT") return 409;
   return 503;
-}
-
-async function ensurePostBirthLibraryItem(client: SupabaseClient, userId: string, displayName: string, job: GenerationJob) {
-  const current = await findLibraryItemByJob(client, userId, job.id);
-  if (!current) {
-    return saveLibraryItem(client, userId, {
-      displayName,
-      jobId: job.id,
-      attemptId: job.attemptId,
-      masterId: job.approvedMasterId!,
-      poses: job.poses.map((pose) => ({ ...pose, imageUrl: "" })),
-    });
-  }
-  if (current.displayName === displayName) return current;
-  const renamed = await setLibraryItemDisplayName(client, userId, current.id, displayName);
-  if (!renamed) throw new MascotPackageError("MASCOT_NOT_FOUND", "Mascote não encontrado.", 404);
-  return renamed;
 }

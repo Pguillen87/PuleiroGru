@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
 import { ImportCodeError, isValidImportCode, resolveImportCode } from "@/lib/mascot-generation/import-store";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { clientAddress, consumeRequestBudget } from "@/lib/security/request-rate-limit";
 
 export const runtime = "nodejs";
 
 export async function GET(_request: Request, context: { params: Promise<{ code: string }> }) {
+  const budget = consumeRequestBudget(`mascot-import:${clientAddress(_request)}`, 30, 60_000);
+  if (!budget.allowed) {
+    return NextResponse.json({ code: "IMPORT_RATE_LIMITED" }, {
+      status: 429,
+      headers: { "Retry-After": String(budget.retryAfterSeconds), "Cache-Control": "no-store" },
+    });
+  }
   const admin = createAdminClient();
   if (!admin) return response("IMPORT_CODE_STORAGE_UNAVAILABLE", 503);
   const { code } = await context.params;

@@ -26,19 +26,29 @@ export const generationConfig = {
   masterGenerationEnabled: enabled(process.env.MASTER_GENERATION_ENABLED, false),
   poseGenerationEnabled: enabled(process.env.POSE_GENERATION_ENABLED, false),
   incubatorFlowEnabled: enabled(process.env.INCUBATOR_FLOW_ENABLED, false),
+  incubatorAutoRankingEnabled: enabled(process.env.INCUBATOR_AUTO_RANKING_ENABLED, false),
   allowDevTestIdentity: enabled(process.env.ALLOW_DEV_TEST_IDENTITY, false),
 };
 
-export type GenerationConfigurationIssue = "INVALID_PROVIDER" | "MODAL_API_URL_REQUIRED" | "MODAL_BFF_JWT_SECRET_REQUIRED" | "MODAL_BFF_JWT_SECRET_WEAK";
+export type GenerationConfigurationIssue = "INVALID_PROVIDER" | "MOCK_PROVIDER_FORBIDDEN_IN_PRODUCTION" | "MODAL_API_URL_REQUIRED" | "MODAL_BFF_JWT_SECRET_REQUIRED" | "MODAL_BFF_JWT_SECRET_WEAK" | "PRODUCTION_GENERATION_DISABLED";
 
 /** Server-side only: validates a real Modal activation without breaking mock builds. */
 export function generationConfigurationIssues(): GenerationConfigurationIssue[] {
   const issues: GenerationConfigurationIssue[] = [];
   if (generationConfig.provider !== "mock" && generationConfig.provider !== "modal") issues.push("INVALID_PROVIDER");
+  if (process.env.NODE_ENV === "production" && generationConfig.provider === "mock") issues.push("MOCK_PROVIDER_FORBIDDEN_IN_PRODUCTION");
   if (generationConfig.provider !== "modal") return issues;
   if (!/^https:\/\//.test(generationConfig.modalApiUrl)) issues.push("MODAL_API_URL_REQUIRED");
   if (!generationConfig.modalBffJwtSecret) issues.push("MODAL_BFF_JWT_SECRET_REQUIRED");
   else if (generationConfig.modalBffJwtSecret.length < 32) issues.push("MODAL_BFF_JWT_SECRET_WEAK");
+  if (process.env.NODE_ENV === "production"
+    && (!generationConfig.registrationEnabled
+      || !generationConfig.masterGenerationEnabled
+      || !generationConfig.poseGenerationEnabled
+      || !generationConfig.incubatorFlowEnabled
+      || !generationConfig.incubatorAutoRankingEnabled)) {
+    issues.push("PRODUCTION_GENERATION_DISABLED");
+  }
   return issues;
 }
 
@@ -56,6 +66,7 @@ export function publicGenerationConfig() {
     masterGenerationEnabled: generationConfig.masterGenerationEnabled,
     poseGenerationEnabled: generationConfig.poseGenerationEnabled,
     incubatorFlowEnabled: generationConfig.incubatorFlowEnabled,
-    authenticationRequired: generationConfig.provider === "modal" && !generationConfig.allowDevTestIdentity,
+    incubatorAutoRankingEnabled: generationConfig.incubatorAutoRankingEnabled,
+    authenticationRequired: !generationConfig.allowDevTestIdentity,
   };
 }

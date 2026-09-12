@@ -23,6 +23,7 @@ export default defineConfig({
       MOCK_GENERATION_DELAY_MS: "250",
       JOB_POLL_INTERVAL_MS: "100",
       JOB_TIMEOUT_MS: "1200",
+      INCUBATOR_FLOW_ENABLED: "true",
       ALLOW_DEV_TEST_IDENTITY: "true",
       NEXT_PUBLIC_ALLOW_DEV_TEST_IDENTITY: "true",
       REGISTRATION_ENABLED: "true",

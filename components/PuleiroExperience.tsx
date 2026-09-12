@@ -20,8 +20,8 @@ import { StageButton } from "@/components/actions/StageButton";
 import { MascotConfigurationDialog } from "@/components/stage/MascotConfigurationDialog";
 import { IncubatorCreationExperience } from "@/components/incubator/IncubatorCreationExperience";
 
-export function PuleiroExperience({ config }: { config: FlowConfig }) {
-  if (config.incubatorFlowEnabled) return <IncubatorCreationExperience config={config} />;
+export function PuleiroExperience({ config, mode = "incubator" }: { config: FlowConfig; mode?: "incubator" | "legacy" }) {
+  if (mode === "incubator") return <AccountGate required={config.authenticationRequired}><IncubatorCreationExperience config={config} /></AccountGate>;
   return (
     <AccountGate required={config.authenticationRequired}>
       <AuthenticatedPuleiroExperience config={config} />

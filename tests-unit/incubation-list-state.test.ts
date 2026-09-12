@@ -77,7 +77,7 @@ describe("GET /api/mascot/incubations state projection", () => {
     getMascotGenerationProvider.mockReturnValue(provider);
     const { GET } = await import("@/app/api/mascot/incubations/route");
     const response = await GET(new Request("https://puleiro.test/api/mascot/incubations"));
-    await expect(response.json()).resolves.toEqual({ incubations: [] });
+    await expect(response.json()).resolves.toMatchObject({ incubations: [{ attemptId: orphan.attempt_id, jobId: null, productState: "PREPARING" }] });
     expect(provider.createIncubation).not.toHaveBeenCalled();
     expect(saveAttemptJob).not.toHaveBeenCalled();
   });
@@ -88,7 +88,7 @@ describe("GET /api/mascot/incubations state projection", () => {
     getMascotGenerationProvider.mockReturnValue({ getJob: vi.fn(), getJobByAttempt: vi.fn().mockResolvedValue({ id: "wrong", attemptId: "other-attempt", status: "registered", poses: [] }) });
     const { GET } = await import("@/app/api/mascot/incubations/route");
     const response = await GET(new Request("https://puleiro.test/api/mascot/incubations"));
-    await expect(response.json()).resolves.toEqual({ incubations: [] });
+    await expect(response.json()).resolves.toMatchObject({ incubations: [{ attemptId: orphan.attempt_id, jobId: null, productState: "PREPARING" }] });
     expect(saveAttemptJob).not.toHaveBeenCalled();
   });
 });

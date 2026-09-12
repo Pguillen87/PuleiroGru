@@ -20,6 +20,7 @@ export async function POST(request: Request, context: { params: Promise<{ itemId
     if (!item) return NextResponse.json({ message: "Mascote não encontrado." }, { status: 404 });
     const admin = createAdminClient();
     if (!admin) return NextResponse.json({ message: "A publicação ainda não está configurada neste ambiente." }, { status: 503 });
+    if (item.origin === "public_copy") return NextResponse.json({ code: "PUBLIC_MASCOT_COPY_NOT_REPUBLISHABLE", message: "Cópias pessoais não podem ser republicadas." }, { status: 409 });
     if (!body.enabled) { await unpublishMascot(admin, identity.uid, item.id); return NextResponse.json({ published: false }); }
     await publishMascotPackage(client, identity.uid, item.id);
     const publicItem = await publishMascot(admin, identity.uid, item);

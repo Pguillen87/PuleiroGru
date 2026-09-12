@@ -30,7 +30,7 @@ export function IncubationJournal({ jobId }: { jobId: string }) {
     && ["normal", "listening", "transcribing"].every((role) => orderedPoses.some((pose) => pose.role === role))
     && job?.poseSetQc?.status === "passed"
     && job.poseSetQc.version === "pose-set-visual-v3";
-  const isReadyToHatch = job?.productState === "READY_TO_HATCH" && hasVerifiedPoseSet;
+  const isReadyToOpen = job?.productState === "READY_TO_HATCH" && hasVerifiedPoseSet;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -60,7 +60,7 @@ export function IncubationJournal({ jobId }: { jobId: string }) {
   }, [jobId]);
 
   async function hatch() {
-    if (hatchSubmitting.current || !isReadyToHatch) return;
+    if (hatchSubmitting.current || !isReadyToOpen) return;
     hatchSubmitting.current = true;
     setBusy(true); setError("");
     const controller = new AbortController();
@@ -84,8 +84,8 @@ export function IncubationJournal({ jobId }: { jobId: string }) {
     ? "Escolha o mascote que mais parece com o seu."
     : state === "HATCHED"
       ? "Seu mascote saiu do ovo."
-      : isReadyToHatch
-        ? "O ovo está pronto para chocar."
+      : isReadyToOpen
+        ? "Seu mascote está pronto para abrir."
         : state === "FAILED"
           ? "Não conseguimos concluir este nascimento."
           : "O nascimento continua na Incubadora.";
@@ -93,22 +93,22 @@ export function IncubationJournal({ jobId }: { jobId: string }) {
     ? "Encontramos mais de uma opção boa. Sua escolha continuará o mesmo nascimento."
     : state === "HATCHED"
       ? "O nascimento foi confirmado. As próximas etapas ficarão disponíveis quando forem liberadas."
-      : isReadyToHatch
-        ? "As três poses passaram pelas conferências. Chocar não inicia uma nova geração."
+      : isReadyToOpen
+        ? "As três poses foram aprovadas. Abra quando quiser; isso não inicia uma nova geração."
         : state === "FAILED"
           ? "Você pode revisar os detalhes ou tentar novamente quando estiver disponível."
           : "Estamos preparando as poses escolhidas. Você pode sair e voltar depois.";
 
   return <div className="site-shell"><Header /><main className="journal-page">
     <section className="journal-reveal" aria-labelledby="journal-title">
-      <div className="journal-reveal__heading"><span className="state-kicker">{state === "NEEDS_HUMAN_MASTER_SELECTION" ? "Precisa de você" : state === "FAILED" ? "Nascimento interrompido" : isReadyToHatch ? "Pronto para chocar" : "Jornal do nascimento"}</span><h1 id="journal-title">{heading}</h1><p>{description}</p></div>
+      <div className="journal-reveal__heading"><span className="state-kicker">{state === "NEEDS_HUMAN_MASTER_SELECTION" ? "Exceção operacional" : state === "FAILED" ? "Nascimento interrompido" : isReadyToOpen ? "Pronto para abrir" : "Jornal do nascimento"}</span><h1 id="journal-title">{heading}</h1><p>{description}</p></div>
       {job?.productState === "NEEDS_HUMAN_MASTER_SELECTION" && <div className="incubator-master-selection"><div className="incubator-master-selector" role="group" aria-label="Escolha um mascote mestre">{job.masters.map((master) => <button type="button" aria-pressed={selectedMasterId === master.id} key={master.id} disabled={busy} data-selected={selectedMasterId === master.id || undefined} onClick={() => { setSelectedMasterId(master.id); setError(""); }}><Image unoptimized width={320} height={320} src={master.imageUrl} alt={`Opção de mascote ${master.id.replace("master_", "")}.`} /><span>Selecionar esta opção</span></button>)}</div><div className="journal-reveal__action"><StageButton disabled={busy || !selectedMasterId} onClick={() => void confirmMasterSelection()}>{busy ? "Guardando escolha…" : "Confirmar escolha"}</StageButton></div></div>}
       {orderedPoses.length === 3 && <div className="journal-pose-showcase">
         {orderedPoses.map((pose, index) => <figure className={index === 0 ? "journal-pose-showcase__hero" : undefined} key={pose.id}><Image unoptimized width={720} height={720} src={pose.imageUrl} alt={`${POSE_ROLE_LABELS[pose.role]} do mascote gerado.`} /><figcaption>{POSE_ROLE_LABELS[pose.role]}</figcaption></figure>)}
       </div>}
       {!job && !error && <p role="status">Abrindo o Jornal…</p>}
       {error && <p className="stage-error" role="alert">{error}</p>}
-      {isReadyToHatch && <div className="journal-reveal__action"><StageButton disabled={busy} onClick={() => void hatch()}>{busy ? "Chocando…" : "Chocar ovo"}</StageButton></div>}
+      {isReadyToOpen && <div className="journal-reveal__action"><StageButton disabled={busy} onClick={() => void hatch()}>{busy ? "Abrindo…" : "Abrir mascote"}</StageButton></div>}
       {job?.productState === "HATCHED" && <p role="status" className="journal-reveal__confirmation">Nascimento confirmado.</p>}
       {job?.productState === "HATCHED" && <PostBirthJournal jobId={jobId} />}
     </section>

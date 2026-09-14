@@ -354,6 +354,14 @@ main {
   align-items: start;
 }
 
+/* A jornada assíncrona do /criar não usa colunas editoriais laterais. Sem
+   este recorte, o palco fica deslocado para a direita em telas amplas. */
+.experience-layout.incubator-entry-layout {
+  width: min(100%, 64rem);
+  grid-template-areas: "stage";
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .progress-folio {
   grid-area: progress;
   min-height: 4.5rem;
@@ -497,6 +505,16 @@ main {
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-4);
+}
+
+.stage-state--entry .stage__content {
+  align-items: center;
+  text-align: center;
+}
+
+.stage-state--entry .status-message {
+  justify-items: center;
+  text-align: center;
 }
 
 .state-kicker {

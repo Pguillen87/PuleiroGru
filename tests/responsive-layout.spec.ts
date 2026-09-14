@@ -36,6 +36,32 @@ test("Criar continua rolável no desktop sem recortar o palco", async ({ page })
   await expectNoHorizontalOverflow(page);
 });
 
+test("Entrada do Criar permanece centralizada em desktop e celular", async ({ page }) => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 375, height: 812 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/criar");
+
+    const entryAlignment = await page.locator(".stage-state--entry").evaluate((stage) => {
+      const rect = stage.getBoundingClientRect();
+      return {
+        center: rect.left + rect.width / 2,
+        viewportCenter: window.innerWidth / 2,
+      };
+    });
+
+    expect(Math.abs(entryAlignment.center - entryAlignment.viewportCenter)).toBeLessThanOrEqual(1);
+
+    await page.getByRole("button", { name: "Criar meu mascote" }).click();
+    const selectionAlignment = await page.locator(".stage-state--photo-selection").evaluate((stage) => {
+      const rect = stage.getBoundingClientRect();
+      return { center: rect.left + rect.width / 2, viewportCenter: window.innerWidth / 2 };
+    });
+
+    expect(Math.abs(selectionAlignment.center - selectionAlignment.viewportCenter)).toBeLessThanOrEqual(1);
+    await expectNoHorizontalOverflow(page);
+  }
+});
+
 test("Incubadora usa filtros acessíveis e não estica um único card", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.route("**/api/mascot/incubations", (route) => route.fulfill({ json: { incubations: [incubation] } }));

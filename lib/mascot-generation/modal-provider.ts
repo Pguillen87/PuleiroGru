@@ -57,6 +57,11 @@ export class ModalProviderError extends Error {
   }
 }
 
+export type ModalJobLookup =
+  | { kind: "found"; job: GenerationJob }
+  | { kind: "not_found" }
+  | { kind: "unavailable"; error: ModalProviderError };
+
 export class ModalMascotGenerationProvider implements MascotGenerationProvider {
   private readonly baseUrl: string;
 
@@ -143,16 +148,38 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
   }
 
   async getJob(jobId: string, identity: JobIdentity) {
-    const response = await this.request(`/v2/mascot/jobs/${encodeURIComponent(jobId)}`, identity);
-    if (response.status === 404) return null;
-    return this.toGenerationJob(await this.readJob(response), response);
+    const result = await this.lookupJob(jobId, identity);
+    if (result.kind === "not_found") return null;
+    if (result.kind === "unavailable") throw result.error;
+    return result.job;
   }
 
   async getJobByAttempt(identity: JobIdentity) {
-    const query = encodeURIComponent(identity.attemptId);
-    const response = await this.request(`/v2/mascot/jobs?attempt_id=${query}`, identity);
-    if (response.status === 404) return null;
-    return this.toGenerationJob(await this.readJob(response), response);
+    const result = await this.lookupJobByAttempt(identity);
+    if (result.kind === "not_found") return null;
+    if (result.kind === "unavailable") throw result.error;
+    return result.job;
+  }
+
+  async lookupJob(jobId: string, identity: JobIdentity): Promise<ModalJobLookup> {
+    try {
+      const response = await this.request(`/v2/mascot/jobs/${encodeURIComponent(jobId)}`, identity);
+      if (response.status === 404) return { kind: "not_found" };
+      return { kind: "found", job: this.toGenerationJob(await this.readJob(response), response) };
+    } catch (error) {
+      return { kind: "unavailable", error: asModalProviderError(error) };
+    }
+  }
+
+  async lookupJobByAttempt(identity: JobIdentity): Promise<ModalJobLookup> {
+    try {
+      const query = encodeURIComponent(identity.attemptId);
+      const response = await this.request(`/v2/mascot/jobs?attempt_id=${query}`, identity);
+      if (response.status === 404) return { kind: "not_found" };
+      return { kind: "found", job: this.toGenerationJob(await this.readJob(response), response) };
+    } catch (error) {
+      return { kind: "unavailable", error: asModalProviderError(error) };
+    }
   }
 
   async deleteJob(jobId: string, identity: JobIdentity) {
@@ -336,6 +363,11 @@ export class ModalMascotGenerationProvider implements MascotGenerationProvider {
       subjectHint: job.subjectHint,
     };
   }
+}
+
+function asModalProviderError(error: unknown) {
+  if (error instanceof ModalProviderError) return error;
+  return new ModalProviderError(503, "INCUBATION_PROVIDER_UNAVAILABLE", "O serviço de mascotes está temporariamente indisponível.");
 }
 
 export function modalRequestTimeoutMs(path: string, method = "GET") {

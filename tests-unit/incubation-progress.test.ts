@@ -20,5 +20,6 @@ describe("incubation estimates and timestamps", () => {
   it("only server-confirmed readiness finishes progress; failure stops it", () => {
     expect(incubationProgress({ ...item, productState: "READY_TO_HATCH" }, { averageMs: null, sampleCount: 0 }, 0)?.percent).toBe(100);
     expect(incubationProgress({ ...item, productState: "FAILED" }, { averageMs: 600_000, sampleCount: 20 }, Date.now())).toBeNull();
+    expect(incubationProgress({ ...item, productState: "RECOVERY_REQUIRED" }, { averageMs: 600_000, sampleCount: 20 }, Date.now())).toBeNull();
   });
 });

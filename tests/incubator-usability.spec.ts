@@ -32,3 +32,43 @@ test("falha de leitura não aparece como lista vazia e permite recuperação", a
   await expect(page.getByRole("link", { name: "Acompanhar", exact: true })).toBeVisible();
   await expect(page.getByText(/Ainda não há histórico suficiente/)).toBeVisible();
 });
+
+test("job órfão mostra falha operacional e remoção protegida", async ({ page }) => {
+  let retired = false;
+  const orphan = { attemptId: "attempt-orphan-123456", jobId: "job-orphan", productState: "RECOVERY_REQUIRED", phase: "master_approved", createdAt: "2026-08-31T16:33:00Z", updatedAt: "2026-08-31T21:54:37Z", poseCount: 0, recoveryCode: "INCUBATION_JOB_GONE" };
+  await page.route("**/api/mascot/incubations", (route) => route.fulfill({ json: { incubations: retired ? [] : [orphan] } }));
+  await page.route("**/api/mascot/incubations/timing", (route) => route.fulfill({ json: { averageMs: null, sampleCount: 0 } }));
+  await page.route("**/api/mascot/incubations/job-orphan/retire", async (route) => {
+    retired = true;
+    await route.fulfill({ json: { retired: true, idempotentReplay: false } });
+  });
+
+  await page.goto("/incubadora");
+  await expect(page.getByText("Processamento não disponível")).toBeVisible();
+  await expect(page.getByText("Este nascimento perdeu o vínculo com o processamento.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Ver detalhes", exact: true })).toHaveAttribute("href", "/incubadora/job-orphan");
+  await page.getByRole("button", { name: "Remover da Incubadora" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Mascotes concluídos e itens da biblioteca não serão afetados.");
+  await page.getByRole("button", { name: "Confirmar remoção" }).click();
+  await expect(page.getByRole("heading", { name: "Nenhum nascimento neste filtro" })).toBeVisible();
+});
+
+test("nascimento interrompido pode ser removido com confirmação", async ({ page }) => {
+  let retired = false;
+  const failed = { attemptId: "attempt-failed-123456", jobId: "job-failed", productState: "FAILED", phase: "failed", createdAt: "2026-09-14T16:11:52Z", updatedAt: "2026-09-14T16:33:15Z", poseCount: 0, recoveryCode: "POSE_GENERATION_FAILED" };
+  await page.route("**/api/mascot/incubations", (route) => route.fulfill({ json: { incubations: retired ? [] : [failed] } }));
+  await page.route("**/api/mascot/incubations/timing", (route) => route.fulfill({ json: { averageMs: null, sampleCount: 0 } }));
+  await page.route("**/api/mascot/incubations/job-failed/retire", async (route) => {
+    retired = true;
+    await route.fulfill({ json: { retired: true, idempotentReplay: false } });
+  });
+
+  await page.goto("/incubadora");
+  await expect(page.getByText("Nascimento interrompido")).toBeVisible();
+  await expect(page.getByText("Abra os detalhes para entender a falha antes de qualquer recuperação.")).toBeVisible();
+  await page.getByRole("button", { name: "Remover da Incubadora" }).click();
+  await expect(page.getByRole("dialog")).toContainText("O processamento falhou e não será retomado.");
+  await expect(page.getByRole("dialog")).toContainText("Mascotes concluídos e itens da biblioteca não serão afetados.");
+  await page.getByRole("button", { name: "Confirmar remoção" }).click();
+  await expect(page.getByRole("heading", { name: "Nenhum nascimento neste filtro" })).toBeVisible();
+});

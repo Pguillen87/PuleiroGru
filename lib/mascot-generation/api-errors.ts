@@ -44,6 +44,13 @@ export function integrationErrorResponse(
       BFF_TOKEN_INVALID: "O Puleiro não conseguiu confirmar a conexão segura com a oficina. Tente retomar este nascimento em instantes.",
       WEB_V2_DISABLED: "A oficina do Puleiro está temporariamente indisponível. Tente retomar este nascimento em instantes.",
       JOB_NOT_FOUND: "Nascimento não encontrado.",
+      INCUBATION_JOB_GONE: "Este nascimento perdeu o vínculo com o processamento.",
+      INCUBATION_RETIRED: "Este nascimento foi retirado da Incubadora.",
+      INCUBATION_PROVIDER_UNAVAILABLE: "Não foi possível confirmar o estado do nascimento agora. Tente novamente em instantes.",
+      INCUBATION_RECOVERY_NOT_CONFIRMED: "A retirada só está disponível após confirmar a falha operacional.",
+      INCUBATION_RETIRE_NOT_ALLOWED: "Só é possível remover nascimentos que falharam ou perderam o vínculo com o processamento.",
+      INCUBATION_RECOVERY_UNAVAILABLE: "Não foi possível consultar a recuperação deste nascimento.",
+      INCUBATION_RETIRE_FAILED: "Não foi possível retirar este nascimento agora.",
       ATTEMPT_MISMATCH: "Esta tentativa não pertence à sessão atual.",
     };
     return traced(NextResponse.json({

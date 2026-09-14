@@ -14,18 +14,23 @@ const items: IncubationSummary[] = [
   { ...base, jobId: "job-hatched", productState: "HATCHED" },
   { ...base, jobId: "job-running", productState: "INCUBATING" },
   { ...base, jobId: "job-failed", productState: "FAILED" },
+  { ...base, jobId: "job-orphan", productState: "RECOVERY_REQUIRED", recoveryCode: "INCUBATION_JOB_GONE" },
 ];
 
 describe("IncubatorList", () => {
   it("separa os estados de produto sem inventar estado novo", () => {
     expect(filterIncubations(items, "ready").map((item) => item.productState)).toEqual(["READY_TO_HATCH"]);
     expect(filterIncubations(items, "naming").map((item) => item.productState)).toEqual(["HATCHED"]);
-    expect(filterIncubations(items, "failed").map((item) => item.productState)).toEqual(["FAILED"]);
+    expect(filterIncubations(items, "failed").map((item) => item.productState)).toEqual(["FAILED", "RECOVERY_REQUIRED"]);
     expect(filterIncubations(items, "in-progress").map((item) => item.productState)).toEqual(["INCUBATING"]);
   });
 
   it("apresenta a linguagem de produto definida para pronto e nomeação", () => {
     expect(incubationListLabel(items[0])).toBe("Pronto para abrir");
     expect(incubationListLabel(items[1])).toBe("Concluir nome");
+  });
+
+  it("explica quando um nascimento perdeu o vínculo com o processamento", () => {
+    expect(incubationListLabel(items[4])).toBe("Processamento não disponível");
   });
 });

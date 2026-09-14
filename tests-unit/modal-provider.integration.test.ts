@@ -20,6 +20,16 @@ describe("BFF → Modal v2 local sem GPU", () => {
       const token = request.headers.authorization?.slice(7) ?? "";
       const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), { issuer: "puleiro-bff", audience: "gru-modal" });
       const url = new URL(request.url ?? "/", "http://local");
+      if (url.pathname === "/v2/mascot/jobs/job-missing") {
+        response.statusCode = 404;
+        response.end(JSON.stringify({ code: "JOB_NOT_FOUND" }));
+        return;
+      }
+      if (url.pathname === "/v2/mascot/jobs/job-unavailable") {
+        response.statusCode = 503;
+        response.end(JSON.stringify({ code: "TEMPORARILY_UNAVAILABLE" }));
+        return;
+      }
       if (request.method === "POST" && url.pathname === "/v2/mascot/jobs") registrationCalls += 1;
       if (request.method === "POST" && url.pathname === "/v2/mascot/jobs/job-local-1/master-generations") masterGenerationCalls += 1;
       if (request.method === "POST" && url.pathname === "/v2/mascot/jobs/job-local-1/masters/master_1/approve") {
@@ -127,5 +137,16 @@ describe("BFF → Modal v2 local sem GPU", () => {
     expect(modalRequestTimeoutMs("/v2/mascot/jobs/job-local", "DELETE")).toBe(60_000);
     expect(modalRequestTimeoutMs("/v2/mascot/jobs?attempt_id=attempt-local", "GET")).toBe(20_000);
     expect(modalRequestTimeoutMs("/v2/mascot/jobs/job-local/pose-generations", "POST")).toBe(20_000);
+  });
+
+  it("classifica 404 como job ausente e 503 como indisponibilidade", async () => {
+    vi.stubEnv("MODAL_MASCOT_API_URL", baseUrl);
+    vi.stubEnv("MODAL_BFF_JWT_SECRET", secret);
+    vi.resetModules();
+    const { ModalMascotGenerationProvider } = await import("@/lib/mascot-generation/modal-provider");
+    const provider = new ModalMascotGenerationProvider();
+    const identity = { ownerId: "owner-local", attemptId: "attempt-local-lookup", correlationId: crypto.randomUUID() };
+    await expect(provider.lookupJob("job-missing", identity)).resolves.toEqual({ kind: "not_found" });
+    await expect(provider.lookupJob("job-unavailable", identity)).resolves.toMatchObject({ kind: "unavailable", error: { status: 503, code: "TEMPORARILY_UNAVAILABLE" } });
   });
 });

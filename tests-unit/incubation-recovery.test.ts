@@ -89,6 +89,19 @@ describe("resolveIncubationCreation", () => {
 });
 
 describe("recoverIncubationJob", () => {
+  it("distingue job ausente de indisponibilidade transitória", async () => {
+    const lookup = await import("@/lib/mascot-generation/incubation-recovery");
+    await expect(lookup.lookupIncubationJob({
+      lookupJob: vi.fn().mockResolvedValue({ kind: "not_found" }),
+      getJob: vi.fn(),
+    }, "job-missing", { ownerId: "owner", attemptId: "attempt", correlationId: "trace" })).resolves.toEqual({ kind: "not_found" });
+    const error = new Error("temporarily unavailable");
+    await expect(lookup.lookupIncubationJob({
+      lookupJob: vi.fn().mockResolvedValue({ kind: "unavailable", error }),
+      getJob: vi.fn(),
+    }, "job-down", { ownerId: "owner", attemptId: "attempt", correlationId: "trace" })).resolves.toEqual({ kind: "unavailable", error });
+  });
+
   it("recupera e persiste um job do mesmo attempt quando o vínculo está ausente", async () => {
     const existing = job("job-real-registered");
     const getJob = vi.fn();

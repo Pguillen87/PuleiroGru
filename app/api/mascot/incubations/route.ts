@@ -6,14 +6,17 @@ import { findIncubationAttempts, MascotAttemptStoreError, projectedIncubationPro
 import { integrationErrorResponse } from "@/lib/mascot-generation/api-errors";
 import { generationConfig } from "@/lib/mascot-generation/config";
 import { IncubationInputError, parseIncubationPoseChoices, parseIncubationSubjectHint } from "@/lib/mascot-generation/incubation-input";
-import { IncubationRecoveryError, recoverIncubationJob, resolveIncubationCreation } from "@/lib/mascot-generation/incubation-recovery";
+import { IncubationRecoveryError, recoverIncubationJob, resolveIncubationCreation, safeIncubationJobId } from "@/lib/mascot-generation/incubation-recovery";
 import { ModalProviderError } from "@/lib/mascot-generation/modal-provider";
 import { getMascotGenerationProvider } from "@/lib/mascot-generation/provider";
 import type { GenerationJob } from "@/lib/mascot-generation/types";
+import { lookupIncubationJob } from "@/lib/mascot-generation/incubation-recovery";
+import { IncubationRecoveryStoreError, listIncubationRecoveries, markIncubationJobMissing } from "@/lib/mascot-generation/incubation-recovery-store";
 import { parseSubjectIdentity, SubjectIdentityError } from "@/lib/mascot-generation/subject-identity";
 import { validateAndSanitizeImage } from "@/lib/mascot-generation/validation";
 import { createTraceContext, mascotLog } from "@/lib/observability/mascot-trace";
 import { requireTrustedMutationRequest } from "@/lib/security/mutation-request";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -24,26 +27,48 @@ export async function GET(request: Request) {
     const identity = await requireBrowserIdentity(request);
     const supabase = await createClient();
     const attempts = await findIncubationAttempts(supabase, identity.uid);
+    const recoveries = await listIncubationRecoveries(supabase, identity.uid, attempts.map((attempt) => attempt.attempt_id));
     const provider = getMascotGenerationProvider();
     const eggs = await Promise.all(attempts.map(async (attempt) => {
       const trace = createTraceContext(attempt.attempt_id, false);
+      const recovery = recoveries.get(attempt.attempt_id);
+      if (recovery?.status === "RETIRED") return null;
+      if (recovery?.status === "CONFIRMED_MISSING") {
+        return recoverySummary(attempt, recovery.errorCode, recovery.lastObservedAt);
+      }
       let job: GenerationJob | null = null;
-      try {
-        job = await recoverIncubationJob({
-          attemptId: attempt.attempt_id,
-          existingJobId: attempt.modal_job_id,
-          getJob: (jobId) => provider.getJob(jobId, jobIdentity(identity.uid, attempt.attempt_id, trace)),
-          getJobByAttempt: () => provider.getJobByAttempt(jobIdentity(identity.uid, attempt.attempt_id, trace)),
-          persist: (candidate) => saveAttemptJob(supabase, identity.uid, candidate, trace),
-        });
-      } catch (error) {
-        mascotLog("incubation_link_recovery_failed", {
-          ...trace,
-          jobId: attempt.modal_job_id ?? undefined,
-          result: "recovery_failed",
-          stage: attempt.status,
-          safeErrorCode: error instanceof IncubationRecoveryError ? error.code : "INCUBATION_RECOVERY_FAILED",
-        });
+      if (attempt.modal_job_id) {
+        const lookup = await lookupIncubationJob(provider, attempt.modal_job_id, jobIdentity(identity.uid, attempt.attempt_id, trace));
+        if (lookup.kind === "not_found") {
+          mascotLog("incubation_job_unavailable", { jobId: safeIncubationJobId(attempt.modal_job_id), result: "failure", safeErrorCode: "INCUBATION_JOB_GONE", httpStatus: 410, stage: attempt.status });
+          const admin = createAdminClient();
+          if (!admin) throw new IncubationRecoveryStoreError("A recuperação do nascimento não está configurada.");
+          const missing = await markIncubationJobMissing(admin, identity.uid, attempt.attempt_id, attempt.modal_job_id);
+          if (missing.status === "RETIRED") return null;
+          return recoverySummary(attempt, missing.errorCode, missing.lastObservedAt);
+        }
+        if (lookup.kind === "unavailable") {
+          mascotLog("incubation_job_unavailable", { jobId: safeIncubationJobId(attempt.modal_job_id), result: "failure", safeErrorCode: "INCUBATION_PROVIDER_UNAVAILABLE", httpStatus: 503, stage: attempt.status });
+          return { ...attemptSummary(attempt, job), errorCode: "INCUBATION_PROVIDER_UNAVAILABLE", providerUnavailable: true };
+        }
+        job = lookup.job;
+      } else {
+        try {
+          job = await recoverIncubationJob({
+            attemptId: attempt.attempt_id,
+            existingJobId: null,
+            getJob: (jobId) => provider.getJob(jobId, jobIdentity(identity.uid, attempt.attempt_id, trace)),
+            getJobByAttempt: () => provider.getJobByAttempt(jobIdentity(identity.uid, attempt.attempt_id, trace)),
+            persist: (candidate) => saveAttemptJob(supabase, identity.uid, candidate, trace),
+          });
+        } catch (error) {
+          mascotLog("incubation_link_recovery_failed", {
+            ...trace,
+            result: "recovery_failed",
+            stage: attempt.status,
+            safeErrorCode: error instanceof IncubationRecoveryError ? error.code : "INCUBATION_RECOVERY_FAILED",
+          });
+        }
       }
       return {
         jobId: job?.id ?? attempt.modal_job_id,
@@ -59,10 +84,36 @@ export async function GET(request: Request) {
         poseCount: job?.poses.length ?? 0,
       };
     }));
-    return NextResponse.json({ incubations: eggs });
+    return NextResponse.json({ incubations: eggs.filter((egg): egg is NonNullable<typeof egg> => Boolean(egg)) });
   } catch (error) {
     return integrationErrorResponse(error, "INCUBATION_LIST_FAILED", "Não foi possível abrir a Incubadora.");
   }
+}
+
+function attemptSummary(attempt: Awaited<ReturnType<typeof findIncubationAttempts>>[number], job: GenerationJob | null) {
+  return {
+    jobId: job?.id ?? attempt.modal_job_id,
+    attemptId: attempt.attempt_id,
+    productState: projectedIncubationProductState(attempt, job?.productState, job ?? undefined),
+    phase: job?.status ?? attempt.current_stage ?? attempt.status,
+    createdAt: attempt.created_at,
+    updatedAt: attempt.updated_at,
+    generationReadyAt: job?.generationReadyAt ?? attempt.generation_ready_at ?? undefined,
+    hatchedAt: attempt.hatched_at ?? undefined,
+    errorCode: job?.errorCode ?? attempt.last_error_code ?? undefined,
+    selectedMasterId: job?.approvedMasterId ?? attempt.selected_master_id ?? undefined,
+    poseCount: job?.poses.length ?? 0,
+  };
+}
+
+function recoverySummary(attempt: Awaited<ReturnType<typeof findIncubationAttempts>>[number], recoveryCode: string, lastConfirmedAt: string) {
+  return {
+    ...attemptSummary(attempt, null),
+    productState: "RECOVERY_REQUIRED" as const,
+    recoveryCode,
+    errorCode: recoveryCode,
+    lastConfirmedAt,
+  };
 }
 
 export async function POST(request: Request) {

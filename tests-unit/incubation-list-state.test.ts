@@ -5,6 +5,10 @@ const createClient = vi.fn();
 const findIncubationAttempts = vi.fn();
 const getMascotGenerationProvider = vi.fn();
 const saveAttemptJob = vi.fn();
+const findIncubationRecoveries = vi.fn();
+const listIncubationRecoveries = vi.fn();
+const markIncubationJobMissing = vi.fn();
+const createAdminClient = vi.fn();
 
 vi.mock("@/lib/auth/browser-auth", () => ({
   authErrorResponse: vi.fn(() => null),
@@ -17,6 +21,8 @@ vi.mock("@/lib/mascot-generation/attempt-store", async (importOriginal) => ({
   saveAttemptJob,
 }));
 vi.mock("@/lib/mascot-generation/provider", () => ({ getMascotGenerationProvider }));
+vi.mock("@/lib/mascot-generation/incubation-recovery-store", () => ({ findIncubationRecoveries, listIncubationRecoveries, markIncubationJobMissing }));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient }));
 
 const ownerId = "8e558341-61cf-4a4a-9773-35f20f4c194e";
 const attempt = {
@@ -33,6 +39,9 @@ describe("GET /api/mascot/incubations state projection", () => {
     requireBrowserIdentity.mockResolvedValue({ uid: ownerId });
     createClient.mockResolvedValue({});
     findIncubationAttempts.mockResolvedValue([attempt]);
+    findIncubationRecoveries.mockResolvedValue(new Map());
+    listIncubationRecoveries.mockResolvedValue(new Map());
+    createAdminClient.mockReturnValue({});
     getMascotGenerationProvider.mockReturnValue({
       getJob: vi.fn().mockResolvedValue({
         id: "job-1", attemptId: attempt.attempt_id, status: "awaiting_set_approval", productState: "READY_TO_HATCH",
@@ -40,6 +49,32 @@ describe("GET /api/mascot/incubations state projection", () => {
         poseChoices: {}, configuration: {}, poses: [], message: "pronto",
       }),
     });
+  });
+
+  it("projeta job Modal ausente como recuperação necessária sem criar outro job", async () => {
+    const orphan = { ...attempt, status: "master_approved", current_stage: "master_approved", hatched_at: null };
+    findIncubationAttempts.mockResolvedValue([orphan]);
+    const provider = { getJob: vi.fn().mockResolvedValue(null), getJobByAttempt: vi.fn(), createIncubation: vi.fn() };
+    getMascotGenerationProvider.mockReturnValue(provider);
+    markIncubationJobMissing.mockResolvedValue({ status: "CONFIRMED_MISSING", errorCode: "INCUBATION_JOB_GONE" });
+    const { GET } = await import("@/app/api/mascot/incubations/route");
+    const response = await GET(new Request("https://puleiro.test/api/mascot/incubations"));
+    await expect(response.json()).resolves.toMatchObject({ incubations: [{ productState: "RECOVERY_REQUIRED", recoveryCode: "INCUBATION_JOB_GONE" }] });
+    expect(markIncubationJobMissing).toHaveBeenCalledWith(expect.anything(), ownerId, orphan.attempt_id, orphan.modal_job_id);
+    expect(provider.createIncubation).not.toHaveBeenCalled();
+  });
+
+  it("preserva o estado confirmado quando o Modal está temporariamente indisponível", async () => {
+    const provider = {
+      lookupJob: vi.fn().mockResolvedValue({ kind: "unavailable", error: new Error("timeout") }),
+      createIncubation: vi.fn(),
+    };
+    getMascotGenerationProvider.mockReturnValue(provider);
+    const { GET } = await import("@/app/api/mascot/incubations/route");
+    const response = await GET(new Request("https://puleiro.test/api/mascot/incubations"));
+    await expect(response.json()).resolves.toMatchObject({ incubations: [{ productState: "HATCHED", providerUnavailable: true, errorCode: "INCUBATION_PROVIDER_UNAVAILABLE" }] });
+    expect(markIncubationJobMissing).not.toHaveBeenCalled();
+    expect(provider.createIncubation).not.toHaveBeenCalled();
   });
 
   it("prioriza hatched_at sobre READY_TO_HATCH retornado pelo Modal", async () => {

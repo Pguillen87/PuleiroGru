@@ -53,6 +53,7 @@ export type IncubationProductState =
   | "PREPARING"
   | "INCUBATING"
   | "NEEDS_HUMAN_MASTER_SELECTION"
+  | "RECOVERY_REQUIRED"
   | "READY_TO_HATCH"
   | "FAILED"
   | "HATCHED"
@@ -217,6 +218,9 @@ export interface IncubationSummary {
   generationReadyAt?: string;
   hatchedAt?: string;
   errorCode?: string;
+  recoveryCode?: string;
+  lastConfirmedAt?: string;
+  providerUnavailable?: boolean;
   selectedMasterId?: string;
   poseCount: number;
 }
@@ -254,6 +258,8 @@ export interface MascotGenerationProvider {
   startMasterGeneration(jobId: string, identity: JobIdentity): Promise<GenerationJob>;
   getJob(jobId: string, identity: JobIdentity): Promise<GenerationJob | null>;
   getJobByAttempt(identity: JobIdentity): Promise<GenerationJob | null>;
+  lookupJob?(jobId: string, identity: JobIdentity): Promise<import("./modal-provider").ModalJobLookup>;
+  lookupJobByAttempt?(identity: JobIdentity): Promise<import("./modal-provider").ModalJobLookup>;
   deleteJob(jobId: string, identity: JobIdentity): Promise<{ deleted: true; idempotentReplay: boolean }>;
   approveMaster(jobId: string, masterId: string, identity: JobIdentity): Promise<GenerationJob>;
   selectIncubatorMaster(jobId: string, masterId: string, identity: JobIdentity): Promise<GenerationJob>;

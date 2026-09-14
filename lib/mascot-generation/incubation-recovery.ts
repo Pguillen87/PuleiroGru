@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import type { GenerationJob } from "./types";
-import { ModalProviderError } from "./modal-provider";
+import { ModalProviderError, type ModalJobLookup } from "./modal-provider";
+import type { JobIdentity, MascotGenerationProvider } from "./types";
 
 export class IncubationRecoveryError extends Error {
   constructor(
@@ -27,6 +29,27 @@ export type IncubationJobRecoveryDependencies = {
   getJobByAttempt: () => Promise<GenerationJob | null>;
   persist: (job: GenerationJob) => Promise<void>;
 };
+
+type LookupProvider = Pick<MascotGenerationProvider, "getJob"> & {
+  lookupJob?: (jobId: string, identity: JobIdentity) => Promise<ModalJobLookup>;
+};
+
+export async function lookupIncubationJob(provider: LookupProvider, jobId: string, identity: JobIdentity): Promise<ModalJobLookup> {
+  try {
+    if (provider.lookupJob) return await provider.lookupJob(jobId, identity);
+    const job = await provider.getJob(jobId, identity);
+    return job ? { kind: "found", job } : { kind: "not_found" };
+  } catch (error) {
+    const typed = error instanceof ModalProviderError
+      ? error
+      : new ModalProviderError(503, "INCUBATION_PROVIDER_UNAVAILABLE", "O serviço de mascotes está temporariamente indisponível.");
+    return { kind: "unavailable", error: typed };
+  }
+}
+
+export function safeIncubationJobId(jobId: string) {
+  return `job_${createHash("sha256").update(jobId).digest("hex").slice(0, 16)}`;
+}
 
 /**
  * Reconciles a previously registered owner-scoped attempt without creating

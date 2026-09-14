@@ -6,7 +6,7 @@ export function incubationProgress(item: IncubationSummary, timing: IncubationTi
   if (["READY_TO_HATCH", "HATCHED", "PACKAGE_READY"].includes(item.productState)) {
     return { percent: 100, message: "Preparação concluída." };
   }
-  if (["FAILED", "NEEDS_HUMAN_MASTER_SELECTION"].includes(item.productState)) return null;
+  if (["FAILED", "NEEDS_HUMAN_MASTER_SELECTION", "RECOVERY_REQUIRED"].includes(item.productState)) return null;
   const start = Date.parse(item.createdAt ?? "");
   if (!Number.isFinite(start) || !timing.averageMs || timing.averageMs <= 0 || timing.sampleCount < 3) {
     return { percent: null, message: "Acompanhando as etapas. Ainda não há histórico suficiente para estimar o tempo." };

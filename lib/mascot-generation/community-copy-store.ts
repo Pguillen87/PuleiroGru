@@ -50,6 +50,7 @@ export async function createPublicMascotCopy(
   const assets = await loadSourceAssets(admin, source);
   const uploadedPaths: string[] = [];
   let transactionCommitted = false;
+  let transactionStarted = false;
 
   try {
     for (const asset of assets) {
@@ -57,6 +58,7 @@ export async function createPublicMascotCopy(
       uploadedPaths.push(path);
       await uploadAndVerify(admin, path, asset.bytes, asset.mimeType, asset.sha256);
     }
+    transactionStarted = true;
     const { data, error } = await admin.rpc("create_public_mascot_copy", {
       p_user_id: userId,
       p_source_public_mascot_id: publicMascotId,
@@ -101,7 +103,7 @@ export async function createPublicMascotCopy(
     // Once the RPC has returned successfully, the database may already own
     // these paths. Keep them on uncertain reads so a retry can recover the
     // committed copy; orphan cleanup is an explicit operational job.
-    if (!transactionCommitted) await removeObjects(admin, uploadedPaths);
+    if (!transactionCommitted && !transactionStarted) await removeObjects(admin, uploadedPaths);
     throw normalizeCopyError(error);
   }
 }

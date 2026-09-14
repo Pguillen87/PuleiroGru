@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GeneratedPose, MascotGenerationProvider, PoseRole, PoseSetVisualQualityMetrics } from "./types";
 import type { JobIdentity } from "./types";
+import { generationConfig } from "./config";
 
 const BUCKET = "mascot-approved-assets";
 const ROLES: PoseRole[] = ["normal", "listening", "transcribing"];
@@ -122,7 +123,7 @@ async function findPoseSet(admin: SupabaseClient, userId: string, attemptId: str
 
 async function createPoseSet(admin: SupabaseClient, userId: string, attemptId: string, jobId: string, masterId: string, poseSetQc: PoseSetVisualQualityMetrics) {
   const { data, error } = await admin.from("mascot_approved_pose_sets").insert({
-    user_id: userId, attempt_id: attemptId, modal_job_id: jobId, master_id: masterId, pose_set_qc: poseSetQc, status: "PENDING",
+    user_id: userId, attempt_id: attemptId, modal_job_id: jobId, master_id: masterId, pose_set_qc: poseSetQc, status: "PENDING", generation_provider: generationConfig.provider,
   }).select("*").single<PoseSetRow>();
   if (!error && data) return data;
   if (error?.code === "23505") {

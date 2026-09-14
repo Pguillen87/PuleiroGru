@@ -1,3 +1,4 @@
+set lock_timeout = '2s';
 alter table public.mascot_post_birth_profiles
   add column if not exists library_item_id uuid;
 

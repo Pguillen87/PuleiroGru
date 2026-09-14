@@ -17,6 +17,32 @@ const libraryItem = {
   finalization: { state: "ready" },
 };
 
+test("exclusão pede confirmação, preserva diálogo no erro e só remove após sucesso", async ({ page }) => {
+  let deleted = false;
+  let deletes = 0;
+  await page.route("**/api/mascot/library?**", (route) => route.fulfill({ json: { items: deleted ? [] : [libraryItem], total: deleted ? 0 : 1, nextOffset: null } }));
+  await page.route("**/api/mascot/library/item-post-birth", (route) => {
+    deletes += 1;
+    if (deletes === 1) return route.fulfill({ status: 503, json: { message: "Indisponível" } });
+    deleted = true;
+    return route.fulfill({ json: { deleted: true } });
+  });
+  await page.goto("/meus-mascotes");
+  await page.getByRole("button", { name: "Mais ações para Pipoca" }).click();
+  await page.getByRole("button", { name: "Excluir mascote", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Excluir Pipoca?" });
+  await expect(dialog).toBeVisible();
+  expect(deletes).toBe(0);
+  await expect(dialog.getByText(/continuará usando normalmente/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Sim, excluir mascote" }).click();
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await dialog.getByRole("button", { name: "Sim, excluir mascote" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("GRU-AAAA-BBBB", { exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText("GRU-AAAA-BBBB", { exact: true })).toHaveCount(0);
+});
+
 test("mostra o mascote concluído e retoma a biblioteca depois do refresh", async ({ page }) => {
   let libraryRequests = 0;
   let savedCommunityRequests = 0;

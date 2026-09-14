@@ -1,0 +1,34 @@
+import { expect, test } from "@playwright/test";
+
+const egg = { attemptId: "incubator-new-birth", jobId: "job-new", productState: "INCUBATING", phase: "generating_masters", createdAt: "2026-09-13T14:46:00Z", updatedAt: "2026-09-13T14:48:00Z", poseCount: 0 };
+
+test("Incubadora mostra datas completas, estimativa e mantém acesso na navegação", async ({ page }) => {
+  await page.route("**/api/mascot/incubations", (route) => route.fulfill({ json: { incubations: [egg] } }));
+  await page.route("**/api/mascot/incubations/timing", (route) => route.fulfill({ json: { averageMs: 600_000, sampleCount: 20 } }));
+  await page.goto("/incubadora?created=incubator-new-birth");
+  await expect(page.getByRole("heading", { name: "Incubadora", exact: true })).toBeVisible();
+  await expect(page.getByText(/Pedido em/)).toContainText("13/09/2026, 11:46:00");
+  await expect(page.getByText(/Última atualização:/)).toContainText("11:48:00");
+  await expect(page.getByRole("progressbar")).toBeVisible();
+  await expect(page.getByText(/últimas 20 incubações concluídas/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Acompanhar", exact: true })).toHaveAttribute("href", "/incubadora/job-new");
+  await expect(page.locator('[data-new="true"]')).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("link", { name: "Acompanhar", exact: true })).toBeVisible();
+});
+
+test("falha de leitura não aparece como lista vazia e permite recuperação", async ({ page }) => {
+  let available = false;
+  await page.route("**/api/mascot/incubations", (route) => {
+    return !available ? route.fulfill({ status: 503, json: { message: "Não foi possível atualizar a Incubadora." } })
+      : route.fulfill({ json: { incubations: [egg] } });
+  });
+  await page.route("**/api/mascot/incubations/timing", (route) => route.fulfill({ json: { averageMs: null, sampleCount: 0 } }));
+  await page.goto("/incubadora");
+  await expect(page.getByRole("alert").filter({ hasText: "Não foi possível atualizar" })).toBeVisible();
+  await expect(page.getByText("Nenhum nascimento neste filtro")).toHaveCount(0);
+  available = true;
+  await page.getByRole("button", { name: "Tentar novamente" }).click();
+  await expect(page.getByRole("link", { name: "Acompanhar", exact: true })).toBeVisible();
+  await expect(page.getByText(/Ainda não há histórico suficiente/)).toBeVisible();
+});

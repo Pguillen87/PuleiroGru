@@ -1,0 +1,1 @@
+set lock_timeout = '2s'; create index if not exists generation_entitlements_reserved_order_idx on public.generation_entitlements (reserved_order_id) where reserved_order_id is not null; create index if not exists generation_orders_entitlement_id_idx on public.generation_orders (entitlement_id);;

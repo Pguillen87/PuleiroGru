@@ -21,7 +21,7 @@ test("/criar usa a jornada assíncrona e encaminha uma única criação para a I
     body: JSON.stringify({ hint: { version: "subject-hint-v1", suggestedCategory: "human", confidenceBand: "high", requiresConfirmation: false, overrideConfirmed: false } }),
   }));
   await page.route("**/api/mascot/incubations", async (route) => {
-    if (route.request().method() !== "POST") return route.fallback();
+    if (route.request().method() !== "POST") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ incubations: [] }) });
     registrationRequests += 1;
     return route.fulfill({
       status: 202,
@@ -54,7 +54,7 @@ test("/criar usa a jornada assíncrona e encaminha uma única criação para a I
   await page.getByRole("button", { name: "Continuar" }).click();
   await expect(page.getByRole("heading", { name: "Revise o ovo antes da Incubadora" })).toBeVisible();
   await page.getByRole("button", { name: "Colocar na Incubadora" }).click();
-  await expect(page.getByRole("heading", { name: "A Incubadora cuidará do resto." })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Abrir Incubadora" })).toHaveAttribute("href", "/incubadora");
+  await expect(page).toHaveURL(/\/incubadora\?created=attempt-async-creation$/);
+  await expect(page.getByRole("heading", { name: "Incubadora", exact: true })).toBeVisible();
   expect(registrationRequests).toBe(1);
 });

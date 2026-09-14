@@ -208,6 +208,7 @@ export interface GenerationJob {
 }
 
 export interface IncubationSummary {
+  createdAt?: string;
   jobId: string | null;
   attemptId: string;
   productState: IncubationProductState;

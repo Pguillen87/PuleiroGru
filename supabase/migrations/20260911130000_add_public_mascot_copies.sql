@@ -1,3 +1,4 @@
+set lock_timeout = '2s';
 alter table public.mascot_library_items
   add column if not exists source_public_mascot_id uuid,
   add column if not exists origin text not null default 'generated',

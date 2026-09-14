@@ -160,6 +160,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
   const [nameDraft, setNameDraft] = useState(item.displayName);
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [posesOpen, setPosesOpen] = useState(false);
   const [favoriteRankDraft, setFavoriteRankDraft] = useState(String(item.favoriteRank ?? ""));
   const closeSuccessRef = useRef<HTMLButtonElement>(null);
@@ -258,12 +259,15 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
 
   async function deleteMascot() {
     setSaving(true);
+    setDeleteError("");
     try {
       const response = await fetch(`/api/mascot/library/${encodeURIComponent(item.id)}`, { method: "DELETE", headers: { "content-type": "application/json" }, body: "{}" });
       if (!response.ok) throw new Error("Não foi possível excluir este mascote agora.");
       onItemRemove(item.id);
-    } catch (error) { onFeedback(error instanceof Error ? error.message : "Não foi possível excluir este mascote agora.", "error"); }
-    finally { setSaving(false); setDeleteDialogOpen(false); }
+      setDeleteDialogOpen(false);
+      onFeedback("Mascote excluído da sua coleção.");
+    } catch (error) { setDeleteError(error instanceof Error ? error.message : "Não foi possível excluir este mascote agora."); }
+    finally { setSaving(false); }
   }
 
   async function togglePublication() {
@@ -385,7 +389,7 @@ function LibraryItem({ item, priority, catalogNumber, selected, onSelect, onFavo
       onCopy={() => void copyImportCode(importCode?.code ?? "", onFeedback)}
     />}
     {posesOpen && <MascotPosesDialog displayName={item.displayName} poses={item.poses} closeRef={closePosesRef} onClose={() => setPosesOpen(false)} />}
-    {deleteDialogOpen && <MascotDeleteDialog displayName={item.displayName} saving={saving} onClose={() => setDeleteDialogOpen(false)} onDelete={deleteMascot} />}
+    {deleteDialogOpen && <MascotDeleteDialog displayName={item.displayName} saving={saving} error={deleteError} onClose={() => { setDeleteDialogOpen(false); setDeleteError(""); }} onDelete={deleteMascot} />}
   </article>;
 }
 
@@ -470,14 +474,19 @@ function MascotPosesDialog({ displayName, poses, closeRef, onClose }: {
   </div>, document.body);
 }
 
-function MascotDeleteDialog({ displayName, saving, onClose, onDelete }: { displayName: string; saving: boolean; onClose: () => void; onDelete: () => void }) {
-  return createPortal(<div className="package-success-dialog__backdrop" role="presentation">
-    <section className="package-success-dialog" role="dialog" aria-modal="true" aria-labelledby="mascot-delete-title">
-      <p className="package-success-dialog__kicker">Excluir mascote</p><h2 id="mascot-delete-title">Excluir {displayName}?</h2>
-      <p>Ele sairá da sua biblioteca e o código deixará de funcionar. A cópia já instalada no GRU não será apagada do celular.</p>
-      <div className="package-success-dialog__actions"><button type="button" onClick={onClose}>Cancelar</button><button type="button" className="library-dialog__danger" disabled={saving} onClick={onDelete}>Excluir agora</button></div>
-    </section>
-  </div>, document.body);
+function MascotDeleteDialog({ displayName, saving, error, onClose, onDelete }: { displayName: string; saving: boolean; error: string; onClose: () => void; onDelete: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    dialog.current?.showModal();
+    return () => previous?.focus();
+  }, []);
+  return createPortal(<dialog ref={dialog} className="package-success-dialog mascot-delete-dialog" aria-labelledby="mascot-delete-title" aria-describedby="mascot-delete-description" onCancel={(event) => { event.preventDefault(); if (!saving) onClose(); }}>
+      <h2 id="mascot-delete-title">Excluir {displayName}?</h2>
+      <p id="mascot-delete-description">Ele sairá da sua coleção e não poderá receber novas cópias pela Biblioteca Geral. Quem já guardou uma cópia ou instalou no GRU continuará usando normalmente.</p>
+      {error && <p role="alert">{error} Tente novamente.</p>}
+      <div className="package-success-dialog__actions"><button type="button" disabled={saving} onClick={onClose}>Cancelar</button><button type="button" className="library-dialog__danger" disabled={saving} onClick={onDelete}>{saving ? "Excluindo…" : "Sim, excluir mascote"}</button></div>
+  </dialog>, document.body);
 }
 
 function LibraryEmptyState({ hasItems }: { hasItems: boolean }) {

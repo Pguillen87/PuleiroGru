@@ -111,6 +111,15 @@ describe("community copy store", () => {
     expect(mocks.getMascotGenerationProvider).not.toHaveBeenCalled();
   });
 
+  it("não apaga assets quando a resposta da transação se perde", async () => {
+    const admin = adminClient();
+    const client = admin as { rpc: ReturnType<typeof vi.fn>; storage: { from: ReturnType<typeof vi.fn> } };
+    client.rpc.mockRejectedValueOnce(new Error("connection closed after commit"));
+    const { createPublicMascotCopy } = await import("@/lib/mascot-generation/community-copy-store");
+    await expect(createPublicMascotCopy(admin, USER_ID, PUBLIC_ID, "Pipoca")).rejects.toThrow();
+    expect(client.storage.from().remove).not.toHaveBeenCalled();
+  });
+
   it("converte disputa concorrente do índice único em replay e limpa os uploads temporários", async () => {
     mocks.findLibraryItemByPublicSource.mockReset();
     mocks.findLibraryItemByPublicSource

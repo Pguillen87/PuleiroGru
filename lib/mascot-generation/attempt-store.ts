@@ -89,17 +89,11 @@ export async function findResumableAttempts(client: SupabaseClient, userId: stri
   return data ?? [];
 }
 
-export async function findIncubationAttempts(client: SupabaseClient, userId: string, limit = 24) {
-  const { data, error } = await client.from("mascot_attempts")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("workflow_mode", "async_incubator_v1")
-    .neq("status", "ready")
-    .order("updated_at", { ascending: false })
-    .limit(limit)
-    .returns<MascotAttempt[]>();
-  if (error) throw new MascotAttemptStoreError();
-  return data ?? [];
+export async function findIncubationAttempts(client: SupabaseClient, userId: string, limit = 50): Promise<MascotAttempt[]> {
+  const { data, error } = await client.rpc("list_pending_incubation_attempts", { p_limit: limit })
+    .eq("user_id", userId);
+  if (error || !Array.isArray(data)) throw new MascotAttemptStoreError();
+  return data as MascotAttempt[];
 }
 
 export function incubationProductState(attempt: MascotAttempt): IncubationProductState {

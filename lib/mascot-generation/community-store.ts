@@ -9,6 +9,7 @@ export async function publishMascot(client: SupabaseClient, ownerId: string, ite
   const { data, error } = await client.from("mascot_public_mascots").upsert({
     source_item_id: item.id,
     published_by: ownerId,
+    retired_at: null,
     mascot_code: item.mascotCode,
     pose_snapshot: item.poses.map(({ id, role, optionId, label }) => ({ id, role, optionId, label })),
   }, { onConflict: "source_item_id" }).select("*").single<PublicRow>();
@@ -22,7 +23,7 @@ export async function unpublishMascot(client: SupabaseClient, ownerId: string, i
 }
 
 export async function listCommunityMascots(client: SupabaseClient, userId?: string) {
-  const { data, error } = await client.from("mascot_public_mascots").select("*").order("published_at", { ascending: false }).limit(96).returns<PublicRow[]>();
+  const { data, error } = await client.from("mascot_public_mascots").select("*").is("retired_at", null).order("published_at", { ascending: false }).limit(96).returns<PublicRow[]>();
   if (error) throw new Error("Não foi possível abrir a comunidade.");
   const ids = (data ?? []).map((item) => item.id);
   const [favoriteIds, saveIds] = userId
@@ -58,7 +59,7 @@ export async function setCommunityRelation(client: SupabaseClient, table: "masco
 }
 
 export async function findPublicMascot(client: SupabaseClient, id: string) {
-  const { data, error } = await client.from("mascot_public_mascots").select("*").eq("id", id).maybeSingle<PublicRow>();
+  const { data, error } = await client.from("mascot_public_mascots").select("*").eq("id", id).is("retired_at", null).maybeSingle<PublicRow>();
   if (error) throw new Error("Não foi possível abrir o mascote público.");
   return data;
 }

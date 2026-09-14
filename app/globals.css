@@ -2729,7 +2729,20 @@ footer span:first-child {
 .incubator-egg__nest { position: absolute; z-index: 1; bottom: 1rem; width: 8rem; height: 1.4rem; border: 2px solid var(--color-border); border-radius: 50%; background: #8b5a2b; box-shadow: 0 6px 0 #5e3c21; }
 .incubator-egg__body { padding: var(--space-4); }
 .incubator-egg__body > p:first-child { margin: 0 0 .25rem; color: var(--color-editorial-red-dark); font-weight: 800; }
-.incubator-egg__body h3 { margin: 0 0 .4rem; font-size: 1.35rem; }
+.incubator-egg__body h2, .incubator-egg__body h3 { margin: 0 0 .4rem; font-size: 1.35rem; }
+.incubator-egg[data-new="true"] { outline: 3px solid var(--color-editorial-red); outline-offset: 3px; }
+.incubator-egg__date { margin-block: .5rem; font-size: .85rem; font-variant-numeric: tabular-nums; }
+.incubation-progress { margin-block: 1rem; }
+.incubation-progress progress { display: block; width: 100%; height: .75rem; accent-color: var(--color-editorial-red); }
+.incubation-progress p { margin-block: .5rem; }
+.incubation-progress small { display: block; line-height: 1.5; }
+.incubator-egg[data-state="PREPARING"] .incubator-egg__shell { animation: incubator-arrive .6s ease-out both; }
+.incubator-egg[data-state="READY_TO_HATCH"] .incubator-egg__shell { animation: incubator-crack 2.5s ease-in-out 3; }
+.mascot-delete-dialog::backdrop { background: rgb(0 0 0 / .55); }
+.mascot-delete-dialog { max-height: calc(100dvh - 2rem); overflow-y: auto; margin: auto; }
+@keyframes incubator-arrive { from { opacity: .4; transform: translateY(-1rem) rotate(-12deg); } to { opacity: 1; transform: translateY(0) rotate(-2deg); } }
+@keyframes incubator-crack { 0%, 75%, 100% { transform: rotate(-2deg); } 80% { transform: rotate(-8deg); } 85% { transform: rotate(8deg); } 90% { transform: rotate(-5deg); } }
+@media (prefers-reduced-motion: reduce) { .incubator-egg .incubator-egg__shell { animation: none !important; } }
 .incubator-egg__body time { font-size: .85rem; }
 .incubator-egg__error { margin-block: .75rem; }
 .incubator-egg__action { display: inline-flex; min-height: 3rem; align-items: center; margin-top: var(--space-3); padding-inline: var(--space-3); color: white; background: var(--color-editorial-red); border: var(--border-ink); font-weight: 800; }

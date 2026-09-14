@@ -105,8 +105,10 @@ function AuthenticatedIncubatorCreation({ config }: { config: FlowConfig }) {
     setStep("submitting");
     const controller = new AbortController();
     try {
-      await createIncubation(photo, identity, choices, hint, idempotencyKey, controller.signal);
+      const job = await createIncubation(photo, identity, choices, hint, idempotencyKey, controller.signal);
       setStep("done");
+      window.sessionStorage.removeItem(INCUBATION_KEY_STORAGE);
+      router.replace(`/incubadora?created=${encodeURIComponent(job.attemptId)}`);
     } catch (cause) {
       setError(cause instanceof GenerationRequestError ? cause.message : "Não foi possível colocar este ovo na Incubadora.");
       setStep("error");

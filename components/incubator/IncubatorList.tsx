@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Header } from "@/components/navigation/Header";
 import type { IncubationProductState, IncubationSummary } from "@/lib/mascot-generation/types";
+import { formatIncubationDate, type IncubationTiming } from "@/lib/mascot-generation/incubation-progress";
+import { IncubationProgress } from "./IncubationProgress";
+import { useIncubations } from "./useIncubations";
 
 type IncubatorFilter = "all" | "in-progress" | "ready" | "naming" | "failed";
 
@@ -31,30 +34,19 @@ export function incubationListLabel(item: IncubationSummary) {
 }
 
 export function IncubatorList() {
-  const [items, setItems] = useState<IncubationSummary[]>([]);
+  const { items, error, loaded, reload } = useIncubations();
   const [filter, setFilter] = useState<IncubatorFilter>("all");
-  const [message, setMessage] = useState("Abrindo sua Incubadora…");
-
+  const [timing, setTiming] = useState<IncubationTiming>({ averageMs: null, sampleCount: 0 });
+  const [now, setNow] = useState(0);
+  const [highlight, setHighlight] = useState("");
   useEffect(() => {
     const controller = new AbortController();
-    let timer: number | undefined;
-    const load = async () => {
-      try {
-        const response = await fetch("/api/mascot/incubations", { cache: "no-store", signal: controller.signal });
-        const body = await response.json().catch(() => ({})) as { incubations?: IncubationSummary[]; message?: string };
-        if (!response.ok) throw new Error(body.message ?? "Não foi possível abrir a Incubadora.");
-        const next = body.incubations ?? [];
-        setItems(next);
-        setMessage(next.length ? "Cada etapa vem do trabalho confirmado no servidor." : "Sua Incubadora está vazia. Novos mascotes aparecerão aqui depois da criação.");
-        if (next.some((item) => item.productState === "PREPARING" || item.productState === "INCUBATING")) {
-          timer = window.setTimeout(() => void load(), 8_000);
-        }
-      } catch (error) {
-        if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Não foi possível abrir a Incubadora.");
-      }
-    };
-    void load();
-    return () => { controller.abort(); if (timer) window.clearTimeout(timer); };
+    void fetch("/api/mascot/incubations/timing", { cache: "no-store", signal: controller.signal })
+      .then(async (response) => { if (response.ok) setTiming(await response.json()); }).catch(() => undefined);
+    const tick = () => { setNow(Date.now()); setHighlight(new URLSearchParams(window.location.search).get("created") ?? ""); };
+    const first = window.setTimeout(tick, 0);
+    const timer = window.setInterval(tick, 15_000);
+    return () => { controller.abort(); window.clearTimeout(first); window.clearInterval(timer); };
   }, []);
 
   const visible = useMemo(() => filterIncubations(items, filter), [filter, items]);
@@ -63,7 +55,7 @@ export function IncubatorList() {
     <Header />
     <main className="library-page" aria-labelledby="incubator-list-title">
       <section className="library-intro">
-        <div><span className="state-kicker">Área privada</span><h1 id="incubator-list-title">Incubadora</h1><p>Acompanhe seus nascimentos. Você pode sair e voltar; o processamento continua no servidor.</p></div>
+        <div><h1 id="incubator-list-title">Incubadora</h1><p>Seu mascote está a caminho. Você pode sair e voltar para acompanhar por aqui.</p><Link href="/criar">Criar outro mascote</Link></div>
         <p className="library-count" aria-live="polite">{items.length} {items.length === 1 ? "nascimento" : "nascimentos"}</p>
       </section>
       <div className="library-controls" aria-label="Filtrar Incubadora">
@@ -71,21 +63,26 @@ export function IncubatorList() {
           {FILTERS.map((option) => <button key={option.id} type="button" aria-pressed={filter === option.id} onClick={() => setFilter(option.id)}>{option.label}</button>)}
         </div>
       </div>
-      <p className="library-status" role="status" aria-live="polite">{message}</p>
+      {highlight && <p role="status">Criação recebida. Seu novo nascimento está destacado abaixo.</p>}
+      {error ? <div role="alert"><p>{error} {loaded && "Mostrando a última consulta confirmada."}</p><button className="stage-button" onClick={reload}>Tentar novamente</button></div>
+        : <p className="library-status" role="status">{loaded ? "Abra o mascote quando estiver pronto. Ele fica aqui até você dar o nome e guardar." : "Abrindo sua Incubadora…"}</p>}
       {visible.length > 0 ? <ul className="incubator-grid" aria-label="Nascimentos na Incubadora">
-        {visible.map((item) => <IncubatorCard item={item} key={item.attemptId} />)}
-      </ul> : <section className="library-empty" aria-labelledby="incubator-empty-title"><h2 id="incubator-empty-title">Nenhum nascimento neste filtro</h2><p>Quando você confirmar uma nova criação, ela ficará nesta área até o nome ser guardado.</p><Link className="stage-button stage-button--primary" href="/criar">Criar meu mascote</Link></section>}
+        {visible.map((item) => <IncubatorCard item={item} key={item.attemptId} timing={timing} now={now} highlighted={highlight === item.attemptId} />)}
+      </ul> : loaded && !error && <section className="library-empty" aria-labelledby="incubator-empty-title"><h2 id="incubator-empty-title">Nenhum nascimento neste filtro</h2><p>Quando você confirmar uma nova criação, ela ficará nesta área até o nome ser guardado.</p><Link className="stage-button stage-button--primary" href="/criar">Criar meu mascote</Link></section>}
     </main>
   </div>;
 }
 
-function IncubatorCard({ item }: { item: IncubationSummary }) {
+function IncubatorCard({ item, timing, now, highlighted }: { item: IncubationSummary; timing: IncubationTiming; now: number; highlighted: boolean }) {
   const action = actionFor(item.productState);
   const title = `Nascimento ${item.attemptId.slice(-6).toUpperCase()}`;
   const href = item.jobId ? `/incubadora/${encodeURIComponent(item.jobId)}` : undefined;
-  return <li><article className="incubator-egg" data-state={item.productState}>
+  return <li><article className="incubator-egg" data-state={item.productState} data-new={highlighted}>
     <div className="incubator-egg__illustration" aria-hidden="true"><span className="incubator-egg__shell" /><span className="incubator-egg__nest" /></div>
-    <div className="incubator-egg__body"><p>{incubationListLabel(item)}</p><h2>{title}</h2><time dateTime={item.updatedAt}>Atualizado {formatRelativeUpdate(item.updatedAt)}</time>
+    <div className="incubator-egg__body"><p>{incubationListLabel(item)}</p><h2>{title}</h2>
+      <p className="incubator-egg__date">Pedido em <time dateTime={item.createdAt}>{formatIncubationDate(item.createdAt)}</time></p>
+      <p className="incubator-egg__date">Última atualização: <time dateTime={item.updatedAt}>{formatIncubationDate(item.updatedAt)}</time></p>
+      <IncubationProgress item={item} timing={timing} now={now} />
       {item.productState === "FAILED" && <p className="incubator-egg__error">Abra os detalhes para entender a falha antes de qualquer recuperação.</p>}
       {href ? <Link className="incubator-egg__action" href={href}>{action}</Link> : <p className="incubator-egg__pending" role="status">Confirmando a criação no servidor…</p>}
     </div>
@@ -105,14 +102,4 @@ function actionFor(state: IncubationProductState) {
   if (state === "NEEDS_HUMAN_MASTER_SELECTION") return "Revisar exceção";
   if (state === "FAILED") return "Ver detalhes";
   return "Acompanhar";
-}
-
-function formatRelativeUpdate(value: string) {
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1_000));
-  if (seconds < 60) return "agora";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `há ${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `há ${hours} h`;
-  return `há ${Math.floor(hours / 24)} d`;
 }

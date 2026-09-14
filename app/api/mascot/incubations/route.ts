@@ -48,8 +48,9 @@ export async function GET(request: Request) {
       return {
         jobId: job?.id ?? attempt.modal_job_id,
         attemptId: attempt.attempt_id,
-        productState: projectedIncubationProductState(attempt, job?.productState),
+        productState: projectedIncubationProductState(attempt, job?.productState, job ?? undefined),
         phase: job?.status ?? attempt.current_stage ?? attempt.status,
+        createdAt: attempt.created_at,
         updatedAt: attempt.updated_at,
         generationReadyAt: job?.generationReadyAt ?? attempt.generation_ready_at ?? undefined,
         hatchedAt: attempt.hatched_at ?? undefined,

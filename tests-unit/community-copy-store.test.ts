@@ -117,7 +117,8 @@ describe("community copy store", () => {
     client.rpc.mockRejectedValueOnce(new Error("connection closed after commit"));
     const { createPublicMascotCopy } = await import("@/lib/mascot-generation/community-copy-store");
     await expect(createPublicMascotCopy(admin, USER_ID, PUBLIC_ID, "Pipoca")).rejects.toThrow();
-    expect(client.storage.from().remove).not.toHaveBeenCalled();
+    const storage = (client.storage.from as unknown as () => { remove: ReturnType<typeof vi.fn> })();
+    expect(storage.remove).not.toHaveBeenCalled();
   });
 
   it("converte disputa concorrente do índice único em replay e limpa os uploads temporários", async () => {
